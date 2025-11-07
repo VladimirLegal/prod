@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>О портале</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="font:16px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif; max-width:880px; margin:24px auto; padding:0 16px;">
+    <!-- ===== Top bar: навигация ===== -->
+<div id="lp-topbar"
+     style="position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #eee; padding:10px 16px; margin:-8px -16px 16px; display:flex; justify-content:space-between; align-items:center; font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;">
+    <a href="#" id="lp-back" style="text-decoration:none; color:#2563eb;">← Назад</a>
+    <a href="/" id="lp-home" style="text-decoration:none; color:#2563eb;">На главную</a>
+    </div>
+    <script>
+    (function () {
+        // DEV: страницы открываются с http://localhost:5000/pages/...
+        // PROD: тот же домен, что и фронт, можно оставить "/"
+        var isDevServer = /:5000$/.test(location.host);
+        var home = isDevServer ? 'http://localhost:3000/' : '/';
+        var homeLink = document.getElementById('lp-home');
+        if (homeLink) homeLink.setAttribute('href', home);
+
+        // «Назад» по истории, если есть; иначе — на главную
+        var back = document.getElementById('lp-back');
+        if (back) {
+        back.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (history.length > 1) history.back();
+            else location.href = home;
+        });
+        }
+    })();
+    </script>
+    <!-- ===== /Top bar ===== -->
+
+  <h1>О портале</h1>
+  <p>Legal-Portal — сервис автоматизации подготовки правовых документов в сфере недвижимости. Мы помогаем быстро сформировать
+     договоры и сопроводительные документы, а также управлять версиями и согласованиями.
+  </p>
+  <h2>Контакты</h2> 
+  <p>Эл. почта: hello@пример.домен</p>
+</body>
+</html>

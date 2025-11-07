@@ -1,0 +1,71 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://localhost:5000",
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@tiptap/extension-table": "^3.3.0",
+    "@tiptap/extension-table-cell": "^3.3.0",
+    "@tiptap/extension-table-header": "^3.3.0",
+    "@tiptap/extension-table-row": "^3.3.0",
+    "@tiptap/extension-text-align": "^3.3.1",
+    "@tiptap/pm": "^3.3.0",
+    "@tiptap/react": "^3.3.0",
+    "@tiptap/starter-kit": "^3.3.0",
+    "autoprefixer": "^10.4.14",
+    "axios": "^1.10.0",
+    "diff-match-patch": "^1.0.5",
+    "fast-xml-parser": "^5.2.5",
+    "file-saver": "^2.0.5",
+    "handlebars": "^4.7.8",
+    "jsqr": "^1.4.0",
+    "jszip": "^3.10.1",
+    "pdfmake": "^0.2.20",
+    "petrovich": "^0.2.1",
+    "postcss": "^8.4.27",
+    "react": "^18.3.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.60.0",
+    "react-input-mask": "^2.0.4",
+    "react-router-dom": "^7.7.0",
+    "react-scripts": "5.0.1",
+    "socket.io-client": "^4.8.1",
+    "tailwindcss": "^3.3.3",
+    "tesseract.js": "^2.1.5",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}

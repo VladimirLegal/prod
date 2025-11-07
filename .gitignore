@@ -1,0 +1,16 @@
+node_modules/
+.env
+.env.local
+dist/
+build/
+.DS_Store
+*.log
+server/temp/
+
+# prevent nested repos from being tracked as submodules
+legal-portal/.git/
+
+legal-portal/
+
+# Windows reserved device file
+/nul

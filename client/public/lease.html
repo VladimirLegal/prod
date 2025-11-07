@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Договор найма жилого помещения</title>
+</head>
+<body>
+  <!-- Заголовок договора -->
+  <h1 style="text-align: center;">ДОГОВОР НАЙМА ЖИЛОГО ПОМЕЩЕНИЯ 1</h1>
+  <p style="text-align: right;">
+    г. {{ terms.agreementPlace }}, {{ terms.agreementDate }}
+  </p>
+
+  <!-- Вводная часть с перечислением сторон -->
+  <p>Мы, граждане Российской Федерации:</p>
+
+  <!-- Блок Наймодателей (повторяется для каждого наймодателя) -->
+  <div data-repeat="landlords">
+    <p>
+      <b>Наймодатель <span data-ph="current.index"></span>:</b>
+      <span data-ph="fullName"></span>, 
+      <span data-ph="birthDateFormatted"></span> года рождения, 
+      паспорт <span data-ph="passportFormatted"></span>, выдан 
+      <span data-ph="issueDateFormatted"></span> <span data-ph="issueBy"></span>
+      <span data-if="registrationText">, <span data-ph="registrationText"></span></span>.
+    </p>
+  </div>
+
+  <!-- Блок Нанимателей (повторяется для каждого нанимателя) -->
+  <div data-repeat="tenants">
+    <p>
+      <b>Наниматель <span data-ph="current.index"></span>:</b>
+      <span data-ph="fullName"></span>, 
+      <span data-ph="birthDateFormatted"></span> года рождения, 
+      паспорт <span data-ph="passportFormatted"></span>, выдан 
+      <span data-ph="issueDateFormatted"></span> <span data-ph="issueBy"></span>
+      <span data-if="registrationText">, <span data-ph="registrationText"></span></span>.
+    </p>
+  </div>
+
+  <p>в дальнейшем совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:</p>
+
+  <!-- Раздел 1. Общие положения -->
+  <h2>1. Общие положения</h2>
+  <p>
+    1.1. Наймодатель{{calc.landlordsPluralSuffix}} обязуется предоставить, а 
+    Наниматель{{calc.tenantsPluralSuffix}} принять во временное владение и пользование 
+    жилое помещение (далее – «Квартира»), расположенное по адресу: 
+    {{ terms.objectAddress }}, за плату и на срок с {{ terms.startDate }} по {{ terms.endDate }}.
+  </p>
+  <p>
+    1.2. Квартира предоставляется для проживания семьи Нанимателя численностью 
+    {{ terms.occupantsCount }} человек. Питомцы: 
+    {{ terms.petsDescription }}.
+  </p>
+
+  <!-- Раздел 2. Порядок расчётов -->
+  <h2>2. Порядок расчётов</h2>
+  <p>
+    2.1. Ежемесячная плата за найм составляет <span data-ph="terms.rentAmount"></span>.
+    Оплата производится в срок до {{ terms.paymentDueDate }} числа каждого месяца 
+    за текущий месяц найма.
+  </p>
+  <p data-if="terms.securityDepositEnabled">
+    2.2. Наниматель внесёт обеспечительный платёж (залог) в размере 
+    <span data-ph="terms.securityDepositAmount"></span> в день подписания Договора. 
+    Залог возвращается Наймодател{{calc.landlordsPluralSuffix}} при исполнении Нанимател{{calc.tenantsPluralSuffix}} 
+    всех обязательств по Договору.
+  </p>
+
+  <!-- ... далее идут остальные разделы договора: права и обязанности сторон, ответственность, прочие условия ... -->
+
+</body>
+</html>

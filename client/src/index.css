@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-gray-50 text-gray-800;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-secondary text-white font-medium py-2 px-4 rounded-lg transition duration-200;
+  }
+  
+  .input-field {
+    @apply w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none;
+  }
+}
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+.diff-ins { background: rgba(0, 200, 0, 0.15); }
+.diff-del { background: rgba(200, 0, 0, 0.15); text-decoration: line-through; }
+.ph-chip { background: #eef6ff; border: 1px dashed #5aa7ff; padding: 0 4px; border-radius: 4px; }
+/* CKEditor: вид внутри редактора */
+.ck-content {
+  /* вместо margin используем padding — так поля будут видны прямо в редакторе */
+  padding: 2cm 1.5cm 2cm 3cm;   /* верх 2, право 1.5, низ 2, лево 3 */
+  box-sizing: border-box;
+
+  font-family: "Times New Roman", Times, serif;
+  font-size: 12pt;
+  line-height: 1;
+  color: #000;
+  text-align: justify;          /* выравнивание по ширине */
+}
+
+/* Заголовки «как в Word» */
+.ck-content h1,
+.ck-content h2 {
+  text-align: center;
+  font-weight: bold;
+  margin: 0.6rem 0 0.4rem;
+}
+
+/* Чипы-плейсхолдеры, если нужно подсветить */
+.ck-content .ph-chip {
+  background: #eef6ff;
+  border: 1px dashed #5aa7ff;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+/* === Таблицы внутри редактора TipTap (UI-скин) === */
+.ProseMirror table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  margin: 8px 0;
+}
+
+/* === В редакторе показываем рамки ТОЛЬКО у таблиц приложений === */
+.ProseMirror .app-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  margin: 8px 0;
+}
+
+.ProseMirror .app-table-wrap table th,
+.ProseMirror .app-table-wrap table td {
+  border: 1px solid #000;
+  padding: 3pt 4pt;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.ProseMirror .app-table-wrap thead th {
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Минимальные ширины именно для Описи имущества */
+.ProseMirror .app-table-wrap table.inventory-table thead tr th:nth-child(1),
+.ProseMirror .app-table-wrap table.inventory-table tbody tr td:nth-child(1) { min-width: 22%; }
+
+.ProseMirror .app-table-wrap table.inventory-table thead tr th:nth-child(2),
+.ProseMirror .app-table-wrap table.inventory-table tbody tr td:nth-child(2) { min-width: 28%; }
+

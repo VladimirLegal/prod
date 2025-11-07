@@ -1,0 +1,54 @@
+{
+  "name": "legal-portal",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start:server": "cd server && npm start",
+    "start:client": "cd client && npm start",
+    "start": "concurrently -k \"npm run start:server\" \"npm run start:client\"",
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "postinstall": "npm run install:all",
+    "lint": "eslint \"client/src/**/*.{js,jsx}\" \"server/**/*.js\"",
+    "lint:fix": "eslint --fix \"client/src/**/*.{js,jsx}\" \"server/**/*.js\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint:ci": "eslint \"client/src/**/*.{js,jsx}\" \"server/**/*.js\" --max-warnings=0",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
+    "husky": "^9.0.10",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3"
+  },
+  "lint-staged": {
+    "client/src/**/*.{js,jsx}": ["eslint --fix", "prettier --write"],
+    "server/**/*.js": ["eslint --fix", "prettier --write"]
+  },
+  "dependencies": {
+    "iconv-lite": "^0.6.3",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^2.16.105",
+    "pdfmake": "^0.2.20",
+    "xml2js": "^0.6.2"
+  },
+  "main": "convertXmlToBankDirectory.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VladimirLegal/legal-portal.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/VladimirLegal/legal-portal/issues"
+  },
+  "homepage": "https://github.com/VladimirLegal/legal-portal#readme",
+  "description": ""
+}

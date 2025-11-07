@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Почему Legal-Portal уникален</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Legal-Portal — умный конструктор договоров найма с автоматическим заполнением, поддержкой ЕГРН и юр-логикой представителей и долей." />
+  <style>
+    :root {
+      --text:#111; --muted:#666; --bg:#fff; --line:#e6e6e6; --brand:#0b5fff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--text);background:var(--bg)}
+    .wrap{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+    h1{font-size:32px;line-height:1.2;margin:8px 0 12px}
+    h2{font-size:22px;margin:28px 0 12px}
+    p{margin:10px 0;color:var(--text)}
+    .lead{color:var(--muted);font-size:18px}
+    .grid{display:grid;gap:16px}
+    @media (min-width:760px){.grid.cols-3{grid-template-columns:repeat(3,1fr)}}
+    .card{border:1px solid var(--line);border-radius:12px;padding:16px;background:#fff}
+    .card h3{margin:0 0 6px;font-size:18px}
+    .muted{color:var(--muted)}
+    .hero{border:1px dashed var(--line);border-radius:12px;padding:16px;display:grid;gap:12px;margin:12px 0 20px}
+    .shot{aspect-ratio:16/9;border:1px solid var(--line);border-radius:10px;background:
+      linear-gradient(180deg,#fafafa,#f4f6ff);display:flex;align-items:center;justify-content:center;color:#9aa3b2}
+    .list{padding-left:18px;margin:8px 0}
+    .cta{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap}
+    .btn{appearance:none;border:none;background:var(--brand);color:#fff;padding:12px 16px;border-radius:10px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+    .btn.sec{background:#f4f6ff;color:#113; border:1px solid var(--line)}
+    .note{font-size:13px;color:var(--muted)}
+    .hr{height:1px;background:var(--line);margin:28px 0}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:13px;background:#f6f6f6;border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- ===== Top bar: навигация ===== -->
+  <div id="lp-topbar"
+       style="position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #eee; padding:10px 16px; margin:-8px -16px 16px; display:flex; justify-content:space-between; align-items:center; font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;">
+    <a href="#" id="lp-back" style="text-decoration:none; color:#2563eb;">← Назад</a>
+    <a href="/" id="lp-home" style="text-decoration:none; color:#2563eb;">На главную</a>
+  </div>
+  <script>
+    (function () {
+      // DEV: сервер контента на 5000
+      var isDevServer = /:5000$/.test(location.host);
+      var home = isDevServer ? 'http://localhost:3000/' : '/';
+      var homeLink = document.getElementById('lp-home');
+      if (homeLink) homeLink.setAttribute('href', home);
+
+      // «Назад» по истории, иначе — на главную
+      var back = document.getElementById('lp-back');
+      if (back) {
+        back.addEventListener('click', function (e) {
+          e.preventDefault();
+          if (history.length > 1) history.back();
+          else location.href = home;
+        });
+      }
+    })();
+  </script>
+  <!-- ===== /Top bar ===== -->
+
+  <!-- ТВОЙ КОНТЕНТ ДАЛЬШЕ -->
+    <header>
+      <h1>Почему Legal-Portal уникален</h1>
+      <p class="lead">Это не просто шаблоны — это конструктор, который думает как юрист и заполняет договор за вас.</p>
+    </header>
+
+    <section class="hero">
+       <p class="muted">Заполните анкету → проверьте реквизиты → получите готовый договор за 2–3 минуты.</p>
+      <div class="cta">
+        <a class="btn" href="http://localhost:3000/">Попробовать бесплатно</a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Ключевые преимущества</h2>
+      <div class="grid cols-3">
+        <div class="card">
+          <h3>Автозаполнение без ошибок</h3>
+          <p class="muted">Вся анкета структурирована: стороны, представители, объекты, условия. Поля проверяются, падежи — корректны.</p>
+        </div>
+        <div class="card">
+          <h3>Юридическая точность</h3>
+          <p class="muted">Шаблоны соответствуют ГК РФ и реальной практике. Логика совместной/долевой собственности и представителей — встроена.</p>
+        </div>
+        <div class="card">
+          <h3>ЕГРН и документы</h3>
+          <p class="muted">Импорт из PDF/XML ЕГРН. Автоподстановка адреса, кадастрового номера, правообладателей и оснований.</p>
+        </div>
+        <div class="card">
+          <h3>Вставить данные текстом</h3>
+          <p class="muted">Вы можете вставить паспортные данные или банковские реквизиты текстом, а система сама разпознает и вставит их в нужное место.</p>
+        </div>
+        <div class="card">
+          <h3>Умные обработчики</h3>
+          <p class="muted">Мы сделали умные обработчики ввода информации. Кадастровый номер вводится просто набором цифр без ":", система все расставит самостоятельно.</p>
+        </div>
+        <div class="card">
+          <h3>Интеллектуальные приложения</h3>
+          <p class="muted">Опись имущества и описание квартиры формируются из словарей и ваших данных — красиво и единообразно. Просто начните вводить и словарь подхватит.</p>
+        </div>
+        <div class="card">
+          <h3>Скорость составления и Экспорт PDF и DOCX</h3>
+          <p class="muted">ПОЛНОСТЬЮ заполненный документ можно составить и сохранить в PDF и DOCX за 5 минут.</p>
+        </div>
+        <div class="card">
+          <h3>Адаптировано для работы с мобильных</h3>
+          <p class="muted">Наша система полностью адаптирована для работы на мобильных устроустройствах.</p>
+        </div>
+        <div class="card">
+          <h3>Безопасность данных</h3>
+          <p class="muted">Персональные данные на стороне сервера, сессии защищены. Можно работать без длительного хранения.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Чем мы отличаемся от «шаблонов из интернета»</h2>
+      <ul class="list">
+        <li><strong>Шаблон ≠ договор</strong>: у нас — <em>логика</em> ветвления и проверок, а не статический текст.</li>
+        <li>Поддержка представителей, нескольких собственников и сложных оснований права — «из коробки».</li>
+        <li>ЕГРН-парсинг, подсказки по оплате (нал/перевод), автоматическая «расписка», банковские реквизиты по БИК.</li>
+        <li>Версионирование и diff документов, удобный редактор с сохранениями.</li>
+      </ul>
+    </section>
+
+    <div class="hr"></div>
+
+    <section>
+      <h2>Как это работает</h2>
+      <ol class="list">
+        <li>Вы отвечаете на вопросы мастера (2–5 минут).</li>
+        <li>Система подставляет данные в договор и приложения.</li>
+        <li>Вы просматриваете, редактируете и сохраняете в <span class="kbd">PDF</span> или <span class="kbd">DOCX</span>.</li>
+      </ol>
+      <p class="note">Поддержаны сценарии: найм между физлицами, представитель по доверенности, общая долевая/совместная собственность и др.</p>
+    </section>
+
+    <div class="hr"></div>
+
+    <section>
+      <h2>Попробуйте сейчас</h2>
+      <div class="cta">
+        <a class="btn" href="/property-type/rent">Сгенерировать договор</a>
+        <a class="btn sec" href="/pages/about-portal">О портале</a>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

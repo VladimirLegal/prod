@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <style>
+      /* Поля страницы под печать */
+      @page {
+         margin-top: 2cm;
+         margin-left: 3cm;
+         margin-bottom: 2cm;
+         margin-right: 1.5cm;
+      }
+
+      /* Базовая типографика "как в Word" */
+      html, body {
+         font-family: "Times New Roman", Times, serif;
+         font-size: 12pt;
+         line-height: 1;            /* межстрочный интервал = 1 */
+         color: #000;
+      }
+
+      body {
+         text-align: justify;       /* выравнивание по ширине */
+         -webkit-print-color-adjust: exact;
+         print-color-adjust: exact;
+      }
+
+      /* Заголовки по центру и жирные */
+      h1, h2 {
+         text-align: center;
+         font-weight: bold;
+         margin: 0.6rem 0 0.4rem;
+      }
+
+      /* Отступы абзацев ровные */
+      p { margin: 0.35rem 0; }
+
+      /* Чипы-плейсхолдеры (не редактируемые в редакторе) */
+      .ph-chip {
+         background: #eef6ff;
+         border: 1px dashed #5aa7ff;
+         padding: 0 4px;
+         border-radius: 3px;
+      }
+      .ph-chip[contenteditable="false"] { user-select: all; }
+
+      .sign-line {
+         display: inline-block;
+         vertical-align: middle;
+         min-width: 12cm;         /* длина линии под подпись */
+         border-bottom: 1px solid #000;
+         margin: 0 8px;
+      }
+
+      .page-break {
+         page-break-before: always; /* для PDF/DOCX */
+         break-before: page;        /* для браузеров/CKEditor */
+      }
+  </style>
+</head>
+<body>
+   <h1>ДОГОВОР НАЙМА КВАРТИРЫ</h1>
+
+   <p>г.<span class="ph-chip" data-ph="terms.agreementPlace" contenteditable="false">{{terms.agreementPlace}}</span>, «<span class="ph-chip" data-ph="terms.agreementDate" contenteditable="false">{{terms.agreementDate}}</span>»</p>
+
+   <p>Мы, граждане Российской Федерации:</p>
+
+   <!-- Наймодатели: список персон с учётом представителей -->
+   <div data-repeat="landlords">
+   <!-- Если есть представитель текущего наймодателя -->
+   <div data-if="current.hasRepresentative">
+      <p><span class="ph-chip" data-ph="current.representative.fullName"></span>, пол: <span class="ph-chip" data-ph="current.representative.genderFull"></span>, дата рождения: <span class="ph-chip" data-ph="current.representative.birthDateFormatted"></span>, место рождения: <span class="ph-chip" data-ph="current.representative.birthPlace"></span>, паспорт гражданина Российской Федерации: <span class="ph-chip" data-ph="current.representative.passportFormatted"></span>, выдан: <span class="ph-chip" data-ph="current.representative.passportIssued"></span>, <span class="ph-chip" data-ph="current.representative.issueDateFormatted"></span>, код подразделения: <span class="ph-chip" data-ph="current.representative.departmentCode"></span>, зарегистрирован<span class="ph-chip" data-ph="current.representativeGenderSuffixA"></span> по адресу: <span class="ph-chip" data-ph="current.representative.registration"></span>, действует по доверенности от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>, удостоверенной <span class="ph-chip" data-ph="current.representative.attorneyIssuedBy"></span>, реестровый номер: <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>, от имени:</p>
+   </div>
+
+   <!-- Основная карточка наймодателя (скрываем, если нужно убрать из общего списка) -->
+   <div data-if="current.showInMainList">
+      <p><span class="ph-chip" data-ph="current.fullName"></span>, пол: <span class="ph-chip" data-ph="current.genderFull"></span>, дата рождения: <span class="ph-chip" data-ph="current.birthDateFormatted"></span>, место рождения: <span class="ph-chip" data-ph="current.birthPlace"></span>, паспорт гражданина Российской Федерации:<span class="ph-chip" data-ph="current.passportFormatted"></span>, выдан: <span class="ph-chip" data-ph="current.passportIssued"></span>, <span class="ph-chip" data-ph="current.issueDateFormatted"></span>, код подразделения: <span class="ph-chip" data-ph="current.departmentCode"></span> <span class="ph-chip" data-ph="current.registrationCommaIfNeeded"></span> <span class="ph-chip" data-ph="current.registrationText"></span> <span data-if="calc.multipleLandlords">, именуем<span class="ph-chip" data-ph="current.namedAsSuffix"></span> в дальнейшем «Наймодатель <span class="ph-chip" data-ph="current.index"></span>» <span class="ph-chip" data-ph="current.semicolonOrComma"></span></span></p>
+   </div>
+   </div>
+   <!-- Хвост по стороне наймодателя -->
+   <p data-if="calc.multipleLandlords">совместно именуемые «Наймодатели», с одной стороны,</p> <p data-if="calc.singleLandlord">, именуем<span class="ph-chip" data-ph="calc.singleLandlordSuffix"></span> в дальнейшем «Наймодатель», с одной стороны,</p>
+
+   <!-- Блоки представителей у нанимателей (если есть) -->
+   <div data-repeat="tenants">
+   <div data-if="current.hasRepresentative">
+      <p><span class="ph-chip" data-ph="current.representative.fullName"></span>, пол: <span class="ph-chip" data-ph="current.representative.genderFull"></span>, дата рождения: <span class="ph-chip" data-ph="current.representative.birthDateFormatted"></span>, место рождения: <span class="ph-chip" data-ph="current.representative.birthPlace"></span>, паспорт гражданина Российской Федерации: <span class="ph-chip" data-ph="current.representative.passportFormatted"></span>, выдан: <span class="ph-chip" data-ph="current.representative.passportIssued"></span>, <span class="ph-chip" data-ph="current.representative.issueDateFormatted"></span>, код подразделения: <span class="ph-chip" data-ph="current.representative.departmentCode"></span>, зарегистрирован<span class="ph-chip" data-ph="current.representativeGenderSuffixA"></span> по адресу: <span class="ph-chip" data-ph="current.representative.registration"></span>, действует по доверенности от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>, удостоверенной <span class="ph-chip" data-ph="current.representative.attorneyIssuedBy"></span>, реестровый номер: <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>, от имени:</p>
+   </div>
+
+   <!-- Основная карточка нанимателя -->
+   <div data-if="current.showInMainList">
+      <p><span class="ph-chip" data-ph="current.fullName"></span>, пол: <span class="ph-chip" data-ph="current.genderFull"></span>, дата рождения: <span class="ph-chip" data-ph="current.birthDateFormatted"></span>, место рождения: <span class="ph-chip" data-ph="current.birthPlace"></span>, паспорт гражданина Российской Федерации: <span class="ph-chip" data-ph="current.passportFormatted"></span>, выдан: <span class="ph-chip" data-ph="current.passportIssued"></span>, <span class="ph-chip" data-ph="current.issueDateFormatted"></span>, код подразделения: <span class="ph-chip" data-ph="current.departmentCode"></span>, <span class="ph-chip" data-ph="current.registrationCommaIfNeeded"></span> <span class="ph-chip" data-ph="current.registrationText"></span> <span data-if="calc.multipleTenants"> , именуем<span class="ph-chip" data-ph="current.namedAsSuffix"></span> в дальнейшем «Наниматель <span class="ph-chip" data-ph="current.index"></span>» <span class="ph-chip" data-ph="current.semicolonOrComma"></span></span></p>
+   </div>
+   </div>
+   <!-- Хвост по стороне нанимателя -->
+   <p data-if="calc.multipleTenants">совместно именуемые «Наниматели», с другой стороны,</p>
+   <p data-if="calc.singleTenant"> , именуем<span class="ph-chip" data-ph="calc.singleTenantSuffix"></span> в дальнейшем «Наниматель», с другой стороны,</p>
+
+   <p>совместно именуемые «Стороны», заключили настоящий договор:</p>
+
+
+   <h2>1. ПРЕДМЕТ ДОГОВОРА</h2>
+
+   <p>1.1.  «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix" contenteditable="false">{{calc.landlordsPluralSuffix}}</span>»
+      <span class="ph-chip" data-ph="calc.landlordsVerbProvide" contenteditable="false">{{calc.landlordsVerbProvide}}</span>,
+      а «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix" contenteditable="false">{{calc.tenantsPluralSuffix}}</span>»
+      <span class="ph-chip" data-ph="calc.tenantsVerbTake" contenteditable="false">{{calc.tenantsVerbTake}}</span>
+      квартиру, за плату во временное владение и пользование для проживания, по адресу:
+      <span class="ph-chip" data-ph="terms.address" contenteditable="false">{{terms.address}}</span>,
+      кадастровый номер:
+      <span class="ph-chip" data-ph="terms.cadastralNumber" contenteditable="false">{{terms.cadastralNumber}}</span>,
+      этаж:
+      <span class="ph-chip" data-ph="terms.floor" contenteditable="false">{{terms.floor}}</span>,
+      количество комнат:
+      <span class="ph-chip" data-ph="terms.rooms" contenteditable="false">{{terms.rooms}}</span>,
+      общая площадь:
+      <span class="ph-chip" data-ph="terms.area" contenteditable="false">{{terms.area}}</span> кв. м,
+      <span class="ph-chip" data-ph="calc.appliancesNote" contenteditable="false">{{calc.appliancesNote}}</span>
+      на срок с <span class="ph-chip" data-ph="terms.startDate" contenteditable="false">{{terms.startDate}}</span> по <span class="ph-chip" data-ph="terms.endDate" contenteditable="false">{{terms.endDate}}</span>.</p>
+
+   <p>1.2.  Указанная квартира принадлежит «<span class="ph-chip" data-ph="calc.landlordsOwnerCase" contenteditable="false">{{calc.landlordsOwnerCase}}</span>» на основании:</p>
+   <!-- Вариант А: один наймодатель — список документов -->
+   <!-- Сервер подставляет готовые строки повтора в этот контейнер -->
+   <div data-repeat="landlordDocuments">
+    <p>— <span class="ph-chip" data-ph="current.text" contenteditable="false">{{current.text}}</span></p>
+   </div>
+   <!-- Вариант Б: несколько наймодателей — группы по каждому -->
+   <div data-repeat="landlordsByOwner">
+     <p>— «Наймодателю <span class="ph-chip" data-ph="current.index" contenteditable="false">{{current.index}}</span>»:</p>
+     <div data-repeat="current.basisDocuments">
+       <p>• <span class="ph-chip" data-ph="currentDoc.text" contenteditable="false">{{currentDoc.text}}</span></p>
+    </div>
+   </div>
+
+   <p>1.3.  «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix" contenteditable="false">{{calc.landlordsPluralSuffix}}</span>» подтвержда<span class="ph-chip" data-ph="calc.landlordsConfirmVerb" contenteditable="false">{{calc.landlordsConfirmVerb}}</span>, что до заключения настоящего договора квартира не продана, не заложена, не обременена, не состоит в споре или аресте, и не имеет задолженностей.</p>
+   <p>1.4.  «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix" contenteditable="false">{{calc.landlordsPluralSuffix}}</span>» подтвержда<span class="ph-chip" data-ph="calc.landlordsConfirmVerb" contenteditable="false">{{calc.landlordsConfirmVerb}}</span>, что все граждане‑собственники, имеющие права на указанную квартиру, не возражают против сдачи её внаём в соответствии с условиями Договора.</p>
+
+   <p>1.5.  «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix" contenteditable="false">{{calc.tenantsPluralSuffix}}</span>» <span class="ph-chip" data-ph="calc.tenantsVerbTake2" contenteditable="false">{{calc.tenantsVerbTake2}}</span> в найм указанную квартиру за оговоренную плату для целей личного проживания.</p>
+   <!-- 1.6 список совместно проживающих (если есть) -->
+   <div data-repeat="tenantsWhoLive">
+     <p>1.6.   Совместно с «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix" contenteditable="false">{{calc.tenantsPluralSuffix}}</span>» будет проживать: <span class="ph-chip" data-ph="current.person" contenteditable="false">{{current.person}}</span>.</p>
+   </div>
+
+   <!-- 1.7 (или 1.6) про животных — номер пункта рассчитаем на бэке -->
+   <p><span class="ph-chip" data-ph="calc.petsClauseNumber" contenteditable="false">{{calc.petsClauseNumber}}</span>. Допускается проживание домашних животных: <span class="ph-chip" data-ph="terms.petsDescription" contenteditable="false">{{terms.petsDescription}}</span></p>
+
+   <h2>2. ПОРЯДОК РАСЧЁТОВ</h2>
+
+   <p>2.1.  «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix" contenteditable="false">{{calc.tenantsPluralSuffix}}</span>» обязу<span class="ph-chip" data-ph="calc.tenantsPayVerb" contenteditable="false">{{calc.tenantsPayVerb}}</span> «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix" contenteditable="false">{{calc.landlordsPluralSuffix}}</span>» плату за найм за квартиру в размере <span class="ph-chip" data-ph="terms.rentAmountFormatted" contenteditable="false">{{terms.rentAmountFormatted}}</span> рублей в месяц <span class="ph-chip" data-ph="calc.paymentMethodTail" contenteditable="false">{{calc.paymentMethodTail}}</span></p>
+   <!-- Хвост для банковского перевода -->
+   <div data-if="terms.paymentMethodIsBank">
+      <p>номер счёта: <span class="ph-chip" data-ph="terms.bankAccount" contenteditable="false">{{terms.bankAccount}}</span>,</p>
+      <p>Банк получатель: <span class="ph-chip" data-ph="terms.bankName" contenteditable="false">{{terms.bankName}}</span>,</p>
+      <p>к/с: <span class="ph-chip" data-ph="terms.bankCorrAccount" contenteditable="false">{{terms.bankCorrAccount}}</span>,</p>
+      <p>БИК: <span class="ph-chip" data-ph="terms.bankBik" contenteditable="false">{{terms.bankBik}}</span>,</p>
+      <p>ИНН/КПП: <span class="ph-chip" data-ph="terms.bankInnKpp" contenteditable="false">{{terms.bankInnKpp}}</span>,</p>
+      <p>Получатель: <span class="ph-chip" data-ph="terms.bankRecipient" contenteditable="false">{{terms.bankRecipient}}</span>.</p>
+   </div>
+
+   <!-- 2.2 — формулировки по ЖКУ; сервер соберёт текст согласно payer+paymentType -->
+   <p>2.2.  <span class="ph-chip" data-ph="calc.utilitiesClauseText" contenteditable="false">{{calc.utilitiesClauseText}}</span></p>
+   <p>2.3.  Оплата в соответствии с п. 2.1 производится за каждый следующий месяц найма в срок до <span class="ph-chip" data-ph="terms.paymentDeadline" contenteditable="false">{{terms.paymentDeadline}}</span> числа месяца, следующего за оплаченным.</p>
+   
+   <h2>3. ПРАВА И ОБЯЗАННОСТИ СТОРОН</h2>
+
+   <p>3.1.  «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» обяз<span class="ph-chip" data-ph="calc.tenantsObligedVerb"></span>:</p>
+   <p>3.1.1.   Использовать квартиру исключительно в целях, указанных в настоящем договоре.</p>
+   <p>3.1.2.   Обеспечивать сохранность и надлежащую эксплуатацию квартиры, её оборудования и имущества, находящихся в ней.</p>
+   <p>3.1.3.   При обнаружении неисправностей в квартире, оборудовании и имуществе, находящемся в ней, а также ущерба, вызванного любыми воздействиями, немедленно принимать возможные меры по их устранению, в том числе сообщать о них «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>» и в соответствующую жилищно-эксплуатационную организацию (диспетчеру).</p>
+   <p>3.1.4.   При обнаружении последствий противоправных действий третьих лиц в отношении квартиры, её имущества и оборудования немедленно сообщать в соответствующие компетентные органы (полиция, пожарная охрана) и «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>».</p>
+   <p>3.1.5.   Устранять за свой счёт повреждения квартиры и мест общего пользования, а также производить ремонт или замену повреждённого оборудования и имущества, находящихся в квартире, если указанные повреждения произошли по вине «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>», либо других лиц<span data-if="terms.petsAllowed">, либо домашних животных</span>, совместно с ним проживающих либо находящихся в квартире с разрешения «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>».</p>
+   <p>3.1.6.   Не производить любые действия, связанные с ремонтом квартиры, переустройством или перепланировкой помещений, установкой дополнительного оборудования без специального разрешения «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>».</p>
+   <p>3.1.7.   Нести ответственность за соблюдение правил содержания жилого дома и придомовой территории, соблюдение чистоты и порядка в местах общего пользования.</p>
+   <p>3.1.8.   Нести ответственность за соблюдение правил пожарной и электробезопасности и требований эксплуатации установленного оборудования.</p>
+   <p>3.1.9.   Соблюдать правила проживания в многоквартирном доме, не допускать выполнения в квартире работ и совершения других действий, нарушающих условия проживания граждан в других жилых помещениях.</p>
+   <p>3.1.10.  Допускать в квартиру «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>» (по предварительной договорённости) для осмотра технического или санитарного состояния квартиры и состояния её оборудования.</p>
+   <p>3.1.11.  Освободить и сдать «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>» квартиру, оборудование и имущество, находящееся в ней, в надлежащем техническом и санитарном состоянии с учётом нормального износа не позже дня, следующего за окончанием срока Договора или датой расторжения Договора.</p>
+   <p>3.1.12.  Нести ответственность за ущерб, причинённый «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>» и третьим лицам, возникший в результате реализации настоящего договора.</p>
+   <p>3.2.  «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» име<span class="ph-chip" data-ph="calc.tenantsHasRightVerb"></span> право пользоваться всеми помещениями, оборудованием и имуществом квартиры.</p>
+   <p>3.3.  «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» не вправ<span class="ph-chip" data-ph="calc.tenantsCanVerb"></span> сдавать квартиру в поднайм (субаренду).</p>
+   <p>3.4.  «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>» обязан<span class="ph-chip" data-ph="calc.landlordsObligedVerb"></span>:</p>
+   <p>3.4.1.   Передать во временное владение и пользование «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» квартиру, её оборудование и имущество, находящиеся в ней, в надлежащем техническом и санитарном состоянии в срок и на срок, установленный настоящим договором.</p>
+   <p>3.4.2.   Не продавать, не закладывать и не обременять квартиру в течение срока действия настоящего договора.</p>
+   
+   <h2>4. ОТВЕТСТВЕННОСТЬ СТОРОН</h2>
+
+   <p>4.1.  Если «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» не <span class="ph-chip" data-ph="calc.tenantsNotVacateVerb1"></span> и не <span class="ph-chip" data-ph="calc.tenantsNotVacateVerb2"></span> «Наймодател<span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>» квартиру, её оборудование и имущество, находящиеся в ней, в надлежащем техническом и санитарном состоянии с учётом нормального износа в срок, установленный настоящим договором, <span class="ph-chip" data-ph="calc.tenantsObligedToPay"></span> «Наймодател<span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>» штраф в размере <span class="ph-chip" data-ph="terms.latePenaltyPerDayFormatted"></span> за каждый день просрочки.</p>
+   <p>4.2.  Если в результате неисполнения или ненадлежащего исполнения «Нанимател<span class="ph-chip" data-ph="calc.tenantsInstrumentalSuffix"></span>» условий настоящего договора «Наймодател<span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>» будет причинён материальный ущерб, «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>» <span class="ph-chip" data-ph="calc.tenantsObligedVerb"></span> его возместить «Наймодател<span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>» в 10-дневный срок с момента его нанесения или обнаружения по рыночным ценам на момент возмещения.</p>
+   <p>4.3.  В случае нарушения «Нанимател<span class="ph-chip" data-ph="calc.tenantsInstrumentalSuffix"></span>» сроков платежей, предусмотренных настоящим договором, <span class="ph-chip" data-ph="calc.tenantsPayVerb"></span> пени в размере 0,1 процента от стоимости платежа за каждый день просрочки.</p>
+   <p>4.4.  При нарушении или ненадлежащем исполнении одной из сторон условий настоящего договора, другая сторона вправе расторгнуть настоящий договор, уведомив об этом первую сторону за десять дней до даты расторжения. При этом сторона, виновная в нарушении договора, обязана выплатить пострадавшей стороне штраф в размере <span class="ph-chip" data-ph="terms.penaltyClause44Formatted"></span>.</p>
+   <p>4.5.  При одностороннем расторжении настоящего договора, кроме как по п. 4.4 настоящего договора, сторона, настаивающая на его расторжении, обязана уведомить об этом другую сторону за 1 (один) месяц до даты расторжения. Такое расторжение не освобождает стороны от возмещения ущерба и выплаты всех штрафов, предусмотренных настоящим договором.</p>
+   <p>4.6.  При одностороннем расторжении договора (за исключением случаев, указанных в п. 4.4 настоящего договора) ранее 9 (девяти) месяцев с момента заключения настоящего договора, сторона, настаивающая на его расторжении, должна уплатить штраф другой стороне в размере <span class="ph-chip" data-ph="terms.rentAmountFormatted"></span>.</p>
+   <p>4.7.  При досрочном расторжении настоящего договора стороны производят расчёты исходя из оплаты «Нанимател<span class="ph-chip" data-ph="calc.tenantsInstrumentalSuffix"></span>» найма указанной квартиры до даты расторжения, с учётом уплаты всех платежей согласно параграфа 2 «Порядок расчётов» настоящего договора и с учётом всех штрафов и стоимости ущерба, предусмотренных настоящим договором. Если при этом у одной из сторон образуется задолженность, она обязана её погасить не позднее трёх дней с даты расторжения.</p>
+   <p>4.8.  Во всём, что не предусмотрено настоящим договором, стороны руководствуются действующим законодательством Российской Федерации.</p>
+   <p>4.9.  Все возникающие споры при недостижении согласия между сторонами разрешаются в судебном порядке по месту расположения квартиры, указанной в п. 1.1 настоящего договора.</p>
+   
+   <h2>5. ДОПОЛНИТЕЛЬНЫЕ УСЛОВИЯ И СРОК ДЕЙСТВИЯ ДОГОВОРА</h2>
+
+   <p>5.1.  Стороны освобождаются от ответственности за частичное или полное неисполнение своих обязательств по настоящему договору, если это неисполнение явилось следствием обстоятельств непреодолимой силы, возникших после заключения настоящего договора в результате событий, которые стороны не могли ни предвидеть, ни предотвратить разумными мерами, таких как: стихийные бедствия, война, изменение действующего в стране законодательства, решения органов власти и местного самоуправления и пр. О наступлении подобных обстоятельств сторона, подвергшаяся их воздействию, ставит в известность противоположную сторону.</p>
+   <p>5.2.  После прекращения действия обстоятельств непреодолимой силы, стороны прикладывают все усилия к тому, чтобы в кратчайшие сроки исполнить обязательства по настоящему договору.</p>
+   <p>5.3.  Все изменения и дополнения к настоящему договору, и к заключённым на его основе дополнительным соглашениям считаются действительными, если они оформлены в письменном виде и подписаны в двухстороннем порядке.</p>
+   <p>5.4.  Все налоговые обязательства и обязанности по исчислению и уплате налогов, связанных с исполнением Договора, «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span> осуществля<span class="ph-chip" data-ph="calc.landlordsDoVerb"></span> самостоятельно.</p>
+   <!-- Обеспечительный платеж (залог) -->
+   <div data-if="terms.securityDepositEnabled">
+      <p>
+         <span class="ph-chip" data-ph="terms.numSecurityDeposit"></span>.
+         В качестве меры обеспечения возможного нанесения ущерба «Наймодател
+         <span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>» или третьим лицам, а также штрафных санкций
+         «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>»
+         <span class="ph-chip" data-ph="calc.tenantsTransferVerb"></span>
+         <span class="ph-chip" data-ph="terms.securityDepositAmountFormatted"></span>
+         <span data-if="terms.securityDepositSplit">
+            в следующем порядке:
+            <span class="ph-chip" data-ph="terms.securityDepositSchedule"></span>.
+         </span>
+         <span data-if="terms.securityDepositSplitNot">
+            при подписании Договора.
+         </span>
+         Указанное обеспечение при отсутствии ущерба и штрафных санкций возвращается «Нанимател
+         <span class="ph-chip" data-ph="calc.tenantsDativeSuffix"></span>» в момент сдачи квартиры (в т.ч. п. 4.4). При наличии
+         ущерба и штрафных санкций делается соответствующий перерасчёт.
+      </p>
+   </div>
+   <!-- Предоплата за последний месяц -->
+   <div data-if="terms.lastMonthPrepayEnabled">
+      <p>
+         <span class="ph-chip" data-ph="terms.numLastMonthPrepay"></span>.
+         Одновременно при подписании Договора «Нанимател
+         <span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>»
+         <span class="ph-chip" data-ph="calc.tenantsTransferVerb"></span>
+         «Наймодател<span class="ph-chip" data-ph="calc.landlordsDativeSuffix"></span>»
+         предоплату за последний месяц проживания
+         <span data-if="terms.lastMonthPrepaySplit">
+            в следующем порядке:
+            <span class="ph-chip" data-ph="terms.lastMonthPrepaySchedule"></span>.
+         </span>
+         <span data-if="terms.lastMonthPrepaySplitNot">
+            в размере <span class="ph-chip" data-ph="terms.lastMonthPrepayAmountFormatted"></span> единовременно.
+         </span>
+      </p>
+   </div>
+
+   <p>
+   <span class="ph-chip" data-ph="terms.numContractPeriod"></span>.
+   Настоящий договор действует начиная с даты подписания до даты полного исполнения обязательств по нему Сторонами.
+   </p>
+
+   <p>
+   <span class="ph-chip" data-ph="terms.numCopiesCount"></span>.
+   Настоящий договор составлен и подписан в
+   <span class="ph-chip" data-ph="terms.copiesCount"></span>
+   (<span class="ph-chip" data-ph="terms.copiesCountWords"></span>) экземплярах, имеющих одинаковую юридическую силу,
+   по одному для каждой из сторон договора.
+   </p>
+
+   <p>
+   <span class="ph-chip" data-ph="terms.numCommsMeans"></span>.
+   Стороны согласовали, что указанные Наймодателем и Нанимателем в Договоре номера телефонов, включая привязанные к ним
+   аккаунты мессенджеров WhatsApp, Telegram, Viber, MAX, а также адреса электронной почты (Email) являются средствами для
+   обмена юридически значимой информацией по вопросам, касающимся исполнения условий настоящего договора, включая, но не
+   ограничиваясь: уведомлениями о расторжении, изменении, нарушении или продлении настоящего договора. Срок ответа Стороны,
+   которой направлено сообщение, составляет 5 (пять) рабочих дней. По истечении указанного срока отсутствие ответа считается
+   подтверждением получения и ознакомления с содержанием направленного уведомления.
+   </p>
+
+   <p><strong>Контакты «Наймодател<span class="ph-chip" data-ph="calc.landlordsPluralSuffix"></span>»:</strong></p>
+   <p><span class="ph-chip" data-ph="calc.contacts.landlords"></span></p>
+
+   <p><strong>Контакты «Нанимател<span class="ph-chip" data-ph="calc.tenantsPluralSuffix"></span>»:</strong></p>
+   <p><span class="ph-chip" data-ph="calc.contacts.tenants"></span></p>
+
+   <h2>6. ПРИЛОЖЕНИЯ</h2>
+
+   <p>6.1.	Приложение №1 «Описание имущества».</p>
+   <p>6.2.  Приложение №2 «Описание квартиры».</p>
+   <p>6.3.	Приложение №3 «Акт приемки-передачи квартиры».</p>
+
+   <h2>7.   ПОДПИСИ СТОРОН</h2>
+   <!-- Наймодатели -->
+   <div data-repeat="landlords">
+      <p>Наймодатель
+         <span data-if="calc.multipleLandlords">
+            <span class="ph-chip" data-ph="current.index"></span>
+         </span>
+         <span class="sign-line"></span>
+         / <span class="ph-chip" data-ph="current.fullName"></span> /
+         <span data-if="current.hasRepresentative">
+            <br>
+            (по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+            <span data-if="current.representative.attorneyDate">
+            от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+            </span>)
+         </span>
+      </p>
+   </div>
+
+   <!-- Наниматели -->
+   <div data-repeat="tenants">
+      <p>Наниматель
+         <span data-if="calc.multipleTenants">
+            <span class="ph-chip" data-ph="current.index"></span>
+         </span>
+         <span class="sign-line"></span>
+         / <span class="ph-chip" data-ph="current.fullName"></span> /
+         <span data-if="current.hasRepresentative">
+            <br>
+            (по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+            <span data-if="current.representative.attorneyDate">
+            от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+            </span>)
+         </span>
+      </p>
+   </div>
+
+   <div class="page-break"></div>
+   <p>6.1.	Приложение №1 «Описание имущества».</p>
+   <br/>
+   {{{terms.inventoryHtml}}}
+
+   <div class="page-break"></div>
+   <p>6.2.  Приложение №2 «Описание квартиры».</p>
+   <br/>
+   {{{APP2_TABLE_HTML}}}
+
+   <div class="page-break"></div> 
+   <p>6.3.	Приложение №3 «Акт приемки-передачи квартиры».</p>
+
+</body>
+</html>

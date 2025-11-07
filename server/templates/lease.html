@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Договор найма жилого помещения</title>
+      </head>
+
+
+  <body>
+    <!-- Заголовок договора -->
+     <style>
+      .sign-line{
+        display:inline-block;
+        min-width:220px;
+        border-bottom:1px solid #000;
+        vertical-align:middle;
+        margin:0 8px;
+        height:1.2em;              /* небольшой “рост”, чтобы линия стабильно печаталась */
+      }  
+    </style>
+    <div class="editor-page">
+      <b><h1 style="text-align: center;">ДОГОВОР НАЙМА ЖИЛОГО ПОМЕЩЕНИЯ</h1></b>
+      <table style="width:100%; border:0; border-collapse:collapse;">
+        <tr>
+          <td style="text-align:left; padding:0;">
+            г. <span class="ph-chip" data-ph="terms.agreementPlace"></span>
+          </td>
+          <td style="text-align:right; padding:0;">
+            <span class="ph-chip" data-ph="terms.agreementDate" data-fmt="dateLong"></span> года
+          </td>
+        </tr>
+      </table>
+
+
+      <!-- Вводная часть с перечислением сторон -->
+      <p>Мы, граждане Российской Федерации:</p>
+      <!-- ========= БЛОК СТОРОНЫ: НАЙМОДАТЕЛИ ========= -->
+      <!-- ВАРИАНТ 1: общий представитель у группы Наймодателей -->
+      <div data-if="landlordsRepresentative.fullName">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="landlordsRepresentative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="landlordsRepresentative.display.genderWord"></span>,
+          <span data-if="landlordsRepresentative.birthDate">дата рождения: <span class="ph-chip" data-ph="landlordsRepresentative.display.birthDateText"></span> рождения</span>,
+          <span data-if="landlordsRepresentative.birthPlace">место рождения: <span class="ph-chip" data-ph="landlordsRepresentative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации:
+          <span data-if="landlordsRepresentative.display.passportSeries"> серия: <span class="ph-chip" data-ph="landlordsRepresentative.display.passportSeries"></span></span>
+          <span data-if="landlordsRepresentative.display.passportNumber"> номер: <span class="ph-chip" data-ph="landlordsRepresentative.display.passportNumber"></span></span>,
+          <span data-if="landlordsRepresentative.passportIssued"> выдан: <span class="ph-chip" data-ph="landlordsRepresentative.passportIssued"></span></span>
+          <span data-if="landlordsRepresentative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="landlordsRepresentative.display.issueDateText"></span></span>,
+          <span data-if="landlordsRepresentative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="landlordsRepresentative.departmentCode"></span></span>,
+          <span data-if="landlordsRepresentative.display.registrationClause">
+            <span class="ph-chip" data-ph="landlordsRepresentative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="landlordsRepresentative.attorneyDate">
+            от <span class="ph-chip" data-ph="landlordsRepresentative.display.attorneyDateText"></span>,
+          </span>
+          <span data-if="landlordsRepresentative.attorneyIssuedBy">
+            удостоверенной <span class="ph-chip" data-ph="landlordsRepresentative.attorneyIssuedBy"></span>,
+          </span>
+          <span data-if="landlordsRepresentative.attorneyNumber">
+            реестровый номер: <span class="ph-chip" data-ph="landlordsRepresentative.attorneyNumber"></span>,
+          </span>
+          <span data-if="calc.landlordsCountIsOne"> от имени:</span>
+          <span data-if="not: calc.landlordsCountIsOne"> от имени следующих лиц:</span>
+        </p>
+        <repeat data-repeat="landlordsRepresentative.represented">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="display.fio.gen"></span>,
+            пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+            <span data-if="birthDate"> дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+            <span data-if="birthPlace"> место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации:
+            <span data-if="display.passportSeries"> серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+            <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+            <span data-if="passportIssued"> выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+            <span data-if="issueDate"> дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+            <span data-if="departmentCode"> код подразделения: <span class="ph-chip" data-ph="departmentCode"></span>,</span>
+            <span data-if="display.registrationClause">
+              <span class="ph-chip" data-ph="display.registrationClause"></span>
+            </span>
+            <span data-if="display.showNamedLaterInLine">
+              <span class="ph-raw" data-ph="display.namedFull"></span>
+            </span>
+          </p>
+        </repeat>
+      </div>
+      <!-- ВАРИАНТ 2: у каждого Наймодателя свой (или нет) представитель -->
+      <!-- ГРУППЫ: один представитель представляет нескольких лиц -->
+      <repeat data-repeat="calc.landlordRepGroups">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="representative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>
+          <span data-if="representative.birthDate"> дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+          <span data-if="representative.birthPlace"> место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации:
+          <span data-if="representative.display.passportSeries"> серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+          <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+          <span data-if="representative.passportIssued"> выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+          <span data-if="representative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+          <span data-if="representative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+          <span data-if="representative.display.registrationClause">
+            <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+          <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+          <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+          от имени следующих лиц:
+        </p>
+        <span class="ph-raw" data-ph="representedHtml"></span>
+      </repeat>
+      <div data-if="not: landlordsRepresentative.fullName">
+        <repeat data-repeat="landlords">
+          <div data-if="not: inRepGroup">
+            <!-- Если у этого Наймодателя есть личный представитель -->
+            <div data-if="representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="representative.fullName"></span>,
+                пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+                <span data-if="representative.birthDate"> дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+                <span data-if="representative.birthPlace"> место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации:
+                <span data-if="representative.display.passportSeries"> серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+                <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+                <span data-if="representative.passportIssued"> выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+                <span data-if="representative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+                <span data-if="representative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+                <span data-if="representative.display.registrationClause">
+                  <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+                </span>
+                действует по доверенности
+                <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+                <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+                <span data-if="representative.attorneyNumber">реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+                от имени:
+                <span class="ph-chip" data-ph="display.fio.gen"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries"> серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+            <!-- Иначе обычный Наймодатель без представителя -->
+            <div data-if="not: representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="fullName"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span>,</span>
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries">серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber">номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode"> код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+          </div>
+          </div>
+        </repeat>
+      </div>
+      <p style="text-indent: 2em;">
+          <span data-if="calc.landlordsCountIsOne">
+            <span class="ph-chip" data-ph="calc.landlordsNamedWord"></span> в дальнейшем «Наймодатель», с одной стороны,
+          </span>
+          <span data-if="not: calc.landlordsCountIsOne">совместно именуемые «Наймодатели», с одной стороны,</span>
+      </p>
+      <!-- ========== TENANTS (BEGIN) ========== -->
+
+      <!-- ВАРИАНТ 1: общий представитель всех Нанимателей -->
+      <div data-if="tenantsRepresentative.fullName">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="tenantsRepresentative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="tenantsRepresentative.display.genderWord"></span>,
+          <span data-if="tenantsRepresentative.birthDate">дата рождения: <span class="ph-chip" data-ph="tenantsRepresentative.display.birthDateText"></span> рождения</span>,
+          <span data-if="tenantsRepresentative.birthPlace">место рождения: <span class="ph-chip" data-ph="tenantsRepresentative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации
+          <span data-if="tenantsRepresentative.display.passportSeries">: серия: <span class="ph-chip" data-ph="tenantsRepresentative.display.passportSeries"></span></span>
+          <span data-if="tenantsRepresentative.display.passportNumber"> номер: <span class="ph-chip" data-ph="tenantsRepresentative.display.passportNumber"></span></span>,
+          <span data-if="tenantsRepresentative.passportIssued">выдан: <span class="ph-chip" data-ph="tenantsRepresentative.passportIssued"></span></span>,
+          <span data-if="tenantsRepresentative.issueDate">дата выдачи: <span class="ph-chip" data-ph="tenantsRepresentative.display.issueDateText"></span></span>,
+          <span data-if="tenantsRepresentative.departmentCode">код подразделения: <span class="ph-chip" data-ph="tenantsRepresentative.departmentCode"></span></span>,
+          <span data-if="tenantsRepresentative.display.registrationClause">
+            <span class="ph-chip" data-ph="tenantsRepresentative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="tenantsRepresentative.attorneyDate"> от <span class="ph-chip" data-ph="tenantsRepresentative.display.attorneyDateText"></span></span>,
+          <span data-if="tenantsRepresentative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="tenantsRepresentative.attorneyIssuedBy"></span></span>,
+          <span data-if="tenantsRepresentative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="tenantsRepresentative.attorneyNumber"></span></span>,
+          <span data-if="calc.tenantsCountIsOne"> от имени:</span>
+          <span data-if="not: calc.tenantsCountIsOne"> от имени следующих лиц:</span>
+        </p>
+
+        <repeat data-repeat="tenantsRepresentative.represented">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="display.fio.gen"></span>,
+            пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+            <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+            <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации
+            <span data-if="display.passportSeries">: серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+            <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+            <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+            <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+            <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+            <span data-if="display.registrationClause">
+              <span class="ph-chip" data-ph="display.registrationClause"></span>
+            </span>
+            <span data-if="display.showNamedLaterInLine">
+              <span class="ph-raw" data-ph="display.namedFull"></span>
+            </span>
+          </p>
+        </repeat>
+      </div>
+
+      <!-- ВАРИАНТ 2: один представитель представляет нескольких (группы) -->
+      <div data-if="not: tenantsRepresentative.fullName">
+        <repeat data-repeat="calc.tenantRepGroups">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="representative.fullName"></span>,
+            пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+            <span data-if="representative.birthDate">дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+            <span data-if="representative.birthPlace">место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации
+            <span data-if="representative.display.passportSeries">: серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+            <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+            <span data-if="representative.passportIssued">выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+            <span data-if="representative.issueDate">дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+            <span data-if="representative.departmentCode">код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+            <span data-if="representative.display.registrationClause">
+              <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+            </span>
+            действует по доверенности
+            <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+            <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+            <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+            от имени следующих лиц:
+          </p>
+          <span class="ph-raw" data-ph="representedHtml"></span>
+        </repeat>
+      </div>
+
+      <!-- ВАРИАНТ 3: у каждого свой (или нет) представитель; печатаем только кто НЕ в группах -->
+      <div data-if="not: tenantsRepresentative.fullName">
+        <repeat data-repeat="tenants">
+          <div data-if="not: inRepGroup">
+            <!-- 3А. Есть личный представитель -->
+            <div data-if="representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="representative.fullName"></span>,
+                пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+                <span data-if="representative.birthDate">дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+                <span data-if="representative.birthPlace">место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации
+                <span data-if="representative.display.passportSeries">: серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+                <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+                <span data-if="representative.passportIssued">выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+                <span data-if="representative.issueDate">дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+                <span data-if="representative.departmentCode">код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+                <span data-if="representative.display.registrationClause">
+                  <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+                </span>
+                действует по доверенности
+                <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+                <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+                <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+                от имени:
+                <span class="ph-chip" data-ph="display.fio.gen"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации
+                <span data-if="display.passportSeries">: серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+
+            <!-- 3Б. Представителя нет -->
+            <div data-if="not: representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="fullName"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span>,</span>
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries">серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber">номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+          </div>
+        </repeat>
+      </div>
+
+      <!-- ФИНАЛЬНАЯ СТРОКА — ОДИН РАЗ ДЛЯ ВСЕХ ВАРИАНТОВ -->
+      <p style="text-indent: 2em;">
+        <span data-if="calc.tenantsCountIsOne">
+          <span class="ph-chip" data-ph="calc.tenantsNamedWord"></span> в дальнейшем «Наниматель», с другой стороны,
+        </span>
+        <span data-if="not: calc.tenantsCountIsOne">совместно именуемые «Наниматели», с другой стороны,</span>
+      </p>
+
+      <!-- ========== TENANTS (END) ========== -->
+
+
+
+      <p>в дальнейшем совместно именуемые «Стороны», заключили настоящий Договор о нижеследующем:</p>
+
+      <!-- Раздел 1. Общие положения -->
+      <br><h2><b>1. ПРЕДМЕТ ДОГОВОРА</b></h2>
+
+      <p>1.1. «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.landlordsVerbProvide"></span>, а «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsVerbTake"></span> квартиру в найм за плату, во временное владение и пользование для проживания, по адресу: <b><span class="ph-chip" data-ph="terms.address"></span></b>, кадастровый номер: <span class="ph-chip" data-ph="terms.cadastralNumber"></span>, этаж: <span class="ph-chip" data-ph="terms.floor"></span>, количество комнат: <span class="ph-chip" data-ph="terms.rooms"></span>, общая площадь: <span class="ph-chip" data-ph="terms.area"></span> кв.м, с имуществом согласно приложениям №1 и №2, на срок с <span class="ph-chip" data-ph="terms.startDate"></span> по <span class="ph-chip" data-ph="terms.endDate"></span>.</p>
+      <p>1.2. Указанная квартира принадлежит «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» на праве собственности на основании:<span class="ph-raw" data-ph="calc.landlordsBasisHtml"></span></p>
+      <p>1.3.  «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» подтвержда<span class="ph-chip" data-ph="calc.landlordsConfirmVerb"></span>, что до заключения настоящего договора квартира не продана, не заложена, не обременена в силу договора найма или аренды, не является предметом спора в суде, не арестована, и не имеет задолженностей.</p>
+      <p>1.4.  «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» подтвержда<span class="ph-chip" data-ph="calc.landlordsConfirmVerb"></span>, что все граждане‑собственники, имеющие права на указанную квартиру, не возражают против сдачи её внаём в соответствии с условиями Договора.</p>
+        <!-- 1.5 -->
+        <p>1.5.  «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsVerbTake"></span> в найм указанную квартиру за оговоренную плату для целей личного проживания.</p>
+        <!-- 1.6 — совместно проживающие (если есть хотя бы один whoLive) -->
+        <div data-if="calc.hasWhoLive">
+          <p>1.6.  Совместно с «<span class="ph-chip" data-ph="calc.tenantsGroupLabelInstrumental"></span>» будет проживать: <span class="ph-chip" data-ph="calc.tenantsWhoLiveJoined"></span>.</p>
+        </div>
+        <!-- 1.7 (или 1.6) — домашние животные: показываем только если есть текст -->
+        <div data-if="terms.petsHasText">
+          <p>
+            <span class="ph-chip" data-ph="calc.petsClauseNumber"></span>.
+            Допускается проживание домашних животных:
+            <span class="ph-chip" data-ph="terms.petsDescription"></span>.
+          </p>
+        </div>
+
+        <!-- Раздел 2. Порядок расчётов -->
+        <br><h2><b>2. ПОРЯДОК РАСЧЁТОВ</b></h2>
+        <!-- 2.1 — НАЛИЧНЫМИ -->
+        <div data-if="terms.paymentMethodIsCash">
+          <p>
+            2.1.
+            «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>»
+            <span class="ph-chip" data-ph="calc.tenantsConfirmVerb"></span>
+            «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>»
+            сумму в размере <span class="ph-chip" data-ph="terms.rentAmount"></span> в месяц за найм квартиры наличными.
+            Факт получения денежных средств
+            «<span class="ph-chip" data-ph="calc.landlordsGroupLabelInstrumental"></span>»
+            за найм подтверждается распиской, составленной в простой письменной форме.
+          </p>
+        </div>
+        <!-- 2.1 — БАНКОВСКИЙ ПЕРЕВОД -->
+        <div data-if="terms.paymentMethodIsBank">
+          <p>
+            2.1.
+            «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>»
+            <span class="ph-chip" data-ph="calc.tenantsConfirmVerb"></span>
+            «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>»
+            сумму в размере <span class="ph-chip" data-ph="terms.rentAmount"></span> в месяц за найм квартиры, путем перевода на счёт:
+          </p>
+          <p>номер счёта: <span class="ph-chip" data-ph="terms.bankAccount"></span>,</p>
+          <p>Банк получатель: <span class="ph-chip" data-ph="terms.bankName"></span>,</p>
+          <p>к/с: <span class="ph-chip" data-ph="terms.bankCorrAccount"></span>,</p>
+          <p>БИК: <span class="ph-chip" data-ph="terms.bankBik"></span>,</p>
+          <p>ИНН/КПП: <span class="ph-chip" data-ph="terms.bankInnKpp"></span>,</p>
+          <p>Получатель: <span class="ph-chip" data-ph="terms.bankRecipient"></span>.</p>
+        </div>
+      <!-- 2.2 — формулировки по ЖКУ; сервер соберёт текст согласно payer+paymentType -->
+      <p>2.2.  <span class="ph-chip" data-ph="calc.utilitiesClauseText" contenteditable="false"></span></p>
+      <p>2.3.  Оплата в соответствии с п. 2.1 производится за каждый следующий месяц найма в срок до <span class="ph-chip" data-ph="terms.paymentDeadline" contenteditable="false"></span> числа месяца, следующего за оплаченным.</p>
+      
+      <br><h2><b>3. ПРАВА И ОБЯЗАННОСТИ СТОРОН</b></h2>
+
+      <p><b>3.1.  «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsObligedVerb"></span></b>:</p>
+      <p>3.1.1.   Использовать квартиру исключительно в целях, указанных в настоящем договоре.</p>
+      <p>3.1.2.   Обеспечивать сохранность и надлежащую эксплуатацию квартиры, её оборудования и имущества, находящихся в ней.</p>
+      <p>3.1.3.   При обнаружении неисправностей в квартире, оборудования и имущества, находящемся в ней, а также ущерба, вызванного любыми воздействиями, немедленно принимать возможные меры по их устранению, в том числе сообщать о них «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» и в соответствующую жилищно-эксплуатационную организацию (диспетчеру).</p>
+      <p>3.1.4.   При обнаружении последствий противоправных действий третьих лиц в отношении квартиры, её имущества и оборудования немедленно сообщать в соответствующие компетентные органы (полиция, пожарная охрана) и «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>».</p>
+      <p>3.1.5.   Устранять за свой счёт повреждения квартиры и мест общего пользования, а также производить ремонт или замену повреждённого оборудования и имущества, находящихся в квартире, если указанные повреждения произошли по вине «<span class="ph-chip" data-ph="calc.tenantsGroupLabelGenitive"></span>», либо других лиц<span data-if="terms.petsAllowed">, либо домашних животных</span>, совместно с ним проживающих либо находящихся в квартире с разрешения «<span class="ph-chip" data-ph="calc.tenantsGroupLabelGenitive"></span>».</p>
+      <p>3.1.6.   Не производить любые действия, связанные с ремонтом квартиры, переустройством или перепланировкой помещений, установкой дополнительного оборудования без специального разрешения «<span class="ph-chip" data-ph="calc.landlordsGroupLabelGenitive"></span>».</p>
+      <p>3.1.7.   Нести ответственность за соблюдение правил содержания жилого дома и придомовой территории, соблюдение чистоты и порядка в местах общего пользования.</p>
+      <p>3.1.8.   Нести ответственность за соблюдение правил пожарной и электробезопасности и требований эксплуатации установленного оборудования.</p>
+      <p>3.1.9.   Соблюдать правила проживания в многоквартирном доме, не допускать выполнения в квартире работ и совершения других действий, нарушающих условия проживания граждан в других жилых помещениях.</p>
+      <p>3.1.10.  Допускать в квартиру «<span class="ph-chip" data-ph="calc.landlordsGroupLabelGenitive"></span>» (по предварительной договорённости) для осмотра технического или санитарного состояния квартиры и состояния её оборудования.</p>
+      <p>3.1.11.  Освободить и сдать «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» квартиру, оборудование и имущество, находящееся в ней, в надлежащем техническом и санитарном состоянии с учётом нормального износа не позже дня, следующего за окончанием срока Договора или датой расторжения Договора.</p>
+      <p>3.1.12.  Нести ответственность за ущерб, причинённый «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» и третьим лицам, возникший в результате реализации настоящего договора.</p>
+      <p>3.2.  «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsHasRightVerb"></span> право пользоваться всеми помещениями, оборудованием и имуществом квартиры.</p>
+      <p class="editor-hint" data-hint="3.3">
+        Подсказка: если хотите разрешить сдачу в поднаём — отредактируйте этот пункт.
+      </p>
+      <p>3.3.  «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» не вправе сдавать квартиру в поднайм (субаренду).</p>
+      <p><b>3.4.  «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» обязан<span class="ph-chip" data-ph="calc.landlordsObligedVerb"></span></b>:</p>
+      <p>3.4.1.   Передать во временное владение и пользование «<span class="ph-chip" data-ph="calc.tenantsGroupLabelDative"></span>» квартиру, её оборудование и имущество, находящиеся в ней, в надлежащем техническом и санитарном состоянии в срок и на срок, установленный настоящим договором.</p>
+      <p>3.4.2.   Не продавать, не закладывать и не обременять квартиру в течение срока действия настоящего договора.</p>
+      
+      <br><h2><b>4. ОТВЕТСТВЕННОСТЬ СТОРОН</b></h2>
+
+      <p>4.1.  Если «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsNotVacateVerb"></span> «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» квартиру, её оборудование и имущество, находящиеся в ней, в надлежащем техническом и санитарном состоянии с учётом нормального износа в срок, установленный настоящим договором, <span class="ph-chip" data-ph="calc.tenantsObligedToPay"></span> «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» штраф в размере <span class="ph-chip" data-ph="terms.latePenaltyPerDayAmount"></span> за каждый день просрочки.</p>
+      <p>4.2.  Если в результате неисполнения или ненадлежащего исполнения «<span class="ph-chip" data-ph="calc.tenantsGroupLabelInstrumental"></span>» условий настоящего договора «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» будет причинён материальный ущерб, «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsObligedVerb"></span> его возместить «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» в 10-дневный срок с момента его нанесения или обнаружения по рыночным ценам на момент возмещения.</p>
+      <p>4.3.  В случае нарушения «<span class="ph-chip" data-ph="calc.tenantsGroupLabelInstrumental"></span>» сроков платежей, предусмотренных настоящим договором, <span class="ph-chip" data-ph="calc.tenantsPayVerb"></span> пени в размере 0,1 процента от стоимости платежа за каждый день просрочки.</p>
+      <p>4.4.  При нарушении или ненадлежащем исполнении одной из сторон условий настоящего договора, другая сторона вправе расторгнуть настоящий договор, уведомив об этом первую сторону за десять дней до даты расторжения. При этом сторона, виновная в нарушении договора, обязана выплатить пострадавшей стороне штраф в размере <span class="ph-chip" data-ph="terms.penaltyClause44Amount"></span>.</p>
+      <p>4.5.  При одностороннем расторжении настоящего договора, кроме как по п. 4.4 настоящего договора, сторона, настаивающая на его расторжении, обязана уведомить об этом другую сторону за 1 (один) месяц до даты расторжения. Такое расторжение не освобождает стороны от возмещения ущерба и выплаты всех штрафов, предусмотренных настоящим договором.</p>
+      <!-- ВСТАВИТЬ СРАЗУ ПОСЛЕ абзаца 4.6 -->
+      <p class="editor-hint" data-hint="4.6">
+        Подсказка: измените «штрафной срок» под ваш срок договора.
+        Важно: он не может быть больше срока самого договора.
+      </p>
+      <p>4.6.  При одностороннем расторжении договора (за исключением случаев, указанных в п. 4.4 настоящего договора) ранее 9 (девяти) месяцев с момента заключения настоящего договора, сторона, настаивающая на его расторжении, должна уплатить штраф другой стороне в размере <span class="ph-chip" data-ph="terms.rentAmountFormatted"></span>.</p>
+      <p>4.7.  При досрочном расторжении настоящего договора стороны производят расчёты исходя из оплаты «<span class="ph-chip" data-ph="calc.tenantsGroupLabelInstrumental"></span>» найма указанной квартиры до даты расторжения, с учётом уплаты всех платежей согласно параграфа 2 «Порядок расчётов» настоящего договора и с учётом всех штрафов и стоимости ущерба, предусмотренных настоящим договором. Если при этом у одной из сторон образуется задолженность, она обязана её погасить не позднее трёх дней с даты расторжения.</p>
+      <p>4.8.  Во всём, что не предусмотрено настоящим договором, стороны руководствуются действующим законодательством Российской Федерации.</p>
+      <p>4.9.  Все возникающие споры при недостижении согласия между сторонами разрешаются в судебном порядке по месту расположения квартиры, указанной в п. 1.1 настоящего договора.</p>
+      
+      <br><h2><b>5. ДОПОЛНИТЕЛЬНЫЕ УСЛОВИЯ И СРОК ДЕЙСТВИЯ ДОГОВОРА</b></h2>
+
+      <p>5.1.  Стороны освобождаются от ответственности за частичное или полное неисполнение своих обязательств по настоящему договору, если это неисполнение явилось следствием обстоятельств непреодолимой силы, возникших после заключения настоящего договора в результате событий, которые стороны не могли ни предвидеть, ни предотвратить разумными мерами, таких как: стихийные бедствия, война, изменение действующего в стране законодательства, решения органов власти и местного самоуправления и пр. О наступлении подобных обстоятельств сторона, подвергшаяся их воздействию, ставит в известность противоположную сторону.</p>
+      <p>5.2.  После прекращения действия обстоятельств непреодолимой силы, стороны прикладывают все усилия к тому, чтобы в кратчайшие сроки исполнить обязательства по настоящему договору.</p>
+      <p>5.3.  Все изменения и дополнения к настоящему договору, и к заключённым на его основе дополнительным соглашениям считаются действительными, если они оформлены в письменном виде и подписаны в двухстороннем порядке.</p>
+      <p>5.4.  Все налоговые обязательства и обязанности по исчислению и уплате налогов, связанных с исполнением Договора, «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.landlordsDoVerb"></span> самостоятельно.</p>
+      <!-- Обеспечительный платеж (залог) -->
+      <div data-if="terms.securityDepositEnabled">
+          <p>
+            <span class="ph-chip" data-ph="terms.numSecurityDeposit"></span>
+            При подписании Договора «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsTransferVerb"></span> «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» обеспечительный платеж в размере <span class="ph-chip" data-ph="terms.securityDepositAmount"></span> 
+            <span data-if="terms.securityDepositSplit">
+                в следующем порядке:
+                <span class="ph-chip" data-ph="terms.securityDepositSchedule"></span>.
+            </span>
+            <span data-if="terms.securityDepositSplitNot"></span>
+            Внесенный обеспечительный платеж является мерой обеспечения возможного нанесения ущерба имуществу «<span class="ph-chip" data-ph="calc.landlordsGroupLabelGenitive"></span>» или третьих лиц, а также штрафных санкций, указанных в разделе 4 Договора. При отсутствии ущерба и/или штрафных санкций, указанных в разделе 4 Договора, обеспечительный платеж возвращается «<span class="ph-chip" data-ph="calc.tenantsGroupLabelDative"></span>» при расторжении Договора в момент передачи квартиры «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>».
+          </p>
+      </div>
+      <!-- Предоплата за последний месяц -->
+      <div data-if="terms.lastMonthPrepayEnabled">
+          <p>
+            <span class="ph-chip" data-ph="terms.numLastMonthPrepay"></span>
+            При подписании Договора «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsTransferVerb"></span> «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>»
+            предоплату за последний месяц проживания в размере <span class="ph-chip" data-ph="terms.lastMonthPrepayAmountFormatted"></span>
+            <span data-if="terms.lastMonthPrepaySplit">
+                в следующем порядке:
+                <span class="ph-chip" data-ph="terms.lastMonthPrepaySchedule"></span>.
+            </span>
+            <span data-if="terms.lastMonthPrepaySplitNot"></span>
+          </p>
+      </div>
+
+      <p><span class="ph-chip" data-ph="terms.numContractPeriod"></span>  Настоящий договор действует начиная с даты подписания до даты полного исполнения обязательств по нему Сторонами.</p>
+      <p><span class="ph-chip" data-ph="terms.numCopiesCount"></span>  Настоящий договор составлен и подписан в <span class="ph-chip" data-ph="terms.copiesCount"></span> (<span class="ph-chip" data-ph="terms.copiesCountWordsPrep"></span>) экземплярах, имеющих одинаковую юридическую силу, по одному для каждой из сторон договора.</p>
+      <p><span class="ph-chip" data-ph="terms.numCommsMeans"></span>
+          Стороны согласовали, что указанные «<span class="ph-chip" data-ph="calc.landlordsGroupLabelInstrumental"></span>» и «<span class="ph-chip" data-ph="calc.tenantsGroupLabelInstrumental"></span>» в Договоре номера телефонов, включая привязанные к ним
+          аккаунты мессенджеров WhatsApp, Telegram, Viber, MAX, а также адреса электронной почты (Email) являются средствами для
+          обмена юридически значимой информацией по вопросам, касающимся исполнения условий настоящего договора, включая, но не
+          ограничиваясь: уведомлениями о расторжении, изменении, нарушении или продлении настоящего договора. Срок ответа Стороны,
+          которой направлено сообщение, составляет 5 (пять) рабочих дней. По истечении указанного срока отсутствие ответа считается
+          подтверждением получения и ознакомления с содержанием направленного уведомления.
+      </p>
+
+      <p><strong>Контакты «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>»:</strong></p>
+      <p><span class="ph-chip" data-ph="calc.contacts.landlords"></span></p>
+
+      <p><strong>Контакты «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>»:</strong></p>
+      <p><span class="ph-chip" data-ph="calc.contacts.tenants"></span></p>
+
+      <br><h2><b>6. ПРИЛОЖЕНИЯ</b></h2>
+
+      <p>6.1.	Приложение №1 «Описание имущества».</p>
+      <p>6.2. Приложение №2 «Описание квартиры».</p>
+      <p>6.3.	Приложение №3 «Акт приемки-передачи квартиры».</p>
+
+      <br><h2><b>7.   ПОДПИСИ СТОРОН</b></h2>
+      <!-- Наймодатели -->
+      <div data-repeat="landlords">
+        <table style="width:100%; border-collapse:collapse; margin:6px 0;" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="white-space:nowrap; padding:0 8px 0 0; vertical-align:bottom;">
+              Наймодатель
+              <span data-if="calc.multipleLandlords">
+                <span class="ph-chip" data-ph="current.index"></span>
+              </span>
+            </td>
+            <!-- ЛИНИЯ ДЛЯ ПОДПИСИ (надёжный вариант) -->
+            <td style="width:260px; padding:0 8px; vertical-align:bottom;">
+              <span style="display:inline-block; font-family:monospace; letter-spacing:2px;">______________________________</span>
+            </td>
+            <td style="white-space:nowrap; padding-left:8px; vertical-align:bottom;">
+              / <span class="ph-chip" data-ph="current.fullName"></span> /
+              <span data-if="current.hasRepresentative">
+                <br>
+                по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+                <span data-if="current.representative.attorneyDate">
+                  от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+                </span>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <!-- Наниматели -->
+      <div data-repeat="tenants">
+        <table style="width:100%; border-collapse:collapse; margin:6px 0;" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="white-space:nowrap; padding:0 8px 0 0; vertical-align:bottom;">
+              Наниматель
+              <span data-if="calc.multipleTenants">
+                <span class="ph-chip" data-ph="current.index"></span>
+              </span>
+            </td>
+            <!-- ЛИНИЯ ДЛЯ ПОДПИСИ (надёжный вариант) -->
+            <td style="width:260px; padding:0 8px; vertical-align:bottom;">
+              <span style="display:inline-block; font-family:monospace; letter-spacing:2px;">______________________________</span>
+            </td>
+            <td style="white-space:nowrap; padding-left:8px; vertical-align:bottom;">
+              / <span class="ph-chip" data-ph="current.fullName"></span> /
+              <span data-if="current.hasRepresentative">
+                <br>
+                по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+                <span data-if="current.representative.attorneyDate">
+                  от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+                </span>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <div class="editor-page">
+      <!-- ПОСЛЕ заголовка Приложение №1 -->
+      <h2 style="page-break-before: always; break-before: page;">Приложение №1 «Опись имущества» к Договору найма жилого помещения от <span class="ph-chip" data-ph="terms.agreementDate" data-fmt="dateLong"></span> года.</h2>
+      <div class="app-table-wrap" data-slot="inventoryHtml" contenteditable="false"></div>
+    </div>
+    <div class="editor-page">
+      <!-- ПОСЛЕ заголовка Приложение №2 -->
+      <h2 style="page-break-before: always; break-before: page;">Приложение №2 «Описание квартиры» к Договору найма жилого помещения от <span class="ph-chip" data-ph="terms.agreementDate" data-fmt="dateLong"></span> года.</h2>
+      <div class="app-table-wrap" data-slot="apartmentHtml" contenteditable="false"></div>
+    </div>
+    <div class="editor-page">
+      <h2 style="page-break-before: always; break-before: page;">Приложение №3 «Акт приема-передачи квартиры» к Договору найма жилого помещения от <span class="ph-chip" data-ph="terms.agreementDate" data-fmt="dateLong"></span> года.</h2>
+      <h2><b>«Акт приемки-передачи квартиры»</b></h2>
+      <table style="width:100%; border:0; border-collapse:collapse;">
+        <tr>
+          <td style="text-align:left; padding:0;">
+            г. <span class="ph-chip" data-ph="terms.agreementPlace"></span>
+          </td>
+          <td style="text-align:right; padding:0;">
+            <span class="ph-chip" data-ph="terms.agreementDate" data-fmt="dateLong"></span> года
+          </td>
+        </tr>
+      </table>
+      
+      <p>Мы, граждане Российской Федерации:</p>
+      <!-- ========= БЛОК СТОРОНЫ: НАЙМОДАТЕЛИ ========= -->
+      <!-- ВАРИАНТ 1: общий представитель у группы Наймодателей -->
+      <div data-if="landlordsRepresentative.fullName">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="landlordsRepresentative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="landlordsRepresentative.display.genderWord"></span>,
+          <span data-if="landlordsRepresentative.birthDate">дата рождения: <span class="ph-chip" data-ph="landlordsRepresentative.display.birthDateText"></span> рождения</span>,
+          <span data-if="landlordsRepresentative.birthPlace">место рождения: <span class="ph-chip" data-ph="landlordsRepresentative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации:
+          <span data-if="landlordsRepresentative.display.passportSeries"> серия: <span class="ph-chip" data-ph="landlordsRepresentative.display.passportSeries"></span></span>
+          <span data-if="landlordsRepresentative.display.passportNumber"> номер: <span class="ph-chip" data-ph="landlordsRepresentative.display.passportNumber"></span></span>,
+          <span data-if="landlordsRepresentative.passportIssued"> выдан: <span class="ph-chip" data-ph="landlordsRepresentative.passportIssued"></span></span>
+          <span data-if="landlordsRepresentative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="landlordsRepresentative.display.issueDateText"></span></span>,
+          <span data-if="landlordsRepresentative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="landlordsRepresentative.departmentCode"></span></span>,
+          <span data-if="landlordsRepresentative.display.registrationClause">
+            <span class="ph-chip" data-ph="landlordsRepresentative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="landlordsRepresentative.attorneyDate">
+            от <span class="ph-chip" data-ph="landlordsRepresentative.display.attorneyDateText"></span>,
+          </span>
+          <span data-if="landlordsRepresentative.attorneyIssuedBy">
+            удостоверенной <span class="ph-chip" data-ph="landlordsRepresentative.attorneyIssuedBy"></span>,
+          </span>
+          <span data-if="landlordsRepresentative.attorneyNumber">
+            реестровый номер: <span class="ph-chip" data-ph="landlordsRepresentative.attorneyNumber"></span>,
+          </span>
+          <span data-if="calc.landlordsCountIsOne"> от имени:</span>
+          <span data-if="not: calc.landlordsCountIsOne"> от имени следующих лиц:</span>
+        </p>
+        <repeat data-repeat="landlordsRepresentative.represented">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="display.fio.gen"></span>,
+            пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+            <span data-if="birthDate"> дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+            <span data-if="birthPlace"> место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации:
+            <span data-if="display.passportSeries"> серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+            <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+            <span data-if="passportIssued"> выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+            <span data-if="issueDate"> дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+            <span data-if="departmentCode"> код подразделения: <span class="ph-chip" data-ph="departmentCode"></span>,</span>
+            <span data-if="display.registrationClause">
+              <span class="ph-chip" data-ph="display.registrationClause"></span>
+            </span>
+            <span data-if="display.showNamedLaterInLine">
+              <span class="ph-raw" data-ph="display.namedFull"></span>
+            </span>
+          </p>
+        </repeat>
+      </div>
+      <!-- ВАРИАНТ 2: у каждого Наймодателя свой (или нет) представитель -->
+      <!-- ГРУППЫ: один представитель представляет нескольких лиц -->
+      <repeat data-repeat="calc.landlordRepGroups">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="representative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>
+          <span data-if="representative.birthDate"> дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+          <span data-if="representative.birthPlace"> место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации:
+          <span data-if="representative.display.passportSeries"> серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+          <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+          <span data-if="representative.passportIssued"> выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+          <span data-if="representative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+          <span data-if="representative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+          <span data-if="representative.display.registrationClause">
+            <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+          <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+          <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+          от имени следующих лиц:
+        </p>
+        <span class="ph-raw" data-ph="representedHtml"></span>
+      </repeat>
+      <div data-if="not: landlordsRepresentative.fullName">
+        <repeat data-repeat="landlords">
+          <div data-if="not: inRepGroup">
+            <!-- Если у этого Наймодателя есть личный представитель -->
+            <div data-if="representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="representative.fullName"></span>,
+                пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+                <span data-if="representative.birthDate"> дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+                <span data-if="representative.birthPlace"> место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации:
+                <span data-if="representative.display.passportSeries"> серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+                <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+                <span data-if="representative.passportIssued"> выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+                <span data-if="representative.issueDate"> дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+                <span data-if="representative.departmentCode"> код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+                <span data-if="representative.display.registrationClause">
+                  <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+                </span>
+                действует по доверенности
+                <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+                <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+                <span data-if="representative.attorneyNumber">реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+                от имени:
+                <span class="ph-chip" data-ph="display.fio.gen"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries"> серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+            <!-- Иначе обычный Наймодатель без представителя -->
+            <div data-if="not: representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="fullName"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span>,</span>
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries">серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber">номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode"> код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+          </div>
+          </div>
+        </repeat>
+      </div>
+      <p style="text-indent: 2em;">
+          <span data-if="calc.landlordsCountIsOne">именуемый в дальнейшем «Наймодатель», с одной стороны,</span>
+          <span data-if="not: calc.landlordsCountIsOne">совместно именуемые «Наймодатели», с одной стороны,</span>
+      </p>
+      <!-- ========== TENANTS (BEGIN) ========== -->
+
+      <!-- ВАРИАНТ 1: общий представитель всех Нанимателей -->
+      <div data-if="tenantsRepresentative.fullName">
+        <p style="text-indent: 2em;">
+          <span class="ph-chip" data-ph="tenantsRepresentative.fullName"></span>,
+          пол: <span class="ph-chip" data-ph="tenantsRepresentative.display.genderWord"></span>,
+          <span data-if="tenantsRepresentative.birthDate">дата рождения: <span class="ph-chip" data-ph="tenantsRepresentative.display.birthDateText"></span> рождения</span>,
+          <span data-if="tenantsRepresentative.birthPlace">место рождения: <span class="ph-chip" data-ph="tenantsRepresentative.birthPlace"></span></span>,
+          паспорт гражданина Российской Федерации
+          <span data-if="tenantsRepresentative.display.passportSeries">: серия: <span class="ph-chip" data-ph="tenantsRepresentative.display.passportSeries"></span></span>
+          <span data-if="tenantsRepresentative.display.passportNumber"> номер: <span class="ph-chip" data-ph="tenantsRepresentative.display.passportNumber"></span></span>,
+          <span data-if="tenantsRepresentative.passportIssued">выдан: <span class="ph-chip" data-ph="tenantsRepresentative.passportIssued"></span></span>,
+          <span data-if="tenantsRepresentative.issueDate">дата выдачи: <span class="ph-chip" data-ph="tenantsRepresentative.display.issueDateText"></span></span>,
+          <span data-if="tenantsRepresentative.departmentCode">код подразделения: <span class="ph-chip" data-ph="tenantsRepresentative.departmentCode"></span></span>,
+          <span data-if="tenantsRepresentative.display.registrationClause">
+            <span class="ph-chip" data-ph="tenantsRepresentative.display.registrationClause"></span>
+          </span>
+          действует по доверенности
+          <span data-if="tenantsRepresentative.attorneyDate"> от <span class="ph-chip" data-ph="tenantsRepresentative.display.attorneyDateText"></span></span>,
+          <span data-if="tenantsRepresentative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="tenantsRepresentative.attorneyIssuedBy"></span></span>,
+          <span data-if="tenantsRepresentative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="tenantsRepresentative.attorneyNumber"></span></span>,
+          <span data-if="calc.tenantsCountIsOne"> от имени:</span>
+          <span data-if="not: calc.tenantsCountIsOne"> от имени следующих лиц:</span>
+        </p>
+
+        <repeat data-repeat="tenantsRepresentative.represented">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="display.fio.gen"></span>,
+            пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+            <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+            <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации
+            <span data-if="display.passportSeries">: серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+            <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+            <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+            <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+            <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+            <span data-if="display.registrationClause">
+              <span class="ph-chip" data-ph="display.registrationClause"></span>
+            </span>
+            <span data-if="display.showNamedLaterInLine">
+              <span class="ph-raw" data-ph="display.namedFull"></span>
+            </span>
+          </p>
+        </repeat>
+      </div>
+
+      <!-- ВАРИАНТ 2: один представитель представляет нескольких (группы) -->
+      <div data-if="not: tenantsRepresentative.fullName">
+        <repeat data-repeat="calc.tenantRepGroups">
+          <p style="text-indent: 2em;">
+            <span class="ph-chip" data-ph="representative.fullName"></span>,
+            пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+            <span data-if="representative.birthDate">дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+            <span data-if="representative.birthPlace">место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+            паспорт гражданина Российской Федерации
+            <span data-if="representative.display.passportSeries">: серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+            <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+            <span data-if="representative.passportIssued">выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+            <span data-if="representative.issueDate">дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+            <span data-if="representative.departmentCode">код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+            <span data-if="representative.display.registrationClause">
+              <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+            </span>
+            действует по доверенности
+            <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+            <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+            <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+            от имени следующих лиц:
+          </p>
+          <span class="ph-raw" data-ph="representedHtml"></span>
+        </repeat>
+      </div>
+
+      <!-- ВАРИАНТ 3: у каждого свой (или нет) представитель; печатаем только кто НЕ в группах -->
+      <div data-if="not: tenantsRepresentative.fullName">
+        <repeat data-repeat="tenants">
+          <div data-if="not: inRepGroup">
+            <!-- 3А. Есть личный представитель -->
+            <div data-if="representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="representative.fullName"></span>,
+                пол: <span class="ph-chip" data-ph="representative.display.genderWord"></span>,
+                <span data-if="representative.birthDate">дата рождения: <span class="ph-chip" data-ph="representative.display.birthDateText"></span> рождения</span>,
+                <span data-if="representative.birthPlace">место рождения: <span class="ph-chip" data-ph="representative.birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации
+                <span data-if="representative.display.passportSeries">: серия: <span class="ph-chip" data-ph="representative.display.passportSeries"></span></span>
+                <span data-if="representative.display.passportNumber"> номер: <span class="ph-chip" data-ph="representative.display.passportNumber"></span></span>,
+                <span data-if="representative.passportIssued">выдан: <span class="ph-chip" data-ph="representative.passportIssued"></span></span>,
+                <span data-if="representative.issueDate">дата выдачи: <span class="ph-chip" data-ph="representative.display.issueDateText"></span></span>,
+                <span data-if="representative.departmentCode">код подразделения: <span class="ph-chip" data-ph="representative.departmentCode"></span></span>,
+                <span data-if="representative.display.registrationClause">
+                  <span class="ph-chip" data-ph="representative.display.registrationClause"></span>
+                </span>
+                действует по доверенности
+                <span data-if="representative.attorneyDate"> от <span class="ph-chip" data-ph="representative.display.attorneyDateText"></span></span>,
+                <span data-if="representative.attorneyIssuedBy"> удостоверенной <span class="ph-chip" data-ph="representative.attorneyIssuedBy"></span></span>,
+                <span data-if="representative.attorneyNumber"> реестровый номер: <span class="ph-chip" data-ph="representative.attorneyNumber"></span></span>,
+                от имени:
+                <span class="ph-chip" data-ph="display.fio.gen"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span></span>,
+                паспорт гражданина Российской Федерации
+                <span data-if="display.passportSeries">: серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber"> номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+
+            <!-- 3Б. Представителя нет -->
+            <div data-if="not: representative.fullName">
+              <p style="text-indent: 2em;">
+                <span class="ph-chip" data-ph="fullName"></span>,
+                пол: <span class="ph-chip" data-ph="display.genderWord"></span>,
+                <span data-if="birthDate">дата рождения: <span class="ph-chip" data-ph="display.birthDateText"></span> рождения</span>,
+                <span data-if="birthPlace">место рождения: <span class="ph-chip" data-ph="birthPlace"></span>,</span>
+                паспорт гражданина Российской Федерации:
+                <span data-if="display.passportSeries">серия: <span class="ph-chip" data-ph="display.passportSeries"></span></span>
+                <span data-if="display.passportNumber">номер: <span class="ph-chip" data-ph="display.passportNumber"></span></span>,
+                <span data-if="passportIssued">выдан: <span class="ph-chip" data-ph="passportIssued"></span></span>,
+                <span data-if="issueDate">дата выдачи: <span class="ph-chip" data-ph="display.issueDateText"></span></span>,
+                <span data-if="departmentCode">код подразделения: <span class="ph-chip" data-ph="departmentCode"></span></span>,
+                <span data-if="display.registrationClause">
+                  <span class="ph-chip" data-ph="display.registrationClause"></span>
+                </span>
+                <span data-if="display.showNamedLaterInLine">
+                  <span class="ph-raw" data-ph="display.namedFull"></span>
+                </span>
+              </p>
+            </div>
+          </div>
+        </repeat>
+      </div>
+
+      <!-- ФИНАЛЬНАЯ СТРОКА — ОДИН РАЗ ДЛЯ ВСЕХ ВАРИАНТОВ -->
+      <p style="text-indent: 2em;">
+        <span data-if="calc.tenantsCountIsOne">именуемый в дальнейшем «Наниматель», с другой стороны,</span>
+        <span data-if="not: calc.tenantsCountIsOne">совместно именуемые «Наниматели», с другой стороны,</span>
+      </p>
+
+      <!-- ========== TENANTS (END) ========== -->
+      <p>в дальнейшем совместно именуемые «Стороны», заключили настоящий Акт приёма-передачи квартиры о нижеследующем:</p>
+      <p>1.1. «<span class="ph-chip" data-ph="calc.landlordsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.landlordsTransferVerb"></span>, а «<span class="ph-chip" data-ph="calc.tenantsGroupLabel"></span>» <span class="ph-chip" data-ph="calc.tenantsAcceptVerb"></span> квартиру в найм за плату, во временное владение и пользование для проживания, по адресу: <b><span class="ph-chip" data-ph="terms.address"></span></b>, кадастровый номер: <span class="ph-chip" data-ph="terms.cadastralNumber"></span>, этаж: <span class="ph-chip" data-ph="terms.floor"></span>, количество комнат: <span class="ph-chip" data-ph="terms.rooms"></span>, общая площадь: <span class="ph-chip" data-ph="terms.area"></span> кв.м, с имуществом согласно приложениям №1 и №2, на срок с <span class="ph-chip" data-ph="terms.startDate"></span> по <span class="ph-chip" data-ph="terms.endDate"></span>, и претензий к «<span class="ph-chip" data-ph="calc.landlordsGroupLabelDative"></span>» <span class="ph-chip" data-ph="calc.tenantsHasRightVerb"></span>.</p>
+      <p>
+        1.2. Ключи от квартиры в количестве 
+        <span class="ph-chip" data-ph="terms.keysCountDisplay"></span>
+        — переданы «<span class="ph-chip" data-ph="calc.tenantsGroupLabelDative"></span>».
+      </p>
+
+      <p>
+        1.3. На дату передачи квартиры зафиксированы следующие показания приборов учета: 
+        <span class="ph-chip" data-ph="terms.meterReadingsText"></span>
+      </p>
+
+      <p>1.4. Настоящий Акт составлен и подписан в <span class="ph-chip" data-ph="terms.copiesCount"></span> (<span class="ph-chip" data-ph="terms.copiesCountWordsPrep"></span>) экземплярах, имеющих одинаковую юридическую силу, по одному для каждой из Сторон.</p>
+      <p>1.5. Подписи сторон</p>
+      <!-- Наймодатели -->
+      <div data-repeat="landlords">
+        <table style="width:100%; border-collapse:collapse; margin:6px 0;" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="white-space:nowrap; padding:0 8px 0 0; vertical-align:bottom;">
+              Наймодатель
+              <span data-if="calc.multipleLandlords">
+                <span class="ph-chip" data-ph="current.index"></span>
+              </span>
+            </td>
+            <!-- ЛИНИЯ ДЛЯ ПОДПИСИ (надёжный вариант) -->
+            <td style="width:260px; padding:0 8px; vertical-align:bottom;">
+              <span style="display:inline-block; font-family:monospace; letter-spacing:2px;">______________________________</span>
+            </td>
+            <td style="white-space:nowrap; padding-left:8px; vertical-align:bottom;">
+              / <span class="ph-chip" data-ph="current.fullName"></span> /
+              <span data-if="current.hasRepresentative">
+                <br>
+                по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+                <span data-if="current.representative.attorneyDate">
+                  от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+                </span>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+      <!-- Наниматели -->
+      <div data-repeat="tenants">
+        <table style="width:100%; border-collapse:collapse; margin:6px 0;" border="0" cellspacing="0" cellpadding="0">
+          <tr>
+            <td style="white-space:nowrap; padding:0 8px 0 0; vertical-align:bottom;">
+              Наниматель
+              <span data-if="calc.multipleTenants">
+                <span class="ph-chip" data-ph="current.index"></span>
+              </span>
+            </td>
+            <!-- ЛИНИЯ ДЛЯ ПОДПИСИ (надёжный вариант) -->
+            <td style="width:260px; padding:0 8px; vertical-align:bottom;">
+              <span style="display:inline-block; font-family:monospace; letter-spacing:2px;">______________________________</span>
+            </td>
+            <td style="white-space:nowrap; padding-left:8px; vertical-align:bottom;">
+              / <span class="ph-chip" data-ph="current.fullName"></span> /
+              <span data-if="current.hasRepresentative">
+                <br>
+                по доверенности № <span class="ph-chip" data-ph="current.representative.attorneyNumber"></span>
+                <span data-if="current.representative.attorneyDate">
+                  от <span class="ph-chip" data-ph="current.representative.attorneyDateFormatted"></span>
+                </span>
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+      
+      <!-- === РАССПИСКА ПОКАЗЫВАТЬ ТОЛЬКО ПРИ ОПЛАТЕ НАЛИЧНЫМИ === -->
+      <style>
+        .page-break { page-break-before: always; page-break-after: always; break-before: page; }
+      </style>
+      <div data-if="terms.paymentMethodIsCash">
+        <div class="ph-raw" data-ph="calc.receiptHtml"></div>
+      </div>
+
+    </div>
+    
+
+  </body>
+</html>
