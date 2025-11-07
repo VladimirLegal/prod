@@ -4,6 +4,7 @@ const { query } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 const { diff_match_patch } = require('diff-match-patch');
 const sanitizeHtml = require('sanitize-html');
+const requireAuth = require('../middlewares/requireAuth');
 
 // Блокируем доступ к документам, если нет активного ПДн у пользователя
 async function requireActivePDN(req, res, next) {
@@ -11,7 +12,6 @@ async function requireActivePDN(req, res, next) {
     const uid = req.userId || null;
     if (!uid) return res.status(401).json({ ok:false, error:'unauthorized' });
 
-    const { query } = require('../db'); // если выше уже импортирован — убери эту строку
     const c = await query(
       `select signed_at, revoked_at
          from consents
@@ -85,6 +85,8 @@ function buildDiffHtml(fromHtml, toHtml) {
 
 router.use(express.json({ limit: '10mb' }));
 router.use(express.urlencoded({ extended: true, limit: '10mb' }));
+router.use(requireAuth);
+router.use(requireActivePDN);
 
 router.post('/', async (req, res) => {
   try {

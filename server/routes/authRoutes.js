@@ -2,13 +2,25 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const { query } = require('../db');
+const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const MAGIC_TTL_MIN = 15; // время жизни токена, минут
 
+const magicRequestLimiter = createRateLimiter({
+  windowMs: MAGIC_TTL_MIN * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || '').toLowerCase();
+    return `${req.ip || 'unknown'}:${email}`;
+  },
+  responseBody: { ok: false, error: 'rate_limited' },
+});
+
 // Заглушка: отправка письма (пока просто лог). Заменишь на nodemailer.
 async function sendMagicEmail({ to, link }) {
-  console.log(`📧 [DEV] Magic link for ${to}: ${link}`);
+  const safeLink = link.replace(/token=[^&]+/, 'token=[hidden]');
+  console.log(`📧 [DEV] Magic link for ${to}: ${safeLink}`);
 }
 
 function sha256(s) {
@@ -16,7 +28,7 @@ function sha256(s) {
 }
 
 // POST /api/auth/magic/request
-router.post('/auth/magic/request', async (req, res) => {
+router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
   try {
     const { email, continueUrl } = req.body || {};
     if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
@@ -80,8 +92,7 @@ router.post('/auth/magic/request', async (req, res) => {
     const tokenHash = sha256(rawToken);
     const expiresAt = new Date(Date.now() + (MAGIC_TTL_MIN * 60 * 1000));
 
-    console.log('[magic/request] insert token…');
-    await query(
+      await query(
       `INSERT INTO magic_tokens(user_id, token_hash, expires_at, ip, user_agent)
        VALUES ($1, $2, $3, $4, $5)`,
       [user.id, tokenHash, expiresAt, req.ip || null, req.get('user-agent') || null]
@@ -128,8 +139,12 @@ router.post('/auth/magic/verify', async (req, res) => {
       if (req.session?.userId === user.id) {
         return res.json({ ok: true, user: { id: user.id, email } });
       }
-    return res.status(400).json({ ok: false, error: 'already_used' });
-      
+      return res.status(400).json({ ok: false, error: 'already_used' });
+    }
+
+    if (t.expires_at && new Date(t.expires_at).getTime() < Date.now()) {
+      await query('DELETE FROM magic_tokens WHERE id = $1', [t.id]);
+      return res.status(400).json({ ok: false, error: 'token_expired' });
     }
 
     // пометить использованным
@@ -139,6 +154,19 @@ router.post('/auth/magic/verify', async (req, res) => {
     await query(`update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1`, [user.id]);
 
     // сессия
+    const previousSessionData = { ...req.session };
+    delete previousSessionData.cookie;
+    await new Promise((resolve, reject) => {
+      req.session.regenerate((err) => {
+        if (err) return reject(err);
+        return resolve();
+      });
+    });
+    Object.entries(previousSessionData).forEach(([key, value]) => {
+      if (key !== 'userId') {
+        req.session[key] = value;
+      }
+    });
     req.session.userId = user.id;
     try {
       // 1) если есть черновик — применим к профилю
@@ -222,7 +250,6 @@ router.get('/me', async (req, res) => {
     }
 
     const r = rows[0];
-
     return res.json({
       ok: true,
       user: {
@@ -236,8 +263,12 @@ router.get('/me', async (req, res) => {
         phone_verified_at: r.phone_verified_at,
         consentVersion: r.consent_version || null,
         consentSignedAt: r.consent_signed_at || null,
+        consent: r.consent_version ? {
+          doc_version: r.consent_version,
+          signed_at: r.consent_signed_at,
+        } : null,
         pdnActive: !r.pdn_revoked_at, // активно если НЕ отозвано
-      }
+      },
     });
   } catch (e) {
     console.error('GET /me error:', e);
@@ -246,18 +277,22 @@ router.get('/me', async (req, res) => {
   }
 });
 
-
-// POST /api/auth/logout
-router.post('/auth/logout', (req, res) => {
+function handleLogout(req, res) {
   try {
-    req.session?.destroy(() => {
-      res.clearCookie?.('sid');
-      return res.json({ ok: true });
+    req.session.destroy?.(() => {
+      res.clearCookie('sid');
+      res.json({ ok: true });
     });
-  } catch {
-    return res.json({ ok: true });
+  } catch (e) {
+    console.error('POST /auth/logout', e);
+    res.status(500).json({ ok: false, error: 'logout_failed' });
   }
-});
+}
+
+// POST /api/auth/logout (legacy path)
+router.post('/auth/logout', handleLogout);
+// POST /api/logout (explicit path)
+router.post('/logout', handleLogout);
 
 // === PATCH /api/me ===
 // Обновление профиля текущего пользователя
@@ -325,6 +360,5 @@ router.patch('/me', async (req, res) => {
     return res.status(500).json({ ok:false, error:'update_failed' });
   }
 });
-
 
 module.exports = router;

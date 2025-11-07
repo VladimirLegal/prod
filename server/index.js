@@ -4,7 +4,10 @@ const path = require('path');
 const crypto = require('crypto');
 require('dotenv').config();
 const app = express();
-const { pool, query } = require('./db');
+const { pool } = require('./db');
+const { startConsentCleanup } = require('./utils/consentCleanup');
+
+app.set('trust proxy', 1);
 
 
 
@@ -22,7 +25,7 @@ app.use(cors({
 // ---------- логгер запросов ----------
 app.use((req, res, next) => {
   const safeUrl = (req.originalUrl || req.url || '').split('?')[0];
-  console.log(`[${new Date().toISOString()}] ${req.method} ${safeUrl}`)
+  console.log(`[${new Date().toISOString()}] ${req.method} ${safeUrl}`);
   next();
 });
 
@@ -150,10 +153,13 @@ app.use((req, _res, next) => {
 
 const enableTechUser = process.env.ENABLE_TECH_USER === 'true';
 const techUserId = process.env.TECH_USER_ID;
-if (enableTechUser && process.env.NODE_ENV === 'production') {
-  console.warn('ENABLE_TECH_USER is ignored in production environments.');
+const allowTechUser = enableTechUser && process.env.NODE_ENV === 'development';
+
+if (enableTechUser && process.env.NODE_ENV !== 'development') {
+  console.warn('Tech user middleware is disabled outside of development environments.');
 }
-if (enableTechUser && process.env.NODE_ENV !== 'production') {
+
+if (allowTechUser) {
   if (!techUserId) {
     console.warn('ENABLE_TECH_USER is true, but TECH_USER_ID is not set. Tech user middleware disabled.');
   } else {
@@ -163,7 +169,8 @@ if (enableTechUser && process.env.NODE_ENV !== 'production') {
       next();
     });
   }
-} else if (techUserId && process.env.NODE_ENV === 'production') {
+} else if (techUserId && !enableTechUser && process.env.NODE_ENV === 'production') {
+
   console.warn('TECH_USER_ID is set in production but ENABLE_TECH_USER is false; ignoring fallback user.');
 }
 
@@ -240,24 +247,6 @@ app.listen(PORT, () => {
     fs.mkdirSync(tempDir, { recursive: true });
     console.log('Создана папка temp:', tempDir);
   }
-    // ——— CRON: чистим consents без user_id старше 30 дней ———
-  async function cleanupOrphanConsents() {
-    try {
-      const res = await query(
-        `DELETE FROM consents
-         WHERE user_id IS NULL
-           AND signed_at < (now() - interval '30 days')`
-      );
-      console.log(`[cleanup] orphan consents deleted: ${res.rowCount}`);
-    } catch (e) {
-      console.warn('[cleanup] failed:', e.message);
-    }
-  }
-
-  // Разовый запуск через 1 минуту после старта (чтобы БД «проснулась»)
-  setTimeout(cleanupOrphanConsents, 60 * 1000);
-
-  // Плановая очистка раз в сутки
-  setInterval(cleanupOrphanConsents, 24 * 60 * 60 * 1000);
+    
 
 });

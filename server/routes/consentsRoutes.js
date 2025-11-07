@@ -1,11 +1,34 @@
 const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const { query } = require('../db');
+const requireAuth = require('../middlewares/requireAuth');
+const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
 
-function requireAuth(req, res, next) {
-  if (!req.userId) return res.status(401).json({ ok:false, error:'unauthorized' });
-  next();
+const AGREEMENTS_DIR = path.join(__dirname, '..', 'templates', 'agreements');
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+function getClientIp(req) {
+  return (
+    req.ip ||
+    req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    req.connection?.remoteAddress ||
+    req.socket?.remoteAddress ||
+    ''
+  );
 }
+
+const presignLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || '').toLowerCase();
+    return `${req.ip || 'unknown'}:${email}`;
+  },
+  responseBody: { ok: false, error: 'rate_limited' },
+});
 
 router.use(express.json({ limit: '1mb' }));
 
@@ -15,17 +38,14 @@ router.post('/', async (req, res) => {
     const {
       role = 'guest',
       agreementVersion,
-      consentText
+      consentText,
     } = req.body || {};
 
     if (!agreementVersion || !consentText) {
       return res.status(400).json({ error: 'agreementVersion_and_consentText_required' });
     }
 
-    const ip =
-      req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-      req.socket?.remoteAddress ||
-      null;
+    const ip = getClientIp(req) || null;
     const ua = req.headers['user-agent'] || null;
 
     const sql = `
@@ -43,31 +63,41 @@ router.post('/', async (req, res) => {
 
 // === PRESHN: предварительная подпись согласия (без user_id) ===
 // POST /api/consents/presign  { docType, docVersion, email }
-router.post('/presign', async (req, res) => {
+router.post('/presign', presignLimiter, async (req, res) => {
   try {
     const { docType, docVersion, email } = req.body || {};
     if (!docType || !docVersion || !email) {
-      return res.status(400).json({ ok:false, error:'bad_request' });
+      return res.status(400).json({ ok: false, error: 'bad_request' });
     }
-    const ua = req.get('user-agent') || '';
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || '';
 
-    // простой хэш версии (на будущее можно хранить сам текст версии и считать hash на сервере)
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha256').update(`${docType}:${docVersion}`).digest('hex');
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({ ok: false, error: 'invalid_email' });
+    }
 
+    const normalizedType = String(docType).trim().toLowerCase();
+    const normalizedVersion = String(docVersion).trim().toLowerCase();
+    const versionFile = path.join(AGREEMENTS_DIR, `${normalizedType}_${normalizedVersion}.html`);
+    if (!fs.existsSync(versionFile)) {
+      return res.status(400).json({ ok: false, error: 'unknown_version' });
+    }
     
+    const ua = req.get('user-agent') || '';
+    const ip = getClientIp(req);
+
+    const hash = crypto.createHash('sha256').update(`${normalizedType}:${normalizedVersion}`).digest('hex');
+   
     const ins = await query(
       `INSERT INTO consents(email, user_id, doc_type, doc_version, hash, ip, user_agent, signed_at, created_at)
-      VALUES ($1, NULL, $2, $3, $4, $5, $6, now(), now())
-      RETURNING id`,
-      [email, docType, docVersion, hash, ip, ua]
+       VALUES ($1, NULL, $2, $3, $4, $5, $6, now(), now())
+       RETURNING id`,
+      [normalizedEmail, normalizedType, normalizedVersion, hash, ip, ua]
     );
 
-    return res.json({ ok:true, consentId: ins.rows[0].id });
-  } catch(e) {
+    return res.json({ ok: true, consentId: ins.rows[0].id });
+  } catch (e) {
     console.error('POST /api/consents/presign', e);
-    return res.status(500).json({ ok:false, error:'presign_failed' });
+    return res.status(500).json({ ok: false, error: 'presign_failed' });
   }
 });
 
@@ -77,17 +107,19 @@ router.post('/attach', async (req, res) => {
   try {
     const { consentId, email } = req.body || {};
     if (!consentId || !email) {
-      return res.status(400).json({ ok:false, error:'bad_request' });
+      return res.status(400).json({ ok: false, error: 'bad_request' });
     }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     // 1) найдём пользователя по email без учёта регистра
     const u = await query(
       `SELECT id, email FROM users WHERE lower(email) = lower($1) LIMIT 1`,
-      [email]
+      [normalizedEmail]
     );
     const userId = u.rows[0]?.id;
     if (!userId) {
-      return res.status(404).json({ ok:false, error:'user_not_found' });
+      return res.status(404).json({ ok: false, error: 'user_not_found' });
     }
 
     // 2) привяжем именно по id согласия (email в consents мог быть в другом регистре)
@@ -106,54 +138,13 @@ router.post('/attach', async (req, res) => {
           SET user_id = $1
         WHERE user_id IS NULL
           AND lower(email) = lower($2)`,
-      [userId, email]
+      [userId, normalizedEmail]
     );
 
     return res.json({ ok: upd.rowCount > 0 });
-  } catch(e) {
-    console.error('POST /api/consents/attach', e);
-    return res.status(500).json({ ok:false, error:'attach_failed' });
-  }
-});
-
-// === SIGN-AUTH: подписать ПДн для авторизованного пользователя ===
-// POST /api/consents/sign-auth  { docVersion }
-router.post('/sign-auth', async (req, res) => {
-  try {
-    const userId = req.userId;
-    if (!userId) {
-      return res.status(401).json({ ok:false, error:'unauthorized' });
-    }
-    const { docVersion } = req.body || {};
-    if (!docVersion) {
-      return res.status(400).json({ ok:false, error:'docVersion_required' });
-    }
-
-    const { query } = require('../db');
-    const u = await query(`SELECT id, email FROM users WHERE id=$1`, [userId]);
-    const crypto = require('crypto');
-    // Хэш должен совпадать с тем, как мы делали в /presign:
-    const hash = crypto.createHash('sha256').update(`pdn:${docVersion}`).digest('hex');
-
-    if (!u.rows[0]) return res.status(404).json({ ok:false, error:'user_not_found' });
-
-    const ua = req.get('user-agent') || '';
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection?.remoteAddress || '';
-
-    await query(
-      `INSERT INTO consents (id, email, user_id, doc_type, doc_version, hash, signed_at, ip, user_agent, created_at)
-      VALUES (gen_random_uuid(), $1, $2, 'pdn', $3, $4, now(), $5, $6, now())`,
-      [u.rows[0].email, u.rows[0].id, docVersion, hash, ip, ua]
-    );
-
-
-    // реактивируем кабинет
-    await query(`UPDATE users SET pdn_revoked_at = NULL WHERE id=$1`, [u.rows[0].id]);
-
-    return res.json({ ok: true });
   } catch (e) {
-    console.error('POST /api/consents/sign-auth', e);
-    return res.status(500).json({ ok:false, error:'sign_failed' });
+    console.error('POST /api/consents/attach', e);
+    return res.status(500).json({ ok: false, error: 'attach_failed' });
   }
 });
 
@@ -162,7 +153,7 @@ router.post('/sign-auth', async (req, res) => {
 router.post('/revoke', async (req, res) => {
   try {
     const uid = req.userId || null;
-    if (!uid) return res.status(401).json({ ok:false, error:'unauthorized' });
+    if (!uid) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
     // Проверяем, что у пользователя есть подписанное ПДн
     const { rows } = await query(
@@ -177,15 +168,15 @@ router.post('/revoke', async (req, res) => {
     );
     if (!rows[0]) {
       // Нечего отзывать
-      return res.status(409).json({ ok:false, error:'no_active_consent' });
+      return res.status(409).json({ ok: false, error: 'no_active_consent' });
     }
 
     // Блокируем кабинет: помечаем в users
     await query(`UPDATE users SET pdn_revoked_at = now(), updated_at = now() WHERE id = $1`, [uid]);
-    return res.json({ ok:true, revoked:true });
+    return res.json({ ok: true, revoked: true });
   } catch (e) {
     console.error('POST /api/consents/revoke', e);
-    return res.status(500).json({ ok:false, error:'revoke_failed' });
+    return res.status(500).json({ ok: false, error: 'revoke_failed' });
   }
 });
 
@@ -195,19 +186,24 @@ router.post('/sign-auth', requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
     const { docVersion } = req.body || {};
-    if (!docVersion) return res.status(400).json({ ok:false, error:'bad_request' });
+    if (!docVersion) return res.status(400).json({ ok: false, error: 'bad_request' });
+
+    const normalizedVersion = String(docVersion).trim().toLowerCase();
+    const versionFile = path.join(AGREEMENTS_DIR, `pdn_${normalizedVersion}.html`);
+    if (!fs.existsSync(versionFile)) {
+      return res.status(400).json({ ok: false, error: 'unknown_version' });
+    }
 
     // Подтянем email пользователя
-    const { query } = require('../db');
     const u = await query(`SELECT email FROM users WHERE id=$1`, [userId]);
-    if (!u.rows[0]) return res.status(404).json({ ok:false, error:'user_not_found' });
+    if (!u.rows[0]) return res.status(404).json({ ok: false, error: 'user_not_found' });
     const email = u.rows[0].email;
 
     const ua = req.get('user-agent') || '';
-    const ip = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress || '';
+    const ip = getClientIp(req);
 
     const crypto = require('crypto');
-    const hash = crypto.createHash('sha256').update(`pdn:${docVersion}`).digest('hex');
+    const hash = crypto.createHash('sha256').update(`pdn:${normalizedVersion}`).digest('hex');
 
     // Если было активное согласие — отзовём его
     await query(
@@ -222,15 +218,15 @@ router.post('/sign-auth', requireAuth, async (req, res) => {
       `INSERT INTO consents(user_id, email, doc_type, doc_version, hash, ip, user_agent, signed_at)
        VALUES ($1,$2,'pdn',$3,$4,$5,$6, now())
        RETURNING id, doc_version, signed_at`,
-      [userId, email, docVersion, hash, ip, ua]
+      [userId, email, normalizedVersion, hash, ip, ua]
     );
+    await query(`UPDATE users SET pdn_revoked_at = NULL WHERE id=$1`, [userId]);
 
-    return res.json({ ok:true, consent: ins.rows[0] });
+    return res.json({ ok: true, consent: ins.rows[0] });
   } catch (e) {
     console.error('POST /api/consents/sign-auth', e);
-    return res.status(500).json({ ok:false, error:'sign_failed' });
+    return res.status(500).json({ ok: false, error: 'sign_failed' });
   }
 });
-
 
 module.exports = router;

@@ -1,16 +1,42 @@
+# Node / JS
 node_modules/
-.env
-.env.local
-dist/
-build/
-.DS_Store
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 *.log
+
+# Build / dist артефакты
+build/
+client/build/
+dist/
+coverage/
+
+# Env-файлы во всех местах
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Временные/рабочие
 server/temp/
+.tmp/
+.temp/
+.cache/
+**/.cache/
 
-# prevent nested repos from being tracked as submodules
-legal-portal/.git/
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
 
-legal-portal/
+# Сгенерированные файлы/ключи (на всякий)
+*.pem
+*.key
 
-# Windows reserved device file
-/nul
+# Windows reserved device file (оставим твою строчку)
+nul
+
+
