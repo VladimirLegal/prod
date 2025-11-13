@@ -450,72 +450,135 @@ const RentApartmentWizard = () => {
     const newErrors = {};
     
     if (targetStep === 1) {
-      const landlord = landlords[currentLandlordIndex] || {};
-      
-      // Валидация данных арендодателя
-      if (!landlord.fullName) newErrors.landlordFullName = 'Введите ФИО';
-      if (!landlord.gender) newErrors.landlordGender = 'Укажите пол';
-      
-      const birthDate = parseDate(landlord.birthDate);
-      if (!birthDate) {
-        newErrors.landlordBirthDate = 'Неверная дата рождения';
-      } else {
-        const today = new Date();
-        if (birthDate > today) {
-          newErrors.landlordBirthDate = 'Дата рождения не может быть в будущем';
+      const landlordList = Array.isArray(landlords) ? landlords : [];
+      const landlordsErrors = {};
+      let firstInvalidLandlordIndex = null;
+      let firstInvalidFieldKey = null;
+
+      const markFirstInvalid = (landlordIndex, fieldKey) => {
+        if (firstInvalidLandlordIndex === null) {
+          firstInvalidLandlordIndex = landlordIndex;
+          firstInvalidFieldKey = fieldKey;
         }
-      }
-      
-      if (!landlord.birthPlace) newErrors.landlordBirthPlace = 'Укажите место рождения';
-      if (!landlord.passport) newErrors.landlordPassport = 'Введите паспортные данные';
-      if (!landlord.issueDate) newErrors.landlordIssueDate = 'Укажите дату выдачи паспорта';
-      if (!landlord.passportIssued) newErrors.landlordPassportIssued = 'Укажите кем выдан паспорт';
-      if (!landlord.departmentCode) newErrors.landlordDepartmentCode = 'Введите код подразделения';
-      if (landlord.registrationType !== 'none' && !landlord.registration) {
-	      newErrors.landlordRegistration = 'Укажите адрес регистрации';
-      }
-      if (!landlord.phone) newErrors.landlordPhone = 'Введите номер телефона';
-      
-      // Валидация документов
-      (Array.isArray(landlord.documents) ? landlord.documents : []).forEach((doc, index) => {
-        if (!doc.doc) newErrors[`doc_${index}`] = 'Укажите тип документа';
-        if (!doc.docDate) newErrors[`docDate_${index}`] = 'Укажите дату документа';
+      };
+
+      landlordList.forEach((rawLandlord, landlordIndex) => {
+        const landlord = rawLandlord || {};
+        const bucket = {};
+        const setError = (fieldKey, message) => {
+          if (!bucket[fieldKey]) {
+            bucket[fieldKey] = message;
+            markFirstInvalid(landlordIndex, fieldKey);
+          }
+        };
+
+        // Валидация данных арендодателя
+        if (!landlord.fullName) setError('landlordFullName', 'Введите ФИО');
+        if (!landlord.gender) setError('landlordGender', 'Укажите пол');
+
+        const birthDate = parseDate(landlord.birthDate);
+        if (!birthDate) {
+          setError('landlordBirthDate', 'Неверная дата рождения');
+        } else {
+          const today = new Date();
+          if (birthDate > today) {
+            setError('landlordBirthDate', 'Дата рождения не может быть в будущем');
+          }
+        }
+
+        if (!landlord.birthPlace) setError('landlordBirthPlace', 'Укажите место рождения');
+        if (!landlord.passport) setError('landlordPassport', 'Введите паспортные данные');
+        if (!landlord.issueDate) setError('landlordIssueDate', 'Укажите дату выдачи паспорта');
+        if (!landlord.passportIssued) setError('landlordPassportIssued', 'Укажите кем выдан паспорт');
+        if (!landlord.departmentCode) setError('landlordDepartmentCode', 'Введите код подразделения');
+        if (landlord.registrationType !== 'none' && !landlord.registration) {
+          setError('landlordRegistration', 'Укажите адрес регистрации');
+        }
+        if (!landlord.phone) setError('landlordPhone', 'Введите номер телефона');
+
+        // Валидация документов о собственности
+        (Array.isArray(landlord.documents) ? landlord.documents : []).forEach((docGroup, groupIndex) => {
+          const basisDocs = Array.isArray(docGroup?.basisDocuments) ? docGroup.basisDocuments : [];
+
+          if (basisDocs.length === 0) {
+            setError(`basisMissing_${groupIndex}`, 'Добавьте хотя бы один документ основания');
+          }
+
+          basisDocs.forEach((basisDoc, basisIndex) => {
+            if (!basisDoc?.title) {
+              setError(`basisTitle_${groupIndex}_${basisIndex}`, 'Укажите название документа');
+            }
+
+            if (!basisDoc?.docDate) {
+              setError(`basisDate_${groupIndex}_${basisIndex}`, 'Укажите дату документа');
+            }
+          });
+
+          if (!docGroup?.regNumber) {
+            setError(`regNumber_${groupIndex}`, 'Укажите номер регистрации');
+          }
+
+          if (!docGroup?.regDate) {
+            setError(`regDate_${groupIndex}`, 'Укажите дату регистрации');
+          }
+        });
+
+        // Валидация представителя (если есть)
+        if (landlord.hasRepresentative) {
+          const representative = landlord.representative || {};
+          if (!representative.fullName)
+            setError('landlordAttorneyFullName', 'Введите ФИО представителя');
+          if (!representative.gender)
+            setError('landlordAttorneyGender', 'Укажите пол представителя');
+
+          const attorneyBirthDate = parseDate(representative.birthDate);
+          if (!attorneyBirthDate) {
+            setError('landlordAttorneyBirthDate', 'Неверная дата рождения представителя');
+          }
+
+          if (!representative.birthPlace)
+            setError('landlordAttorneyBirthPlace', 'Укажите место рождения представителя');
+          if (!representative.passport)
+            setError('landlordAttorneyPassport', 'Введите паспортные данные представителя');
+          if (!representative.issueDate)
+            setError('landlordAttorneyIssueDate', 'Укажите дату выдачи паспорта представителя');
+          if (!representative.passportIssued)
+            setError('landlordAttorneyPassportIssued', 'Укажите кем выдан паспорт представителя');
+          if (!representative.departmentCode)
+            setError('landlordAttorneyDepartmentCode', 'Введите код подразделения представителя');
+          if (!representative.registration)
+            setError('landlordAttorneyRegistration', 'Укажите адрес регистрации представителя');
+          if (!representative.attorneyNumber)
+            setError('landlordAttorneyNumber', 'Введите номер доверенности');
+          if (!representative.attorneyDate)
+            setError('landlordAttorneyDate', 'Укажите дату доверенности');
+          if (!representative.attorneyIssuedBy)
+            setError('landlordAttorneyIssuedBy', 'Укажите кем выдана доверенность');
+        }
+
+        if (Object.keys(bucket).length > 0) {
+          landlordsErrors[landlordIndex] = bucket;
+        }
       });
-      
-      // Валидация представителя (если есть)
-      if (landlord.hasRepresentative) {
-        const representative = landlord.representative || {};
-        if (!representative.fullName) 
-          newErrors.landlordAttorneyFullName = 'Введите ФИО представителя';
-        if (!representative.gender) 
-          newErrors.landlordAttorneyGender = 'Укажите пол представителя';
-        
-        const attorneyBirthDate = parseDate(representative.birthDate);
-        if (!attorneyBirthDate) {
-          newErrors.landlordAttorneyBirthDate = 'Неверная дата рождения представителя';
+
+      if (Object.keys(landlordsErrors).length > 0) {
+        newErrors.landlords = landlordsErrors;
+
+        if (
+          firstInvalidLandlordIndex !== null &&
+          firstInvalidLandlordIndex !== currentLandlordIndex
+        ) {
+          setCurrentLandlordIndex(firstInvalidLandlordIndex);
         }
-        
-        if (!representative.birthPlace)
-          newErrors.landlordAttorneyBirthPlace = 'Укажите место рождения представителя';
-        if (!representative.passport)
-          newErrors.landlordAttorneyPassport = 'Введите паспортные данные представителя';
-        if (!representative.issueDate) 
-          newErrors.landlordAttorneyIssueDate = 'Укажите дату выдачи паспорта представителя';
-        if (!representative.passportIssued)
-          newErrors.landlordAttorneyPassportIssued = 'Укажите кем выдан паспорт представителя';
-        if (!representative.departmentCode) 
-          newErrors.landlordAttorneyDepartmentCode = 'Введите код подразделения представителя';
-        if (!representative.registration) 
-          newErrors.landlordAttorneyRegistration = 'Укажите адрес регистрации представителя';
-        if (!representative.attorneyNumber) 
-          newErrors.landlordAttorneyNumber = 'Введите номер доверенности';
-        if (!representative.attorneyDate) 
-          newErrors.landlordAttorneyDate = 'Укажите дату доверенности';
-        if (!representative.attorneyIssuedBy) 
-          newErrors.landlordAttorneyIssuedBy = 'Укажите кем выдана доверенность';
+
+        if (firstInvalidLandlordIndex !== null && firstInvalidFieldKey) {
+          newErrors.landlordsFocus = {
+            landlordIndex: firstInvalidLandlordIndex,
+            fieldKey: firstInvalidFieldKey
+          };
+        }
       }
-      
-      
+          
     } else if (targetStep === 2) {
       const tenant = tenants[currentTenantIndex] || {};
 
