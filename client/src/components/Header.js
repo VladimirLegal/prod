@@ -54,8 +54,8 @@ const Header = () => {
         <nav className="hidden md:block">
           <ul className="flex space-x-6">
             <li>
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className={`hover:text-blue-600 transition ${location.pathname === '/' ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
               >
                 Главная
@@ -77,6 +77,16 @@ const Header = () => {
                 О нас
               </Link>
             </li>
+            {me?.role === 'admin' && (
+              <li>
+                <Link
+                  to="/admin"
+                  className={`hover:text-blue-600 transition ${location.pathname.startsWith('/admin') ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
+                >
+                  Админка
+                </Link>
+              </li>
+            )}
           </ul>
         </nav>
         
@@ -153,6 +163,15 @@ const Header = () => {
           >
             О нас
           </Link>
+          {me?.role === 'admin' && (
+            <Link
+              to="/admin"
+              className="block py-2 text-gray-800 hover:bg-blue-50"
+              onClick={() => setMenuOpen(false)}
+            >
+              Админка
+            </Link>
+          )}
 
           {me ? (
             <>

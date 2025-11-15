@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 require('dotenv').config();
 const app = express();
@@ -190,6 +191,9 @@ app.use('/api', authRoutes);
 const agreementsRoutes = require('./routes/agreementsRoutes');
 app.use('/api/agreements', agreementsRoutes);
 
+const adminRoutes = require('./routes/adminRoutes');
+app.use('/api/admin', adminRoutes);
+
 // ---------- статические файлы (только для авторизованных) ----------
 const tempDir = path.join(__dirname, 'temp');
 const tempRouter = express.Router();
@@ -204,6 +208,23 @@ app.use('/temp', tempRouter);
 
 // ===== Static content pages (MVP) =====
 const contentDir = path.join(__dirname, 'content');
+const clientBuildDir = path.join(__dirname, '..', 'client', 'build');
+const clientIndexFile = path.join(clientBuildDir, 'index.html');
+const trimmedClientOrigin = CLIENT_ORIGIN.replace(/\/+$/, '');
+
+function serveSpaRoute(req, res) {
+  if (fs.existsSync(clientIndexFile)) {
+    return res.sendFile(clientIndexFile);
+  }
+
+  if (trimmedClientOrigin) {
+    const originalPath = req.originalUrl || req.url || '/';
+    const redirectTarget = `${trimmedClientOrigin}${originalPath.startsWith('/') ? originalPath : `/${originalPath}`}`;
+    return res.redirect(302, redirectTarget);
+  }
+
+  res.status(503).send('Client application is not available. Build the client or set CLIENT_ORIGIN.');
+}
 
 // Белый список slug -> файл
 const PAGE_WHITELIST = new Map([
