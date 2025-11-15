@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faHouse, faHandshake, faFileContract } from '@fortawesome/free-solid-svg-icons';
 
-const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000';
+const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || ''; // '' => относительные URL
 
 
 // Унифицированные стили кнопок (Tailwind)
@@ -94,13 +94,10 @@ async function apiDeleteDocumentForever(id) {
   return res.json();
 }
 
-// === Экспорт из карточек в ЛК ===
-const API = process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000';
-
 // Получить id последней версии для документа (если его нет в карточке)
 async function fetchLastVersionId(docId) {
   try {
-    const r = await fetch(`${API}/api/documents/${encodeURIComponent(docId)}/versions`, {
+    const r = await fetch(`${API_ORIGIN}/api/documents/${encodeURIComponent(docId)}/versions`, {
       credentials: 'include',
       cache: 'no-store',
     });
@@ -150,9 +147,10 @@ async function handleExportPdf(doc) {
 
     // 4) отправляем в РАБОЧИЙ PDF-генератор (как в редакторе)
     const apiOrigin = process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000';
-    const res = await fetch(`${apiOrigin}/api/docs/1/export/pdf`, {
+    const res = await fetch(`${API_ORIGIN}/api/docs/1/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       // генератор ждёт { html, data }
       body: JSON.stringify({ html, data: formJson }),
     });
@@ -210,9 +208,7 @@ async function handleExportDocx(doc) {
     } catch {}
 
     // 4) отдаём на уже рабочий генератор DOCX (тот же, что использовал редактор)
-    const res = await fetch(
-      `${process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000'}/api/docs/1/export/docx`,
-      {
+    const res = await fetch(`${API_ORIGIN}/api/docs/1/export/docx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -893,7 +889,7 @@ export default function UserDashboard() {
                     Подписано: {formatDateRu(me?.consentSignedAt)}
                     <a
                       className="text-blue-600 hover:underline"
-                      href={`${process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000'}/api/agreements/html?doc=pdn&v=${encodeURIComponent(me?.consentVersion || '')}`}
+                      href={`${API_ORIGIN}/api/agreements/html?doc=pdn&v=${encodeURIComponent(me?.consentVersion || '')}`}
                       target="_blank" rel="noreferrer"
                     >
                       Открыть текст версии ({me?.consentVersion || '—'})

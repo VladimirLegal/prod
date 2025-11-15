@@ -1,15 +1,21 @@
+// client/src/pages/PropertyTypePage.jsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-  faBuilding, 
-  faDoorOpen, 
-  faHome, 
-  faTree, 
-  faHotel, 
+import {
+  faBuilding,
+  faDoorOpen,
+  faHome,
+  faTree,
+  faHotel,
   faStore,
   faWarehouse
 } from '@fortawesome/free-solid-svg-icons';
+import { safeJson } from '../utils/http';
+
+// В проде оставляем пустым -> запросы пойдут на /api текущего домена через Nginx.
+// В dev можно выставить REACT_APP_API_ORIGIN=http://localhost:5000
+const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || '';
 
 const PropertyTypePage = () => {
   const navigate = useNavigate();
@@ -30,8 +36,8 @@ const PropertyTypePage = () => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/me', { credentials: 'include' });
-        const data = await res.json().catch(() => ({}));
+        const res = await fetch(`${API_ORIGIN}/api/me`, { credentials: 'include' });
+        const data = await safeJson(res).catch(() => ({}));
         if (!cancelled) setIsAuthed(!!data?.user?.id);
       } catch {
         if (!cancelled) setIsAuthed(false);
@@ -67,7 +73,6 @@ const PropertyTypePage = () => {
     return () => clearInterval(id);
   }, [showConsent]);
 
-  
   const propertyTypes = [
     { id: 'apartment', name: 'Квартиру', icon: faBuilding },
     { id: 'room', name: 'Комнату', icon: faDoorOpen },
@@ -94,7 +99,6 @@ const PropertyTypePage = () => {
     }
   };
 
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="mb-6 flex justify-start">
@@ -109,11 +113,11 @@ const PropertyTypePage = () => {
       <h1 className="text-2xl md:text-3xl font-bold mb-8 text-center">
         {transactionType === 'rent' ? 'Аренда' : 'Покупка/продажа'}
       </h1>
-      
+
       <p className="text-lg text-gray-700 mb-8 text-center">
         Выберите тип недвижимости:
       </p>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {propertyTypes.map((property) => (
           <button
@@ -121,9 +125,9 @@ const PropertyTypePage = () => {
             onClick={() => handleSelect(property.id)}
             className="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-shadow flex items-start"
           >
-            <FontAwesomeIcon 
-              icon={property.icon} 
-              className="text-blue-600 text-2xl mt-1 mr-4" 
+            <FontAwesomeIcon
+              icon={property.icon}
+              className="text-blue-600 text-2xl mt-1 mr-4"
             />
             <div className="text-left">
               <h3 className="text-lg font-semibold">{property.name}</h3>
@@ -134,6 +138,7 @@ const PropertyTypePage = () => {
           </button>
         ))}
       </div>
+
       {showConsent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
@@ -147,6 +152,17 @@ const PropertyTypePage = () => {
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:underline text-sm"
+              onClick={() => {
+                // пометим локально просмотр — чтобы чекбокс стал активным
+                localStorage.setItem(AGREEMENT_KEY, '1');
+                // и сообщим другим вкладкам
+                try {
+                  const bc = new BroadcastChannel('agreement-consent');
+                  bc.postMessage({ type: 'viewed', version: AGREEMENT_VERSION });
+                  bc.close();
+                } catch (_) {}
+                setViewedAgreement(true);
+              }}
             >
               Открыть полное соглашение
             </a>
@@ -185,16 +201,19 @@ const PropertyTypePage = () => {
                   try {
                     const consentText = 'Редакция v1.0 от 09.10.2025. (вставить фактический текст)';
                     const agreementVersion = 'v1.0_2025-10-09';
-                    const res = await fetch('/api/consents', {
+
+                    const res = await fetch(`${API_ORIGIN}/api/consents`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include', // чтобы сессионные куки дошли
                       body: JSON.stringify({
                         role: 'guest',
                         agreementVersion,
                         consentText
                       })
                     });
-                    const payload = await res.json();
+
+                    const payload = await safeJson(res);
                     if (!res.ok) throw new Error(payload?.error || 'failed_to_save_consent');
 
                     localStorage.setItem('consent_id', payload.id);

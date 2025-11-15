@@ -4,7 +4,7 @@ const router = express.Router();
 const { query } = require('../db');
 const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
 
-const APP_URL = process.env.PUBLIC_APP_URL || 'https://legal-portal.pro';
+const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const MAGIC_TTL_MIN = 15; // время жизни токена, минут
 
 const magicRequestLimiter = createRateLimiter({
@@ -17,53 +17,11 @@ const magicRequestLimiter = createRateLimiter({
   responseBody: { ok: false, error: 'rate_limited' },
 });
 
-// --- Реальная отправка письма через SMTP (Yandex) ---
-const nodemailer = require('nodemailer');
-
+// Заглушка: отправка письма (пока просто лог). Заменишь на nodemailer.
 async function sendMagicEmail({ to, link }) {
-  const {
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_SECURE,
-    SMTP_USER,
-    SMTP_PASSWORD,
-    SMTP_FROM
-  } = process.env;
-
-  // ВАЖНО: все значения берём из .env, НИКАКИХ «сырых» строк прямо в коде
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,                               // например: smtp.yandex.ru
-    port: Number(SMTP_PORT) || 465,               // 465 или 587
-    secure: String(SMTP_SECURE) === 'true',       // 'true' -> true
-    auth: {
-      user: SMTP_USER,                            // no-reply@legal-portal.pro
-      pass: SMTP_PASSWORD,                        // пароль приложения Яндекса
-    },
-  });
-
-  const mailOptions = {
-    from: SMTP_FROM || `"Legal Portal" <${SMTP_USER}>`,
-    to,
-    subject: 'Вход на портал legal-portal.pro',
-    text: `Для входа на портал перейдите по ссылке (действует 15 минут):\n${link}\n\nЕсли вы не запрашивали вход, просто проигнорируйте это письмо.`,
-    html: `
-      <p>Здравствуйте!</p>
-      <p>Для входа на <b>legal-portal.pro</b> нажмите на кнопку ниже:</p>
-      <p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#1d72b8;color:#fff;border-radius:5px;text-decoration:none;">Войти в личный кабинет</a></p>
-      <p>Ссылка действует 15 минут. Если вы не запрашивали вход, просто проигнорируйте это письмо.</p>
-    `,
-  };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`📤 Magic link sent to ${to}: messageId=${info.messageId}`);
-    return true;
-  } catch (err) {
-    console.error('❌ Ошибка при отправке magic-link письма:', err.message);
-    throw new Error('email_send_failed');
-  }
+  const safeLink = link.replace(/token=[^&]+/, 'token=[hidden]');
+  console.log(`📧 [DEV] Magic link for ${to}: ${safeLink}`);
 }
-
 
 function sha256(s) {
   return crypto.createHash('sha256').update(String(s)).digest('hex');
