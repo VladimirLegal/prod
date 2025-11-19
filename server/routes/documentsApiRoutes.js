@@ -3,7 +3,7 @@ const router = express.Router();
 const { query } = require('../db');
 const { v4: uuidv4 } = require('uuid');
 const { diff_match_patch } = require('diff-match-patch');
-const sanitizeHtml = require('sanitize-html');
+const { sanitizeDiffHtml } = require('../services/documentService');
 const requireAuth = require('../middlewares/requireAuth');
 
 // Блокируем доступ к документам, если нет активного ПДн у пользователя
@@ -48,7 +48,9 @@ async function getSqlVersionHtml(docId, versionId) {
 // === Helper: построить diff-HTML из двух HTML строк ===
 function buildDiffHtml(fromHtml, toHtml) {
   const dmp = new diff_match_patch();
-  const diff = dmp.diff_main(String(fromHtml || ''), String(toHtml || ''));
+  const cleanFrom = sanitizeDiffHtml(String(fromHtml || ''));
+  const cleanTo = sanitizeDiffHtml(String(toHtml || ''));
+  const diff = dmp.diff_main(cleanFrom, cleanTo);
   dmp.diff_cleanupSemantic(diff);
 
   const diffHtml = diff.map(([op, text]) => {
@@ -60,26 +62,7 @@ function buildDiffHtml(fromHtml, toHtml) {
 
   const wrapped = `<div class="diff-report">${diffHtml || '<p class="diff-empty">Изменений не найдено.</p>'}</div>`;
 
-  // базовая очистка
-  return sanitizeHtml(wrapped, {
-    allowedTags: [
-      'a','b','br','caption','col','colgroup','del','div','em','h1','h2','h3','h4','h5','h6',
-      'hr','i','ins','li','ol','p','s','span','strong','sub','sup','table','tbody','td',
-      'tfoot','th','thead','tr','u','ul'
-    ],
-    allowedAttributes: {
-      '*': ['class'],
-      a: ['href','name','target','rel'],
-      table: ['class','border','cellpadding','cellspacing','width'],
-      td: ['class','colspan','rowspan','width','align'],
-      th: ['class','colspan','rowspan','width','align'],
-      col: ['span','width'],
-      colgroup: ['span','width'],
-      ins: ['class'],
-      del: ['class']
-    },
-    allowProtocolRelative: true
-  });
+  return sanitizeDiffHtml(wrapped);
 }
 
 
@@ -102,7 +85,8 @@ router.post('/', async (req, res) => {
 
     if (html && html.length) {
       await query(
-        `insert into document_versions (document_id, html) values ($1,$2)`,
+        `insert into document_versions (document_id, html, source, author_type)
+         values ($1,$2,'owner_editor','owner')`,
         [id, html]
       );
     }
@@ -168,7 +152,11 @@ router.put('/:id', async (req, res) => {
 
     if (html !== undefined) {
       await query(`update documents set current_html = $1 where id = $2`, [html, id]);
-      await query(`insert into document_versions (document_id, html) values ($1,$2)`, [id, html]);
+      await query(
+        `insert into document_versions (document_id, html, source, author_type)
+         values ($1,$2,'owner_editor','owner')`,
+        [id, html]
+      );
     }
     if (title !== undefined) {
       await query(`update documents set title = $1 where id = $2`, [title, id]);
@@ -201,9 +189,10 @@ router.get('/:id/versions', async (req, res) => {
     if (!chk.length) return res.status(404).json({ error: 'not_found' });
 
     const { rows } = await query(
-      `select id, created_at from document_versions
-       where document_id = $1
-       order by created_at desc`,
+      `select id, created_at, source, author_type, review_session_id, is_baseline_for_review
+         from document_versions
+        where document_id = $1
+        order by created_at desc`,
       [id]
     );
     res.json(rows);

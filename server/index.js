@@ -182,6 +182,17 @@ app.use('/api/documents', documentsApiRouter);
 const documentRoutes = require('./routes/documentRoutes'); // /api (PDF/DOCX и т.п.)
 app.use('/api', documentRoutes);
 
+const {
+  documentReviewRoutes,
+  ownerReviewRoutes
+} = require('./routes/documentReviewRoutes');
+app.use('/api/docs', documentReviewRoutes);
+app.use('/api/reviews', ownerReviewRoutes);
+
+const reviewRoutes = require('./routes/reviewRoutes');
+app.use('/api/review', reviewRoutes);
+
+
 const consentsRouter = require('./routes/consentsRoutes'); // /api/consents
 app.use('/api/consents', consentsRouter);
 

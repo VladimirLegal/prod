@@ -2,14 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useLocation } from 'react-router-dom';
 import { useEditor, EditorContent } from "@tiptap/react";
-import { Editor } from '@tiptap/react'
 import StarterKit from "@tiptap/starter-kit";
 
 // ↓↓↓ ДОБАВИТЬ вот это:
 import TextAlign from "@tiptap/extension-text-align";
 import Underline from "@tiptap/extension-underline";
-import BulletList from "@tiptap/extension-bullet-list";
-import OrderedList from "@tiptap/extension-ordered-list";
 import { Extension } from '@tiptap/core';
 
 
@@ -32,12 +29,14 @@ import {
   faAlignJustify,
   faUndo,
   faRedo,
-  faPlay,
   faSave,
   faFilePdf,
   faUndoAlt,
   faFileWord,
-  faArrowLeft,
+  faPaperPlane,
+  faLink,
+  faCopy,
+  faEye,
 } from '@fortawesome/free-solid-svg-icons';
 
 const CustomTable = Table.extend({
@@ -195,6 +194,18 @@ export default function DocumentEditorPage() {
 
   const skipNextDocLoadRef = useRef(false);
   const [isAuthed, setIsAuthed] = useState(false);
+
+  const [reviewSessions, setReviewSessions] = useState([]);
+  const [reviewSessionsLoading, setReviewSessionsLoading] = useState(false);
+  const [reviewSessionsError, setReviewSessionsError] = useState('');
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [reviewRole, setReviewRole] = useState('tenant');
+  const [reviewValidityDays, setReviewValidityDays] = useState(7);
+  const [reviewMessage, setReviewMessage] = useState('');
+  const [reviewCreating, setReviewCreating] = useState(false);
+  const [reviewCreationSuccess, setReviewCreationSuccess] = useState(null);
+  const [reviewBaseVersionId, setReviewBaseVersionId] = useState(null);
+  const reviewUrlsRef = useRef({});
   useEffect(() => {
     let mounted = true;
     fetchMe().then(r => { if (mounted) setIsAuthed(!!(r.ok && r.user)); });
@@ -222,6 +233,158 @@ export default function DocumentEditorPage() {
     };
   }, []);
 
+  const reviewRoleLabels = useMemo(() => ({
+    landlord: 'Наймодатель',
+    tenant: 'Наниматель',
+    agent: 'Агент',
+    lawyer: 'Юрист',
+    other: 'Другое'
+  }), []);
+
+  const reviewStatusLabels = useMemo(() => ({
+    pending: 'Ожидание ответа',
+    responded: 'Правки получены',
+    revoked: 'Отозвана',
+    expired: 'Срок истёк'
+  }), []);
+
+  const reviewStatusPalette = useMemo(() => ({
+    pending: { background: '#dbeafe', color: '#1e3a8a' },
+    responded: { background: '#fef3c7', color: '#92400e' },
+    revoked: { background: '#fee2e2', color: '#b91c1c' },
+    expired: { background: '#e5e7eb', color: '#374151' }
+  }), []);
+
+  const modalOverlayStyle = useMemo(() => ({
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(15, 23, 42, 0.55)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px'
+  }), []);
+
+  const modalBodyStyle = useMemo(() => ({
+    background: '#fff',
+    borderRadius: 16,
+    maxWidth: 520,
+    width: '100%',
+    padding: '28px',
+    boxShadow: '0 24px 64px rgba(15, 23, 42, 0.18)'
+  }), []);
+
+  const getStoredReviewUrl = useCallback((sessionId) => {
+    if (!sessionId) return null;
+    if (reviewUrlsRef.current[sessionId]) {
+      return reviewUrlsRef.current[sessionId];
+    }
+    try {
+      const stored = window.localStorage.getItem(`reviewSessionUrl:${sessionId}`);
+      if (stored) {
+        reviewUrlsRef.current[sessionId] = stored;
+        return stored;
+      }
+    } catch (e) {
+      console.warn('localStorage unavailable for review url', e);
+    }
+    return null;
+  }, []);
+
+  const rememberReviewUrl = useCallback((sessionId, url) => {
+    if (!sessionId || !url) return;
+    reviewUrlsRef.current[sessionId] = url;
+    try {
+      window.localStorage.setItem(`reviewSessionUrl:${sessionId}`, url);
+    } catch (e) {
+      console.warn('Failed to persist review url', e);
+    }
+  }, []);
+
+  const forgetReviewUrl = useCallback((sessionId) => {
+    if (!sessionId) return;
+    delete reviewUrlsRef.current[sessionId];
+    try {
+      window.localStorage.removeItem(`reviewSessionUrl:${sessionId}`);
+    } catch (e) {
+      console.warn('Failed to forget review url', e);
+    }
+  }, []);
+
+  const formatDateTime = useCallback((value) => {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('ru-RU');
+  }, []);
+
+  const fetchReviewSessions = useCallback(async (explicitDocId) => {
+    const targetId = explicitDocId || docUUID;
+    if (!targetId) return;
+    setReviewSessionsLoading(true);
+    setReviewSessionsError('');
+    try {
+      const res = await fetch(`/api/docs/${encodeURIComponent(targetId)}/reviews`, {
+        credentials: 'include'
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Не удалось получить список сессий');
+      }
+      const sessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+      setReviewSessions(sessions);
+      sessions.forEach((session) => {
+        getStoredReviewUrl(session.id);
+      });
+    } catch (e) {
+      console.error('fetchReviewSessions error:', e);
+      setReviewSessionsError(e?.message || 'Не удалось загрузить согласования');
+    } finally {
+      setReviewSessionsLoading(false);
+    }
+  }, [docUUID, getStoredReviewUrl]);
+
+  useEffect(() => {
+    fetchReviewSessions();
+  }, [fetchReviewSessions]);
+
+  const latestVersionId = useMemo(() => {
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+    const sorted = [...versions].sort((a, b) => {
+      const ad = new Date(a.created_at || a.createdAt || 0).getTime();
+      const bd = new Date(b.created_at || b.createdAt || 0).getTime();
+      return bd - ad;
+    });
+    return sorted[0]?.id || sorted[0]?.versionId || null;
+  }, [versions]);
+
+  const preferredOwnerVersionId = useMemo(() => {
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+    const sorted = [...versions].sort((a, b) => {
+      const ad = new Date(a.created_at || a.createdAt || 0).getTime();
+      const bd = new Date(b.created_at || b.createdAt || 0).getTime();
+      return bd - ad;
+    });
+    const ownerVersion = sorted.find(v => (v.author_type || v.authorType) === 'owner' || (v.source || '') === 'owner_editor');
+    return ownerVersion?.id || ownerVersion?.versionId || sorted[0]?.id || sorted[0]?.versionId || null;
+  }, [versions]);
+
+  useEffect(() => {
+    setReviewBaseVersionId(prev => {
+      if (prev && versions.some(v => String(v.id) === String(prev))) return prev;
+      return preferredOwnerVersionId || prev;
+    });
+  }, [preferredOwnerVersionId, versions]);
+
+  const canSendToReview = useMemo(() => {
+    return Boolean(docUUID && reviewBaseVersionId);
+  }, [docUUID, reviewBaseVersionId]);
+
+  const handleRefreshSessions = useCallback(() => {
+    fetchReviewSessions();
+  }, [fetchReviewSessions]);
+
   const reloadVersions = useCallback(async () => {
     if (!docUUID) return; // только для настоящего документа (UUID)
 
@@ -235,7 +398,11 @@ export default function DocumentEditorPage() {
             versionId: v.id,
             created_at: v.created_at,
             seq: v.seq || (idx + 1),
-            label: v.label || `v${v.seq || (idx + 1)}`
+            label: v.label || `v${v.seq || (idx + 1)}`,
+            source: v.source,
+            author_type: v.author_type,
+            review_session_id: v.review_session_id,
+            is_baseline_for_review: v.is_baseline_for_review,
           }))
         : [];
 
@@ -245,6 +412,7 @@ export default function DocumentEditorPage() {
       const ids = new Set(list.map(v => String(v.id)));
       setSelectedFrom(prev => (prev && ids.has(String(prev)) ? prev : null));
       setSelectedTo(prev => (prev && ids.has(String(prev)) ? prev : null));
+      setReviewBaseVersionId(prev => (prev && ids.has(String(prev)) ? prev : null));
     } catch (e) {
       console.error("Failed to load versions list:", e);
     }
@@ -273,6 +441,328 @@ export default function DocumentEditorPage() {
     fontWeight: 600,
     textTransform: 'uppercase'
   }), []);
+
+  const reviewActionButtonStyle = useMemo(() => ({
+    padding: '6px 12px',
+    borderRadius: 10,
+    border: '1px solid #d6ddea',
+    background: '#f8fafc',
+    color: '#1f2937',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer'
+  }), []);
+
+  const renderReviewSection = () => (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>Согласования по договору</h3>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            onClick={handleRefreshSessions}
+            disabled={reviewSessionsLoading}
+            style={{ ...reviewActionButtonStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#1d4ed8' }}
+          >
+            Обновить
+          </button>
+        </div>
+      </div>
+
+      {reviewSessionsError && (
+        <div style={{
+          marginBottom: 12,
+          padding: '10px 14px',
+          borderRadius: 10,
+          background: '#fee2e2',
+          color: '#991b1b',
+          border: '1px solid #fecaca'
+        }}>
+          {reviewSessionsError}
+        </div>
+      )}
+
+      {!docUUID ? (
+        <p style={{ color: '#4b5563' }}>
+          Сохраните документ, чтобы отправлять его на согласование и отслеживать ответы контрагентов.
+        </p>
+      ) : reviewSessionsLoading ? (
+        <p style={{ color: '#4b5563' }}>Загружаем сессии согласования…</p>
+      ) : reviewSessions.length === 0 ? (
+        <p style={{ color: '#4b5563' }}>
+          Пока нет активных сессий согласования. Нажмите «Отправить на согласование», чтобы создать защищённую ссылку.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {reviewSessions.map((session) => {
+            const statusLabel = reviewStatusLabels[session.status] || session.status;
+            const palette = reviewStatusPalette[session.status] || { background: '#e5e7eb', color: '#111827' };
+            const reviewUrl = getStoredReviewUrl(session.id);
+            return (
+              <div
+                key={session.id}
+                style={{
+                  border: '1px solid #dce3f3',
+                  borderRadius: 16,
+                  padding: '18px 20px',
+                  background: '#ffffff',
+                  boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)'
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'row', gap: 16, alignItems: 'flex-start' }}>
+                  <div style={{ flex: '1 1 auto' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ fontWeight: 600, color: '#1f2937' }}>
+                        {reviewRoleLabels[session.counterpartyRole] || 'Контрагент'}
+                        {session.counterpartyName ? ` · ${session.counterpartyName}` : ''}
+                      </span>
+                      <span
+                        style={{
+                          background: palette.background,
+                          color: palette.color,
+                          padding: '4px 10px',
+                          borderRadius: 9999,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          textTransform: 'uppercase'
+                        }}
+                      >
+                        {statusLabel}
+                      </span>
+                      {session.noChanges && session.status === 'responded' && (
+                        <span style={{
+                          background: '#dcfce7',
+                          color: '#166534',
+                          padding: '4px 10px',
+                          borderRadius: 9999,
+                          fontSize: 12,
+                          fontWeight: 600
+                        }}>
+                          Без правок
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#4b5563', display: 'grid', gap: 4 }}>
+                      <span>Создано: {formatDateTime(session.createdAt)}</span>
+                      {session.expiresAt && <span>Действует до: {formatDateTime(session.expiresAt)}</span>}
+                      {session.respondedAt && <span>Ответ получен: {formatDateTime(session.respondedAt)}</span>}
+                      <span>
+                        Открывали: {session.openCount || 0}
+                        {session.lastOpenAt ? ` · последний раз ${formatDateTime(session.lastOpenAt)}` : ''}
+                      </span>
+                      {session.counterpartyComment && (
+                        <span style={{ marginTop: 6 }}>
+                          <span style={{ fontWeight: 600, color: '#1f2937' }}>Комментарий:</span>{' '}
+                          <span>{session.counterpartyComment}</span>
+                        </span>
+                      )}
+                      {reviewUrl && (
+                        <span style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>
+                          Сохранённая ссылка: {reviewUrl}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {reviewUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyReviewLink(session.id)}
+                        style={reviewActionButtonStyle}
+                      >
+                        <FontAwesomeIcon icon={faLink} style={{ marginRight: 6 }} />
+                        Скопировать ссылку
+                      </button>
+                    )}
+                    {session.status === 'pending' && (
+                      <button
+                        type="button"
+                        onClick={() => handleRevokeSession(session.id)}
+                        style={{ ...reviewActionButtonStyle, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}
+                      >
+                        Отозвать
+                      </button>
+                    )}
+                    {session.status === 'responded' && session.reviewVersionId && session.baseVersionId && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSessionDiff(session)}
+                        style={{ ...reviewActionButtonStyle, background: '#ecfdf5', borderColor: '#bbf7d0', color: '#047857' }}
+                      >
+                        <FontAwesomeIcon icon={faEye} style={{ marginRight: 6 }} />
+                        Сравнить версии
+                      </button>
+                    )}
+                    {session.status === 'responded' && session.reviewVersionId && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReviewDiff(session)}
+                        style={{ ...reviewActionButtonStyle, background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}
+                      >
+                        Удалить дифф
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const openReviewModal = useCallback(() => {
+    if (!canSendToReview) {
+      alert('Сначала сохраните документ, чтобы появилась версия для отправки.');
+      return;
+    }
+    setReviewBaseVersionId(prev => prev || preferredOwnerVersionId || latestVersionId || null);
+    setReviewCreationSuccess(null);
+    setReviewMessage('');
+    setIsReviewModalOpen(true);
+  }, [canSendToReview, preferredOwnerVersionId, latestVersionId]);
+
+  const closeReviewModal = useCallback(() => {
+    if (reviewCreating) return;
+    setIsReviewModalOpen(false);
+    setReviewCreationSuccess(null);
+  }, [reviewCreating]);
+
+  const handleCopyReviewLink = useCallback(async (sessionId) => {
+    const url = getStoredReviewUrl(sessionId);
+    if (!url) {
+      alert('Ссылка не найдена. Создайте новую сессию согласования.');
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        alert('Ссылка скопирована в буфер обмена.');
+      } else {
+        throw new Error('Clipboard API unavailable');
+      }
+    } catch (e) {
+      console.warn('Clipboard copy failed', e);
+      window.prompt('Скопируйте ссылку вручную:', url);
+    }
+  }, [getStoredReviewUrl]);
+
+  const handleRevokeSession = useCallback(async (sessionId) => {
+    if (!docUUID) {
+      alert('Нет ID документа. Сначала сохраните документ.');
+      return;
+    }
+    if (!window.confirm('Отозвать ссылку на согласование?')) return;
+    try {
+      const res = await fetch(`/api/docs/${encodeURIComponent(docUUID)}/reviews/${encodeURIComponent(sessionId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'revoke' })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Не удалось отозвать ссылку');
+      }
+      await fetchReviewSessions();
+    } catch (e) {
+      console.error('handleRevokeSession error:', e);
+      alert(e?.message || 'Не удалось отозвать ссылку');
+    }
+  }, [docUUID, fetchReviewSessions]);
+
+  const handleDeleteReviewDiff = useCallback(async (session) => {
+    if (!docUUID || !session?.id) {
+      alert('Нет ID документа. Сначала сохраните документ.');
+      return;
+    }
+    if (!session.reviewVersionId) {
+      alert('Для удаления нет загруженной версии с правками.');
+      return;
+    }
+    if (!window.confirm('Удалить полученные правки и вернуть сессию в ожидание?')) return;
+    try {
+      const res = await fetch(`/api/docs/${encodeURIComponent(docUUID)}/reviews/${encodeURIComponent(session.id)}/diff`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload?.ok === false) {
+        throw new Error(payload?.error || 'Не удалось удалить дифф');
+      }
+      forgetReviewUrl(session.id);
+      await Promise.all([fetchReviewSessions(), reloadVersions()]);
+    } catch (e) {
+      console.error('handleDeleteReviewDiff error:', e);
+      alert(e?.message || 'Не удалось удалить дифф');
+    }
+  }, [docUUID, fetchReviewSessions, reloadVersions, forgetReviewUrl]);
+
+  const handleOpenSessionDiff = useCallback((session) => {
+    if (!session?.baseVersionId || !session?.reviewVersionId) {
+      alert('Для сравнения нужны обе версии.');
+      return;
+    }
+    const currentId = documentId || docUUID;
+    if (!currentId) {
+      alert('Нет ID документа.');
+      return;
+    }
+    const diffUrl = `/document-diff?docId=${encodeURIComponent(currentId)}&from=${encodeURIComponent(session.baseVersionId)}&to=${encodeURIComponent(session.reviewVersionId)}`;
+    window.open(diffUrl, '_blank', 'noopener');
+  }, [documentId, docUUID]);
+
+  const handleCreateReviewSession = useCallback(async (event) => {
+    event?.preventDefault?.();
+    if (!docUUID) {
+      alert('Сначала сохраните документ, чтобы появился его идентификатор.');
+      return;
+    }
+    if (!reviewBaseVersionId) {
+      alert('Нет сохранённой версии для отправки.');
+      return;
+    }
+    const days = parseInt(reviewValidityDays, 10);
+    let expiresAt = null;
+    if (!Number.isNaN(days) && days > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + days);
+      expiresAt = d.toISOString();
+    }
+
+    setReviewCreating(true);
+    setReviewCreationSuccess(null);
+    try {
+      const payload = {
+        baseVersionId: reviewBaseVersionId,
+        counterpartyRole: reviewRole,
+        initialMessage: reviewMessage || undefined,
+        expiresAt
+      };
+      const res = await fetch(`/api/docs/${encodeURIComponent(docUUID)}/reviews`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) {
+        throw new Error(data?.error || 'Не удалось создать ссылку');
+      }
+      const { reviewUrl, session } = data;
+      if (session?.id && reviewUrl) {
+        rememberReviewUrl(session.id, reviewUrl);
+      }
+      setReviewCreationSuccess({ reviewUrl, session });
+      await fetchReviewSessions();
+    } catch (e) {
+      console.error('handleCreateReviewSession error:', e);
+      alert(e?.message || 'Не удалось создать ссылку для согласования');
+    } finally {
+      setReviewCreating(false);
+    }
+  }, [docUUID, reviewBaseVersionId, reviewRole, reviewMessage, reviewValidityDays, rememberReviewUrl, fetchReviewSessions]);
 
   // если открыли существующий документ по ссылке — один раз зафиксируем в стейте
   useEffect(() => {
@@ -307,9 +797,9 @@ export default function DocumentEditorPage() {
             ).then(r => r.json());
 
             if (Array.isArray(vs) && vs.length) {
-              const last = vs[vs.length - 1];
+              const latest = vs[0];
               const htmlResp = await fetch(
-                `/api/documents/${encodeURIComponent(docUUID)}/versions/${encodeURIComponent(last.id)}`,
+                `/api/documents/${encodeURIComponent(docUUID)}/versions/${encodeURIComponent(latest.id)}`,
                 { credentials: 'include' }
               );
               const { html: lastHtml } = await htmlResp.json();
@@ -376,6 +866,7 @@ export default function DocumentEditorPage() {
       TextAlign.configure({
         types: ['heading', 'paragraph'],   // на что действует
       }),
+      Underline,
       CustomTable.configure({ resizable: true }),
       TableRow,
       CustomTableCell,
@@ -716,8 +1207,23 @@ export default function DocumentEditorPage() {
           credentials: 'include' // <= ДОБАВЛЕНО
         });
         const list = await listRes.json().catch(() => []);
-        setVersions?.(Array.isArray(list) ? list : []);
+        const normalized = Array.isArray(list)
+          ? list.map((v, idx) => ({
+              id: v.id,
+              versionId: v.id,
+              created_at: v.created_at,
+              seq: v.seq || (idx + 1),
+              label: v.label || `v${v.seq || (idx + 1)}`,
+              source: v.source,
+              author_type: v.author_type,
+              review_session_id: v.review_session_id,
+              is_baseline_for_review: v.is_baseline_for_review,
+            }))
+          : [];
+        setVersions?.(normalized);
       } catch (_) {}
+
+      await fetchReviewSessions(currentId);
 
       setSavedAt && setSavedAt(new Date());
       alert('Версия сохранена');
@@ -747,7 +1253,8 @@ export default function DocumentEditorPage() {
 
 
   const handleDeleteVersion = useCallback(async (versionId) => {
-    if (!documentId) {
+    const targetDocId = documentId || docUUID;
+    if (!targetDocId) {
       alert("Нет ID документа. Сохраните документ перед удалением версий.");
       return;
     }
@@ -757,7 +1264,7 @@ export default function DocumentEditorPage() {
     }
 
     try {
-      const res = await fetch(`/api/documents/${documentId}/versions/${versionId}`, {
+      const res = await fetch(`/api/documents/${encodeURIComponent(targetDocId)}/versions/${encodeURIComponent(versionId)}`, {
         method: "DELETE",
       });
       const payload = await res.json().catch(() => ({}));
@@ -767,11 +1274,12 @@ export default function DocumentEditorPage() {
       await reloadVersions();
       if (String(versionId) === selectedFrom) setSelectedFrom(null);
       if (String(versionId) === selectedTo) setSelectedTo(null);
+      setReviewBaseVersionId(prev => (String(prev) === String(versionId) ? null : prev));
     } catch (e) {
       console.error("Delete version error:", e);
       alert(e?.message || "Не удалось удалить версию");
     }
-  }, [documentId, reloadVersions, selectedFrom, selectedTo]);
+  }, [documentId, docUUID, reloadVersions, selectedFrom, selectedTo]);
 
   // Загрузить выбранную версию в редактор (перезапишет текущий текст)
   // Открыть конкретную сохранённую версию
@@ -1059,6 +1567,15 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faSave} className="fa-icon" />
                   Сохранить
                 </button>
+                <button
+                  onClick={openReviewModal}
+                  disabled={!canSendToReview || reviewSessionsLoading}
+                  className="doc-btn review"
+                  title={canSendToReview ? 'Создать ссылку для согласования' : 'Сохраните документ, чтобы отправить на согласование'}
+                >
+                  <FontAwesomeIcon icon={faPaperPlane} className="fa-icon" />
+                  Отправить на согласование
+                </button>
                 <button onClick={handlePreviewPdf} className="doc-btn pdf">
                   <FontAwesomeIcon icon={faFilePdf} className="fa-icon" />
                   PDF
@@ -1327,6 +1844,8 @@ export default function DocumentEditorPage() {
               .doc-btn.restore { background: #fd7e14; }       /* оранжевый */
               .doc-btn.restore:hover { background: #e96b0c; }
 
+              .doc-btn.review { background: #2563eb; }
+              .doc-btn.review:hover { background: #1e40af; }
               .doc-btn.docx { background: #6f42c1; }          /* фиолетовый */
               .doc-btn.docx:hover { background: #5a32a3; }
 
@@ -1373,8 +1892,9 @@ export default function DocumentEditorPage() {
             <EditorContent editor={editor} />
           </div>
         </div>
-        {/* Right column: Versions and diff viewer */}
+        {/* Right column: Versions, согласования и diff */}
         <div style={{ minWidth: 320 }}>
+          {renderReviewSection()}
           <h3>Версии</h3>
           <div style={{ marginBottom: 8 }}>
             <select value={selectedFrom || ''} onChange={e => setSelectedFrom(e.target.value)}>
@@ -1522,6 +2042,128 @@ export default function DocumentEditorPage() {
           </div>
         </div>
       </div>
+      
+      {isReviewModalOpen && (
+        <div style={modalOverlayStyle}>
+          <div style={modalBodyStyle}>
+            {reviewCreationSuccess ? (
+              <div>
+                <h3 style={{ marginTop: 0 }}>Ссылка создана</h3>
+                <p style={{ color: '#4b5563' }}>
+                  Передайте эту ссылку контрагенту. По ней он сможет открыть документ и внести правки.
+                </p>
+                <div style={{
+                  padding: '10px 12px',
+                  borderRadius: 10,
+                  border: '1px dashed #a5b4fc',
+                  background: '#eef2ff',
+                  color: '#1e3a8a',
+                  wordBreak: 'break-all',
+                  marginBottom: 16
+                }}>
+                  {reviewCreationSuccess.reviewUrl}
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyReviewLink(reviewCreationSuccess.session?.id)}
+                    style={{ ...reviewActionButtonStyle, background: '#eef2ff', borderColor: '#c7d2fe', color: '#1d4ed8' }}
+                  >
+                    <FontAwesomeIcon icon={faCopy} style={{ marginRight: 6 }} />
+                    Скопировать
+                  </button>
+                  <button type="button" onClick={closeReviewModal} style={reviewActionButtonStyle}>
+                    Закрыть
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateReviewSession}>
+                <h3 style={{ marginTop: 0 }}>Отправка на согласование</h3>
+                <p style={{ color: '#4b5563' }}>
+                  Будет создана уникальная ссылка. Контрагент сможет внести правки без регистрации.
+                </p>
+                <div style={{ display: 'grid', gap: 16, marginTop: 12 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>Роль контрагента</span>
+                    <select
+                      value={reviewRole}
+                      onChange={e => setReviewRole(e.target.value)}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                    >
+                      <option value="landlord">Наймодатель</option>
+                      <option value="tenant">Наниматель</option>
+                      <option value="agent">Агент</option>
+                      <option value="lawyer">Юрист</option>
+                      <option value="other">Другое</option>
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>Какая версия уходит на согласование</span>
+                    <select
+                      value={reviewBaseVersionId || ''}
+                      onChange={e => setReviewBaseVersionId(e.target.value)}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                    >
+                      <option value="" disabled>Выберите сохранённую версию</option>
+                      {[...versions]
+                        .sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))
+                        .map(v => {
+                          const created = v.created_at || v.createdAt;
+                          const authorLabel = (v.author_type || v.authorType) === 'counterparty'
+                            ? 'контрагент'
+                            : 'владелец';
+                          const sourceLabel = v.source === 'review_counterparty' ? 'ответ' : 'версия';
+                          const date = created ? new Date(created).toLocaleString('ru-RU') : '';
+                          return (
+                            <option key={v.id} value={v.id}>
+                              {`Версия ${v.seq || ''} (${authorLabel}, ${sourceLabel})${date ? ` — ${date}` : ''}`}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <span style={{ color: '#6b7280', fontSize: 12 }}>
+                      По умолчанию выбирается последняя версия владельца, чтобы не отправлять входящий ответ повторно.
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>Срок действия ссылки (дней)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={reviewValidityDays}
+                      onChange={e => setReviewValidityDays(e.target.value)}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db' }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontWeight: 600 }}>Сообщение для контрагента (опционально)</span>
+                    <textarea
+                      rows={3}
+                      value={reviewMessage}
+                      onChange={e => setReviewMessage(e.target.value)}
+                      placeholder="Например: пожалуйста, проверьте раздел 4"
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #d1d5db', resize: 'vertical' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+                  <button
+                    type="submit"
+                    disabled={reviewCreating}
+                    style={{ ...reviewActionButtonStyle, background: '#2563eb', color: '#fff', borderColor: '#1d4ed8' }}
+                  >
+                    {reviewCreating ? 'Создаём…' : 'Создать ссылку'}
+                  </button>
+                  <button type="button" onClick={closeReviewModal} style={reviewActionButtonStyle} disabled={reviewCreating}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

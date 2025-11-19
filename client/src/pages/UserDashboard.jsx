@@ -244,6 +244,31 @@ function DocCard({ doc }) {
   const [details, setDetails] = useState(null);
   const [busy, setBusy] = useState(false);
 
+  const statusBadges = {
+    draft: { label: 'Черновик', classes: 'border-gray-200 text-gray-600 bg-gray-100' },
+    sent_for_review: { label: 'На согласовании', classes: 'border-blue-300 text-blue-700 bg-blue-100' },
+    reviewed_with_changes: { label: 'Правки получены', classes: 'border-amber-400 text-amber-700 bg-amber-100' },
+    reviewed_without_changes: { label: 'Подтверждён без правок', classes: 'border-emerald-300 text-emerald-700 bg-emerald-100' },
+    final_approved: { label: 'Согласован', classes: 'border-green-300 text-green-700 bg-green-100' }
+  };
+
+  const cardBorderClass = useMemo(() => {
+    switch (doc.status) {
+      case 'sent_for_review':
+        return 'border-blue-200';
+      case 'reviewed_with_changes':
+        return 'border-amber-300';
+      case 'reviewed_without_changes':
+        return 'border-emerald-300';
+      case 'final_approved':
+        return 'border-green-300';
+      default:
+        return 'border-gray-200';
+    }
+  }, [doc.status]);
+
+  const statusBadge = statusBadges[doc.status] || null;
+
 
   useEffect(() => {
     if (!open || details) return;
@@ -281,7 +306,7 @@ function DocCard({ doc }) {
   }, [open, details, doc.id]);
 
   return (
-    <div className="bg-white border rounded-xl shadow-sm mb-3">
+    <div className={`bg-white border rounded-xl shadow-sm mb-3 ${cardBorderClass}`}>
       {/* СВЁРНУТАЯ */}
       <button
         onClick={() => setOpen(v=>!v)}
@@ -289,12 +314,19 @@ function DocCard({ doc }) {
       >
         <div className="flex items-center gap-3">
           <span className="text-xl">{doc.icon || (doc.type==='rent' ? '🏠' : doc.type==='sale' ? '🤝' : '📄')}</span>
-          <div className="font-medium">
-            {doc.title}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{doc.title}</span>
+              {statusBadge && (
+                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full border ${statusBadge.classes}`}>
+                  {statusBadge.label}
+                </span>
+              )}
+            </div>
             {(details?.address || doc.address) ? (
-            <span className="text-gray-500 font-normal ml-2">
-                (Адрес: {details?.address || doc.address})
-            </span>
+              <div className="text-gray-500 text-sm">
+                Адрес: {details?.address || doc.address}
+              </div>
             ) : null}
           </div>
         </div>

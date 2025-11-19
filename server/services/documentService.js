@@ -68,33 +68,34 @@ const allowedDiffTags = Array.from(new Set([
 ]));
 
 const allowedDiffAttributes = {
-  a: ['href', 'name', 'target', 'rel'],
-  p: ['style'],
-  span: ['style'],
-  div: ['style'],
-  h1: ['style'],
-  h2: ['style'],
-  h3: ['style'],
-  h4: ['style'],
-  h5: ['style'],
-  h6: ['style'],
-  ul: ['style'],
-  ol: ['style'],
-  li: ['style'],
-  table: ['style', 'border', 'cellpadding', 'cellspacing'],
-  thead: ['style'],
-  tbody: ['style'],
-  tfoot: ['style'],
-  tr: ['style'],
-  td: ['style', 'colspan', 'rowspan'],
-  th: ['style', 'colspan', 'rowspan'],
-  colgroup: ['style', 'span'],
-  col: ['style', 'span'],
-  blockquote: ['style'],
-  strong: ['style'],
-  em: ['style'],
-  ins: ['style'],
-  del: ['style']
+  '*': ['class'],
+  a: ['href', 'name', 'target', 'rel', 'class'],
+  p: ['style', 'class'],
+  span: ['style', 'class'],
+  div: ['style', 'class'],
+  h1: ['style', 'class'],
+  h2: ['style', 'class'],
+  h3: ['style', 'class'],
+  h4: ['style', 'class'],
+  h5: ['style', 'class'],
+  h6: ['style', 'class'],
+  ul: ['style', 'class'],
+  ol: ['style', 'class'],
+  li: ['style', 'class'],
+  table: ['style', 'class', 'border', 'cellpadding', 'cellspacing'],
+  thead: ['style', 'class'],
+  tbody: ['style', 'class'],
+  tfoot: ['style', 'class'],
+  tr: ['style', 'class'],
+  td: ['style', 'class', 'colspan', 'rowspan'],
+  th: ['style', 'class', 'colspan', 'rowspan'],
+  colgroup: ['style', 'class', 'span'],
+  col: ['style', 'class', 'span'],
+  blockquote: ['style', 'class'],
+  strong: ['style', 'class'],
+  em: ['style', 'class'],
+  ins: ['style', 'class'],
+  del: ['style', 'class']
 };
 
 const allowedDiffStyles = {
@@ -174,7 +175,14 @@ const sanitizeDiffOptions = {
   allowedTags: allowedDiffTags,
   allowedAttributes: allowedDiffAttributes,
   allowedStyles: allowedDiffStyles,
-  disallowedTagsMode: 'discard'
+  disallowedTagsMode: 'discard',
+  textFilter: (text) => {
+    // Удаляем мусорные текстовые узлы, оставшиеся от атрибутов таблиц после нормализации
+    if (/border-collapse\s*:|min-width\s*:|colgroup>/i.test(text)) {
+      return '';
+    }
+    return text;
+  }
 };
 
 function sanitizeDiffHtml(html) {
@@ -966,4 +974,5 @@ module.exports = {
   getLeaseTemplateInfo,
   buildApartmentTableHtml,
   buildInventoryTableHtml,
+  sanitizeDiffHtml,
 };

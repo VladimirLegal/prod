@@ -21,6 +21,7 @@ import UserDashboard from './pages/UserDashboard';
 import DocumentEditorPage from './pages/DocumentEditorPage';
 import DocumentDiffPage from './pages/DocumentDiffPage';
 import AdminApp from './pages/admin/AdminApp';
+import ReviewEditorPage from './pages/ReviewEditorPage';
 
 function AdminRoute({ roles = ['admin', 'manager'], children }) {
   const [state, setState] = React.useState({ loading: true, user: null });
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/user-dashboard" element={<Navigate to="/cabinet" replace />} />
       <Route path="/document-editor" element={<DocumentEditorPage />} />
       <Route path="/document-diff" element={<DocumentDiffPage />} />
+      <Route path="/review/:token" element={<ReviewEditorPage />} />
       <Route
         path="/admin/*"
         element={(

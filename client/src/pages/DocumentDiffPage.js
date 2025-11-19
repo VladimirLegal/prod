@@ -16,27 +16,40 @@ export default function DocumentDiffPage() {
     tpl.innerHTML = html;
     const root = tpl.content;
 
-    // 1) Убираем <ins>/<del> внутри таблиц — разворачиваем теги, оставляя их содержимое
-    root.querySelectorAll(".app-table-wrap ins, .app-table-wrap del").forEach(node => {
-      const parent = node.parentNode;
-      while (node.firstChild) parent.insertBefore(node.firstChild, node);
-      parent.removeChild(node);
-    });
-
-    // 2) Убираем вложенные .app-table-wrap (если такие появились)
+    // 1) Убираем вложенные .app-table-wrap (если такие появились)
     root.querySelectorAll(".app-table-wrap .app-table-wrap").forEach(inner => {
       const parent = inner.parentNode;
       while (inner.firstChild) parent.insertBefore(inner.firstChild, inner);
       inner.remove();
     });
 
-    // 3) Помечаем таблицы, внутри которых есть изменения (на уровне контейнера)
+    // 2) Помечаем таблицы и ячейки, внутри которых есть изменения (на уровне контейнера)
     root.querySelectorAll(".app-table-wrap").forEach(wrap => {
-      if (wrap.querySelector("ins, del")) {
+      let tableChanged = false;
+      wrap.querySelectorAll('td, th').forEach(cell => {
+        const hasInsert = cell.querySelector('ins.diff-ins');
+        const hasDelete = cell.querySelector('del.diff-del');
+        if (hasInsert || hasDelete) {
+          tableChanged = true;
+          if (hasInsert) cell.classList.add('diff-cell-insert');
+          if (hasDelete) cell.classList.add('diff-cell-delete');
+        }
+      });
+      if (tableChanged || wrap.querySelector('ins.diff-ins, del.diff-del')) {
         wrap.classList.add("diff-table-changed");
       }
     });
 
+    // 3) Убираем случайные текстовые узлы со стилями, которые могли остаться от атрибутов таблиц
+    const trashRegex = /(border-collapse\s*:|min-width\s*:|colgroup>)/i;
+    root.querySelectorAll('*').forEach(node => {
+      Array.from(node.childNodes).forEach(child => {
+        if (child.nodeType === Node.TEXT_NODE && trashRegex.test(child.textContent || '')) {
+          child.remove();
+        }
+      });
+    });
+    
     return tpl.innerHTML;
   }
 
@@ -191,15 +204,25 @@ export default function DocumentDiffPage() {
           padding: 0 4px;
           border-radius: 3px;
         }
+        .diff-document ins,
+        .diff-document del,
         .diff-document ins.diff-ins,
         .diff-document del.diff-del {
           background-clip: padding-box;
           padding: 0 2px;
         }
+        .diff-document td.diff-cell-insert, .diff-document th.diff-cell-insert {
+          background: rgba(16, 185, 129, 0.12);
+        }
+        .diff-document td.diff-cell-delete, .diff-document th.diff-cell-delete {
+          background: rgba(239, 68, 68, 0.12);
+        }
+        .diff-document ins,
         .diff-document ins.diff-ins {
           background: rgba(16, 185, 129, 0.2);
           text-decoration: none;
         }
+        .diff-document del,
         .diff-document del.diff-del {
           background: rgba(239, 68, 68, 0.18);
           color: #7f1d1d;
