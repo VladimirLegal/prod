@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Отчёт по проверке контрагента</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+    h1 { color: #111827; }
+    .meta { margin-bottom: 12px; font-size: 14px; color: #4b5563; }
+    .badge { display: inline-block; padding: 6px 10px; border-radius: 8px; color: #fff; font-weight: 600; }
+    .badge.green { background: #16a34a; }
+    .badge.yellow { background: #eab308; color: #1f2937; }
+    .badge.red { background: #dc2626; }
+    .section { margin-top: 18px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .section h2 { margin: 0 0 8px 0; }
+    .source { margin-bottom: 10px; }
+    .source pre { background: #f9fafb; padding: 10px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+    .list { margin: 6px 0; padding-left: 18px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; font-weight: 600; }
+    .muted { color: #6b7280; font-size: 13px; }
+    .ok { color: #15803d; font-weight: 600; }
+    .empty { color: #6b7280; }
+    .error { color: #b91c1c; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Проверка контрагента</h1>
+  <div class="meta">
+    <div><strong>ФИО:</strong> {{subject.fullName}}</div>
+    <div><strong>Дата рождения:</strong> {{subject.birthDate}}</div>
+    <div><strong>ИНН:</strong> {{subject.inn}}</div>
+    <div><strong>Дата проверки:</strong> {{createdAt}}</div>
+  </div>
+  
+
+  <div class="section">
+    <h2>Источники</h2>
+
+    {{#if sources.mvdPassport}}
+      <div class="source">
+        <h3>Паспорт РФ (МВД)</h3>
+        <div class="muted">Провайдер: {{sources.mvdPassport.provider}}, статус: {{sources.mvdPassport.status}}</div>
+        {{#if sources.mvdPassport.items.length}}
+          <table>
+            <thead>
+              <tr>
+                <th>Статус</th>
+                <th>Комментарий</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each sources.mvdPassport.items}}
+                <tr>
+                  <td>{{rawRecord.result}}</td>
+                  <td>{{message}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.fssp}}
+      <div class="source">
+        <h3>Исполнительные производства (ФССП)</h3>
+        <div class="muted">Провайдер: {{sources.fssp.provider}}, статус: {{sources.fssp.status}}</div>
+        {{#if sources.fssp.items.length}}
+          <table>
+            <thead>
+              <tr>
+                <th>№ ИП</th>
+                <th>Дата</th>
+                <th>Вид долга</th>
+                <th>Сумма</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each sources.fssp.items}}
+                <tr>
+                  <td>{{processNumber}}</td>
+                  <td>{{processDate}}</td>
+                  <td>{{rawRecord.subject}}</td>
+                  <td>{{amount}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.fns}}
+      <div class="source">
+        <h3>Прозрачный бизнес (ФНС)</h3>
+        <div class="muted">Провайдер: {{sources.fns.provider}}, статус: {{sources.fns.status}}</div>
+        {{#if sources.fns.items.length}}
+          <table>
+            <thead>
+              <tr>
+                <th>ОГРН / ОГРНИП</th>
+                <th>ИНН</th>
+                <th>Статус</th>
+                <th>Наименование / ФИО</th>
+                <th>Дата регистрации</th>
+                <th>ОКВЭД</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each sources.fns.items}}
+                <tr>
+                  <td>{{ogrn}}</td>
+                  <td>{{inn}}</td>
+                  <td>{{statusIPDesc}}{{statusORGDesc}}</td>
+                  <td>{{name}}</td>
+                  <td>{{dateReg}}</td>
+                  <td>{{okved}} {{okved_name}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.rosfin}}
+      <div class="source">
+        <h3>Список Росфинмониторинга</h3>
+        <div class="muted">Провайдер: {{sources.rosfin.provider}}, статус: {{sources.rosfin.status}}</div>
+        {{#if sources.rosfin.items.length}}
+          {{#each sources.rosfin.items}}
+            <div>{{message}}</div>
+          {{/each}}
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.efrsb}}
+      <div class="source">
+        <h3>Банкротство (ЕФРСБ)</h3>
+        <div class="muted">Провайдер: {{sources.efrsb.provider}}, статус: {{sources.efrsb.status}}</div>
+        {{#if sources.efrsb.items.length}}
+          {{#each sources.efrsb.items}}
+            <div>{{message}}</div>
+          {{/each}}
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.kad}}
+      <div class="source">
+        <h3>Арбитражные дела (КАД)</h3>
+        <div class="muted">Провайдер: {{sources.kad.provider}}, статус: {{sources.kad.status}}</div>
+        {{#if sources.kad.items.length}}
+          {{#each sources.kad.items}}
+            <div>{{message}}</div>
+          {{/each}}
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.rasArbitr}}
+      <div class="source">
+        <h3>Решения арбитражных судов</h3>
+        <div class="muted">Провайдер: {{sources.rasArbitr.provider}}, статус: {{sources.rasArbitr.status}}</div>
+        {{#if sources.rasArbitr.items.length}}
+          <table>
+            <thead>
+              <tr>
+                <th>№ дела</th>
+                <th>Суд</th>
+                <th>Тип документа</th>
+                <th>Дата</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each sources.rasArbitr.items}}
+                <tr>
+                  <td>{{caseNumber}}</td>
+                  <td>{{court}}</td>
+                  <td>{{docType}}</td>
+                  <td>{{docDate}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.stopOperRS}}
+      <div class="source">
+        <h3>Приостановления операций по счетам (ФНС)</h3>
+        <div class="muted">Провайдер: {{sources.stopOperRS.provider}}, статус: {{sources.stopOperRS.status}}</div>
+        {{#if sources.stopOperRS.items.length}}
+          <table>
+            <thead>
+              <tr>
+                <th>ИНН</th>
+                <th>Налогоплательщик</th>
+                <th>Дата</th>
+                <th>БИК</th>
+                <th>№ решения</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{#each sources.stopOperRS.items}}
+                <tr>
+                  <td>{{inn}}</td>
+                  <td>{{name}}</td>
+                  <td>{{date}}</td>
+                  <td>{{bik}}</td>
+                  <td>{{number}}</td>
+                </tr>
+              {{/each}}
+            </tbody>
+          </table>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+
+    {{#if sources.courtsCommon}}
+      <div class="source">
+        <h3>Суды общей юрисдикции</h3>
+        <div class="muted">Провайдер: {{sources.courtsCommon.provider}}, статус: {{sources.courtsCommon.status}}</div>
+        {{#if sources.courtsCommon.items.length}}
+          <pre>{{{json sources.courtsCommon.items}}}</pre>
+        {{else}}
+          <div class="empty">Нет записей</div>
+        {{/if}}
+      </div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Провайдеры</h2>
+    <pre>{{{json providerSummary}}}</pre>
+  </div>
+</body>
+</html>

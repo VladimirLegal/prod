@@ -205,6 +205,9 @@ app.use('/api/agreements', agreementsRoutes);
 const adminRoutes = require('./routes/adminRoutes');
 app.use('/api/admin', adminRoutes);
 
+const counterpartyRoutes = require('./routes/counterpartyRoutes');
+app.use('/api/counterparty', counterpartyRoutes);
+
 // ---------- статические файлы (только для авторизованных) ----------
 const tempDir = path.join(__dirname, 'temp');
 const tempRouter = express.Router();
@@ -262,6 +265,8 @@ app.get('/pages/:slug', (req, res) => {
   }
 });
 
+const { startCounterpartyWorker } = require('./services/counterparty/worker');
+startCounterpartyWorker();
 
 // ---------- тестовый роут ----------
 app.get('/test-server', (req, res) => {

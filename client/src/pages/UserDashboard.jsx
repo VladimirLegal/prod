@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faHouse, faHandshake, faFileContract } from '@fortawesome/free-solid-svg-icons';
+import { faHouse, faHandshake, faFileContract, faShieldHalved } from '@fortawesome/free-solid-svg-icons';
 
 const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || ''; // '' => относительные URL
 
@@ -1026,6 +1026,11 @@ export default function UserDashboard() {
                     <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4"><FontAwesomeIcon icon={faFileContract} className="text-gray-500 text-2xl" /></div>
                     <h2 className="text-xl font-semibold mb-2">Прочие документы</h2>
                     <p className="text-gray-600 text-center">Доверенности, соглашения и др.</p>
+                  </Link>
+                  <Link to="/counterparty-check" className="bg-white p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col items-center">
+                    <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center mb-4"><FontAwesomeIcon icon={faShieldHalved} className="text-indigo-600 text-2xl" /></div>
+                    <h2 className="text-xl font-semibold mb-2">Проверка контрагента</h2>
+                    <p className="text-gray-600 text-center">Доступ к источникам ФССП, КАД, ЕФРСБ и др.</p>
                   </Link>
                 </div>
 
