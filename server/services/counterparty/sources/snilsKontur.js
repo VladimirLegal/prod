@@ -47,12 +47,12 @@ function buildKonturMeta(existingKontur, checkKey, subjectId, checkId, checkStat
 function logKonturCheck(stage, payload) {
   try {
     console.log(
-      '[kontur][courts]',
+      '[kontur][snils]',
       stage,
       JSON.stringify(payload, null, 2)
     );
   } catch (e) {
-    console.log('[kontur][courts]', stage, payload);
+    console.log('[kontur][snils]', stage, payload);
   }
 }
 
@@ -84,155 +84,60 @@ function normalizeKonturCheckState(response) {
   return { state, phase: 'unknown' };
 }
 
-function normalizeKonturRegionCode(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  if (/^0[1-9]$/.test(raw)) {
-    return String(Number(raw));
-  }
-
-  if (/^\d{1,2}$/.test(raw)) {
-    return raw;
-  }
-
-  return '';
-}
-
-function normalizeKonturRegions(values) {
-  if (!Array.isArray(values)) return [];
-
-  return [...new Set(
-    values
-      .map(normalizeKonturRegionCode)
-      .filter(Boolean)
-  )];
-}
-
-function translateCourtMatchType(value) {
+function translateSnilsState(state) {
   const map = {
-    FullMatch: 'Полное совпадение',
-    PartialMatch: 'Частичное совпадение',
-    NotMatch: 'Совпадение не подтверждено',
+    Valid: 'СНИЛС подтвержден',
+    Invalid: 'СНИЛС не соответствует данным',
+    NotFound: 'По указанному СНИЛС нет данных в ПФР',
+    IncorrectSnilsSum: 'Неверная контрольная сумма СНИЛС',
   };
 
-  return map[value] || value || null;
+  return map[state] || state || 'Статус не определён';
 }
 
-function translateCourtCriterion(value) {
-  const map = {
-    Fio: 'ФИО',
-    BirthDate: 'Дата рождения',
-    SurnameAndInitials: 'Фамилия и инициалы',
-    Inn: 'ИНН',
-    Snils: 'СНИЛС',
-    Passport: 'Паспорт',
-  };
-
-  return map[value] || value || null;
+function getSnilsSeverity(state) {
+  if (state === 'Valid') return 'success';
+  if (state === 'NotFound') return 'warning';
+  if (!state) return 'neutral';
+  return 'danger';
 }
 
-function buildCourtCriterionText(criteria) {
-  if (!Array.isArray(criteria) || !criteria.length) {
-    return 'Основание совпадения не указано';
-  }
-
-  const translated = criteria
-    .map(translateCourtCriterion)
-    .filter(Boolean);
-
-  return translated.length
-    ? translated.join(', ')
-    : 'Основание совпадения не указано';
+function isSnilsStateValid(state) {
+  return state === 'Valid';
 }
 
-function translateCourtStatus(value) {
-  const map = {
-    Active: 'Производство активно',
-    Finished: 'Производство завершено',
-    Suspended: 'Производство приостановлено',
-  };
+function extractSnilsItems(checkResponse, person = {}) {
+  const snilsBlock = checkResponse?.snils || {};
+  const resultBlock =
+    snilsBlock?.result ||
+    checkResponse?.result ||
+    {};
 
-  return map[value] || value || 'Статус не указан';
-}
+  const rawState =
+    resultBlock?.state ||
+    resultBlock?.status ||
+    snilsBlock?.state ||
+    null;
 
-function buildCourtRoleText(value) {
-  return value || 'Роль не указана';
-}
+  const severity = getSnilsSeverity(rawState);
+  const stateText = translateSnilsState(rawState);
 
-function buildCourtCategoryText(value) {
-  return value || 'Категория не указана';
-}
-
-function extractCourtItems(checkResponse) {
-  const courtsBlock = checkResponse?.courts || {};
-  const proceedings =
-    Array.isArray(courtsBlock?.result?.proceedings)
-      ? courtsBlock.result.proceedings
-      : Array.isArray(checkResponse?.result?.proceedings)
-      ? checkResponse.result.proceedings
-      : [];
-
-  return proceedings.map((item) => {
-    const proceedingCategory =
-      item.proceedingCategory ||
-      item.proceedingСategory ||
-      null;
-
-    const status = item.status || null;
-
-    return {
-      kind: 'court_common_case',
-      caseNumber: item.number || null,
-      court: item.courtName || null,
-      judge: item.judge || null,
-      region: item.region || null,
-
-      proceedingType: item.proceedingType || null,
-      proceedingResult: item.proceedingResult || null,
-
-      proceedingCategory,
-      proceedingCategoryText: buildCourtCategoryText(proceedingCategory),
-
-      proceedingStartDate: item.proceedingStartDate || null,
-      proceedingUrl: item.proceedingUrl || null,
-
-      status,
-      statusText: translateCourtStatus(status),
-
-      discussionStage: item.discussionStage || null,
-      proceedingDetails: item.proceedingDetails || null,
-
-      participants: Array.isArray(item?.participants?.items)
-        ? item.participants.items.map((p) => {
-            const criterion = Array.isArray(p?.criterion) ? p.criterion : [];
-            const matchType = p?.matchType || null;
-
-            return {
-              name: p?.name || null,
-
-              role: p?.role || null,
-              roleText: buildCourtRoleText(p?.role || null),
-
-              type: p?.type || null,
-
-              matchType,
-              matchTypeText: translateCourtMatchType(matchType),
-
-              criterion,
-              criterionText: buildCourtCriterionText(criterion),
-
-              article: p?.article || null,
-              sentence: p?.sentence || null,
-
-              rawRecord: p,
-            };
-          })
-        : [],
-
-      rawRecord: item,
-    };
-  });
+  return [
+    {
+      kind: 'snils_lookup',
+      state: rawState,
+      stateText,
+      severity,
+      isValid: isSnilsStateValid(rawState),
+      message: stateText,
+      snils:
+        snilsBlock?.snils ||
+        resultBlock?.snils ||
+        person?.snils ||
+        null,
+      rawRecord: checkResponse,
+    },
+  ];
 }
 
 function buildCachedSourcePayload(source) {
@@ -258,19 +163,18 @@ function attachScenarioCache(metaWrapper, scenarioKey, extra = {}) {
   return metaWrapper;
 }
 
-async function checkCourtsCommon(person) {
+async function snilsKontur(person) {
   const existingKontur = person?._kontur || {};
   const existingSubjectId =
-    existingKontur.checks?.courtsCommon?.subjectId ||
+    existingKontur.checks?.snils?.subjectId ||
     existingKontur.subjectId ||
     null;
-  const existingCheckId = existingKontur.checks?.courtsCommon?.checkId || null;
+  const existingCheckId = existingKontur.checks?.snils?.checkId || null;
 
-  const existingScenarioMeta = existingKontur.checks?.courtsCommon || {};
+  const existingScenarioMeta = existingKontur.checks?.snils || {};
   const existingEtag = existingScenarioMeta.etag || null;
   const cachedSource = existingScenarioMeta.cachedSource || null;
 
-  // Если проверка уже создана ранее — просто опрашиваем её
   if (existingCheckId) {
     const finalResponse = await getCheck(
       existingCheckId,
@@ -290,13 +194,13 @@ async function checkCourtsCommon(person) {
             {
               _kontur: buildKonturMeta(
                 existingKontur,
-                'courtsCommon',
+                'snils',
                 existingSubjectId,
                 existingCheckId,
                 existingScenarioMeta.checkState || 'Processing'
               ),
             },
-            'courtsCommon',
+            'snils',
             {
               etag: existingEtag,
               cachedSource,
@@ -310,19 +214,19 @@ async function checkCourtsCommon(person) {
       return {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка СНИЛС в Контуре ещё выполняется',
         items: [],
         meta: attachScenarioCache(
           {
             _kontur: buildKonturMeta(
               existingKontur,
-              'courtsCommon',
+              'snils',
               existingSubjectId,
               existingCheckId,
               existingScenarioMeta.checkState || 'Processing'
             ),
           },
-          'courtsCommon',
+          'snils',
           {
             etag: existingEtag,
             cachedSource: null,
@@ -342,13 +246,13 @@ async function checkCourtsCommon(person) {
         provider: 'kontur',
         error: buildValidationMessage(
           finalResponse,
-          'Ошибка при получении результата проверки courts'
+          'Ошибка при получении результата проверки snils'
         ),
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'snils',
             existingSubjectId,
             existingCheckId,
             finalResponse?.checkState || finalResponse?.state || 'Error'
@@ -367,12 +271,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка СНИЛС в Контуре ещё выполняется',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'snils',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -384,13 +288,13 @@ async function checkCourtsCommon(person) {
           checkState: currentState,
           checkType: finalResponse?.checkType || null,
           creationDate: finalResponse?.creationDate || null,
-          courts: finalResponse?.courts || null,
+          snils: finalResponse?.snils || null,
           result: finalResponse?.result || null,
           fullResponse: finalResponse,
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'snils', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -405,12 +309,12 @@ async function checkCourtsCommon(person) {
         error:
           finalResponse?.error?.message ||
           finalResponse?.message ||
-          'Контур завершил проверку courtsCommon с ошибкой',
+          'Контур завершил проверку snils с ошибкой',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'snils',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -422,7 +326,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'snils', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -434,12 +338,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: `Проверка courtsCommon вернула нестандартный статус: ${currentState}`,
+        error: `Проверка snils вернула нестандартный статус: ${currentState}`,
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'snils',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -453,7 +357,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'snils', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -461,22 +365,16 @@ async function checkCourtsCommon(person) {
       return result;
     }
 
-    const items = extractCourtItems(finalResponse);
+    const items = extractSnilsItems(finalResponse, person);
 
     const result = {
-      status: items.length ? 'ok' : 'empty',
+      status: items.some((item) => item?.isValid === true) ? 'ok' : 'empty',
       provider: 'kontur',
       items,
-      summary: {
-        totalCount: items.length,
-        hasCases: items.length > 0,
-        activeCount: items.filter((item) => item.status === 'Active').length,
-        finishedCount: items.filter((item) => item.status === 'Finished').length,
-      },
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'snils',
           existingSubjectId,
           existingCheckId,
           currentState
@@ -488,13 +386,13 @@ async function checkCourtsCommon(person) {
         checkState: currentState,
         checkType: finalResponse?.checkType || null,
         creationDate: finalResponse?.creationDate || null,
-        courts: finalResponse?.courts || null,
+        snils: finalResponse?.snils || null,
         result: finalResponse?.result || null,
         fullResponse: finalResponse,
       },
     };
 
-    result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+    result.meta = attachScenarioCache(result.meta, 'snils', {
       etag: finalResponse?.etag || existingEtag || null,
       cachedSource: buildCachedSourcePayload(result),
     });
@@ -510,28 +408,10 @@ async function checkCourtsCommon(person) {
         surname: person.lastName,
         name: person.firstName,
         patronymic: person.middleName,
+        birthDate: person.birthDate,
+        snils: person.snils,
       },
     };
-
-    if (person.birthDate) {
-      subjectBody.person.birthDate = person.birthDate;
-    }
-
-    if (
-      person.passportSeries &&
-      person.passportNumber &&
-      person.passportIssueDate &&
-      person.passportIssuerCode
-    ) {
-      subjectBody.person.identityDocument = {
-        series: person.passportSeries,
-        number: person.passportNumber,
-        issueDate: person.passportIssueDate,
-        issuer: {
-          issuerCode: person.passportIssuerCode,
-        },
-      };
-    }
 
     const subjectResponse = await createSubject(subjectBody);
     logKonturCheck('createSubject_response', {
@@ -545,7 +425,7 @@ async function checkCourtsCommon(person) {
         provider: 'kontur',
         error: buildValidationMessage(
           subjectResponse,
-          'Не удалось создать субъекта в Контур'
+          'Не удалось создать субъекта в Контур для проверки СНИЛС'
         ),
         items: [],
         raw: {
@@ -559,70 +439,69 @@ async function checkCourtsCommon(person) {
     subjectId = subjectResponse.subjectId;
   }
 
-  // Создаём проверку courts
-  const regionCodes = normalizeKonturRegions(person?.regions);
-
-  const createCheckPayload = {
-    courts: {
+  const checkBody = {
+    snils: {
       subjectId,
-      ...(regionCodes.length ? { regions: regionCodes } : {}),
     },
   };
 
-  const createCheckResponse = await createCheck(createCheckPayload);
+  const checkResponse = await createCheck(checkBody);
   logKonturCheck('createCheck_response', {
-    request: createCheckPayload,
-    response: createCheckResponse,
+    request: checkBody,
+    response: checkResponse,
   });
 
-  if (!createCheckResponse?.ok || !createCheckResponse?.checkId) {
+  if (!checkResponse?.ok || !checkResponse?.checkId) {
+    const isTimeout = checkResponse?.error === 'timeout_error';
+
     return {
-      status: 'error',
+      status: isTimeout ? 'processing' : 'error',
       provider: 'kontur',
       error: buildValidationMessage(
-        createCheckResponse,
-        'Не удалось создать проверку courts в Контур'
+        checkResponse,
+        isTimeout
+          ? 'Создание проверки snils в Контуре заняло слишком много времени, попробуем дочитать позже'
+          : 'Не удалось создать проверку snils в Контур'
       ),
       items: [],
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'snils',
           subjectId,
           null,
-          'Error'
+          isTimeout ? 'Processing' : 'Error'
         ),
       },
       raw: {
         step: 'createCheck',
         subjectId,
-        request: createCheckPayload,
-        response: createCheckResponse,
+        request: checkBody,
+        response: checkResponse,
       },
     };
   }
 
-  // Не ждём результат внутри одного вызова — worker сам повторит polling позже
   return {
     status: 'processing',
     provider: 'kontur',
-    error: 'Проверка в Контуре ещё выполняется',
+    error: 'Проверка СНИЛС в Контуре ещё выполняется',
     items: [],
     meta: {
       _kontur: buildKonturMeta(
         existingKontur,
-        'courtsCommon',
+        'snils',
         subjectId,
-        createCheckResponse.checkId,
-        createCheckResponse?.checkState || createCheckResponse?.state || 'Processing'
+        checkResponse.checkId,
+        checkResponse?.checkState || checkResponse?.state || 'Processing'
       ),
     },
     raw: {
       step: 'createCheck_processing',
       subjectId,
-      check: createCheckResponse,
+      check: checkResponse,
     },
   };
 }
 
-module.exports = checkCourtsCommon;
+module.exports = snilsKontur;

@@ -24,6 +24,7 @@ import {
   faChevronUp,
   faChevronLeft,
   faChevronRight,
+  faWallet,
 } from '@fortawesome/free-solid-svg-icons';
 
 function makeIcon(iconDefinition) {
@@ -57,7 +58,7 @@ export const ArrowUp = makeIcon(faChevronUp);
 export const ArrowLeft = makeIcon(faChevronLeft);
 export const ArrowRight = makeIcon(faChevronRight);
 export const Filter = makeIcon(faFilter);
-
+export const Wallet = makeIcon(faWallet);
 const icons = {
   LayoutDashboard,
   Users,
@@ -82,6 +83,7 @@ const icons = {
   ArrowLeft,
   ArrowRight,
   Filter,
+  Wallet,
 };
 
 export default icons;

@@ -8,6 +8,13 @@ const PAGES_BASE =
   process.env.REACT_APP_SERVER_ORIGIN
   || (process.env.NODE_ENV === 'development' ? 'http://localhost:5000' : '');
 
+const AGREEMENT_VERSION = 'v2026-04-29';
+
+const getAgreementUrl = (doc) =>
+  `${PAGES_BASE}/api/agreements/html?doc=${doc}&v=${encodeURIComponent(
+    AGREEMENT_VERSION
+  )}`;
+
 
 const HomePage = () => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -70,15 +77,54 @@ const HomePage = () => {
         fontSize: 14,
         color: '#666'
       }}>
-        <a href={`${PAGES_BASE}/pages/about-portal`} className="hover:text-blue-600">О портале</a>
+        <a
+          href={`${PAGES_BASE}/pages/about-portal`}
+          className="hover:text-blue-600"
+        >
+          О портале
+        </a>
+
         <span>·</span>
-       <a href={`${PAGES_BASE}/pages/privacy`} className="hover:text-blue-600">Политика конфиденциальности</a>
+
+        <a
+          href={getAgreementUrl('privacy')}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-blue-600"
+        >
+          Политика обработки персональных данных
+        </a>
+
         <span>·</span>
-        <a href={`${PAGES_BASE}/pages/terms`} className="hover:text-blue-600">Правила использования сайта</a>
+
+        <a
+          href={getAgreementUrl('pdn')}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-blue-600"
+        >
+          Согласие на обработку персональных данных
+        </a>
+
         <span>·</span>
-       <a href={`${PAGES_BASE}/pages/yandex-metrika-consent`} className="hover:text-blue-600">Согласие на обработку ПД (Яндекс.Метрика)</a>
+
+        <a
+          href={getAgreementUrl('terms')}
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-blue-600"
+        >
+          Правила использования сайта
+        </a>
+
         <span>·</span>
-       <a href={`${PAGES_BASE}/pages/about-unique`} className="hover:text-blue-600"><b>Почему мы</b></a>
+
+        <a
+          href={`${PAGES_BASE}/pages/about-unique`}
+          className="hover:text-blue-600"
+        >
+          <b>Почему мы</b>
+        </a>
       </div>
     </div>
   );

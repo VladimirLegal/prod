@@ -1,8 +1,17 @@
 const { request } = require('../providers/apiCloudClient');
 
+
+function translateRosfinSubjectType(value) {
+  const raw = String(value || '').trim().toLowerCase();
+
+  if (raw === 'fiz') return 'Физическое лицо';
+  if (raw === 'ur') return 'Юридическое лицо';
+
+  return value || null;
+}
 /**
  * Проверка по списку Росфинмониторинга через api-cloud (fedsfm.php)
- * Документация: https://api-cloud.ru/fedsfm :contentReference[oaicite:8]{index=8}
+
  *
  * type=terextr
  * search = ФИО или ИНН
@@ -34,7 +43,12 @@ async function checkRosfin(person, options = {}) {
     result.status = 'error';
     result.items.push({
       kind: 'rosfin_lookup',
+      isFound: null,
+      foundCount: null,
+      resultState: response.status || null,
+      resultStateText: 'Ошибка проверки',
       message: response.message || `Ошибка API Росфинмониторинг (error=${response.error})`,
+      records: [],
       rawRecord: response,
     });
     return wrapFallback(result, response, options);
@@ -44,35 +58,60 @@ async function checkRosfin(person, options = {}) {
     result.status = 'error';
     result.items.push({
       kind: 'rosfin_lookup',
+      isFound: null,
+      foundCount: null,
+      resultState: response.status || null,
+      resultStateText: 'Ошибка проверки',
       message: response.message || 'Неизвестный ответ от API Росфинмониторинг',
+      records: [],
       rawRecord: response,
     });
     return wrapFallback(result, response, options);
   }
 
-  const records = Array.isArray(response.result) ? response.result : [];
+  const found = response.found === true;
+  const foundCount = Number(response.count || 0) || 0;
+  const rawRecords = Array.isArray(response.result) ? response.result : [];
 
-  if (!records.length || response.found === false) {
+  const records = rawRecords.map((rec) => ({
+    recordId: rec?.id || null,
+    recordType: rec?.type || null,
+    recordTypeText: translateRosfinSubjectType(rec?.type || null),
+    fullName: rec?.name || null,
+    birthDate: rec?.birth || null,
+    birthPlace: rec?.place || null,
+    inn: rec?.inn || null,
+    ogrn: rec?.ogrn || null,
+    matchReasonText: 'Совпадение найдено по поисковому запросу сервиса',
+    rawRecord: rec,
+  }));
+
+  if (!found || !records.length) {
     result.status = 'empty';
     result.items.push({
       kind: 'rosfin_lookup',
-      message: 'Сведений в списке Росфинмониторинга не найдено',
+      isFound: false,
+      foundCount: 0,
+      resultState: 'Данные получены',
+      resultStateText: 'Сведений в списках Росфинмониторинга не найдено',
+      message: 'Сведений в списках Росфинмониторинга не найдено',
+      records: [],
       rawRecord: response,
     });
     return wrapFallback(result, response, options);
   }
 
   result.status = 'ok';
-  result.items = records.map((rec) => ({
-    kind: 'rosfin_hit',
-    subjectType: rec.type || null, // fiz / ur
-    name: rec.name || null,        // ФИО / наименование организации
-    inn: rec.inn || null,
-    ogrn: rec.ogrn || null,
-    birth: rec.birth || null,
-    place: rec.place || null,
-    rawRecord: rec,
-  }));
+  result.items.push({
+    kind: 'rosfin_lookup',
+    isFound: true,
+    foundCount: records.length,
+    resultState: 'Данные получены',
+    resultStateText: 'Найдены совпадения в списках Росфинмониторинга',
+    message: 'Найдены совпадения в списках Росфинмониторинга',
+    records,
+    rawRecord: response,
+  });
 
   return wrapFallback(result, response, options);
 }

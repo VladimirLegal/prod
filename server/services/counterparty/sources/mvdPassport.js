@@ -10,6 +10,16 @@ const { request } = require('../providers/apiCloudClient');
 async function checkMvdPassport(person, options = {}) {
   const hasPassport = person?.passport?.series && person?.passport?.number;
   let response = null;
+    const passportSeries = String(person?.passport?.series || '').replace(/\D/g, '').slice(0, 4);
+    const passportNumber = String(person?.passport?.number || '').replace(/\D/g, '').slice(0, 6);
+    const passportIssueDate =
+      person?.passport?.issueDate ||
+      person?.passportIssueDate ||
+      '';
+    const passportIssuerCode =
+      person?.passport?.issuerCode ||
+      person?.passportIssuerCode ||
+      '';
 
   if (hasPassport && process.env.APICLOUD_API_TOKEN) {
     const seria = String(person.passport.series).replace(/\D/g, '').slice(0, 4);
@@ -47,6 +57,17 @@ async function checkMvdPassport(person, options = {}) {
     result.items.push({
       kind: 'passport_check',
       isValid: null,
+
+      verification: {
+        series: passportSeries || null,
+        number: passportNumber || null,
+        issueDate: passportIssueDate || null,
+        issuerCode: passportIssuerCode || null,
+      },
+
+      resultState: response.result || response.verdict || response.statusText || null,
+      resultStateText: 'Ошибка проверки',
+
       message: response.message || `Ошибка API МВД (error=${response.error})`,
       rawRecord: response,
     });
@@ -59,7 +80,15 @@ async function checkMvdPassport(person, options = {}) {
     result.items.push({
       kind: 'passport_check',
       isValid: null,
-      message: response.message || 'Неизвестный ответ от API МВД',
+      verification: {
+        series: passportSeries || null,
+        number: passportNumber || null,
+        issueDate: passportIssueDate || null,
+        issuerCode: passportIssuerCode || null,
+      },
+      resultState: response.result || response.verdict || response.statusText || null,
+      resultStateText: 'Ошибка проверки',
+      message: response.message || response.description || `Неожиданный статус ответа от МВД: ${response.status}`,
       rawRecord: response,
     });
     return wrapWithFallbackIfNeeded(result, response, options);
@@ -80,18 +109,31 @@ async function checkMvdPassport(person, options = {}) {
 
   const normalizedVerdict = typeof verdict === 'string' ? verdict.toUpperCase() : '';
 
+  let resultState = normalizedVerdict || null;
+  let resultStateText = null;
+
+  
+
   if (normalizedVerdict === 'VALID') {
     isValid = true;
-    message = 'Паспорт действителен';
+    resultState = 'VALID';
+    resultStateText = 'Паспорт действителен';
+    message = response.description || 'Паспорт действителен';
   } else if (normalizedVerdict === 'NOT_VALID') {
     isValid = false;
-    message = 'Паспорт недействителен';
+    resultState = 'NOT_VALID';
+    resultStateText = 'Паспорт недействителен';
+    message = response.description || 'Паспорт недействителен';
   } else if (normalizedVerdict === 'NOT_FOUND') {
     isValid = false;
-    message = 'Сведения о паспорте не найдены в базе МВД';
+    resultState = 'NOT_FOUND';
+    resultStateText = 'Паспорт не найден';
+    message = response.description || 'Сведения о паспорте не найдены в базе МВД';
   } else if (typeof response.isValid === 'boolean') {
     isValid = response.isValid;
-    message = response.message || (isValid ? 'Паспорт действителен' : 'Паспорт недействителен');
+    resultState = response.isValid ? 'VALID' : 'NOT_VALID';
+    resultStateText = response.isValid ? 'Паспорт действителен' : 'Паспорт недействителен';
+    message = response.message || response.description || resultStateText;
   } else if (response.status === 404) {
     // Для chekpassportv2 404 тоже считается "получен результат" (по доке МВД),
     // но это явно не "паспорт ок", поэтому трактуем как ошибка источника
@@ -99,7 +141,15 @@ async function checkMvdPassport(person, options = {}) {
     result.items.push({
       kind: 'passport_check',
       isValid: null,
-      message: response.message || 'Не удалось получить сведения о паспорте (HTTP 404)',
+      verification: {
+        series: passportSeries || null,
+        number: passportNumber || null,
+        issueDate: passportIssueDate || null,
+        issuerCode: passportIssuerCode || null,
+      },
+      resultState: response.result || response.verdict || response.statusText || 'HTTP_404',
+      resultStateText: 'Ошибка проверки',
+      message: response.message || response.description || `Не удалось получить сведения о паспорте (HTTP 404): ${response.status}`,
       rawRecord: response,
     });
     return wrapWithFallbackIfNeeded(result, response, options);
@@ -111,8 +161,17 @@ async function checkMvdPassport(person, options = {}) {
     result.items.push({
       kind: 'passport_check',
       isValid: null,
-      message: response.message || 'Не удалось интерпретировать ответ МВД',
+      verification: {
+        series: passportSeries || null,
+        number: passportNumber || null,
+        issueDate: passportIssueDate || null,
+        issuerCode: passportIssuerCode || null,
+      },
+      resultState: response.result || response.verdict || response.statusText || 'HTTP_404',
+      resultStateText: 'Ошибка проверки',
+      message: response.message || response.description || `Не удалось интерпретировать ответ МВД: ${response.status}`,
       rawRecord: response,
+
     });
     return wrapWithFallbackIfNeeded(result, response, options);
   }
@@ -122,6 +181,17 @@ async function checkMvdPassport(person, options = {}) {
   result.items.push({
     kind: 'passport_check',
     isValid,
+
+    verification: {
+      series: passportSeries || null,
+      number: passportNumber || null,
+      issueDate: passportIssueDate || null,
+      issuerCode: passportIssuerCode || null,
+    },
+
+    resultState,
+    resultStateText: resultStateText || message || 'Статус не определён',
+
     message,
     rawRecord: response,
   });

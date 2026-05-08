@@ -28,13 +28,26 @@ const RU_MONTHS = {
 
 function normalizeDateWords(s) {
   if (!s) return '';
-  const m = s.match(/([0-3]?\d)\s+([А-Яа-яё]+)\s+(\d{4})/i);
+
+  const cleaned = String(s)
+    .replace(/\bгода\b/gi, '')
+    .replace(/\bгод\b/gi, '')
+    .replace(/\bг\.\b/gi, '')
+    .replace(/\bг\b/gi, '')
+    .replace(/\bрождения\b/gi, '')
+    .replace(/[.,]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const m = cleaned.match(/^([0-3]?\d)\s+([А-Яа-яё]+)\s+(\d{4})$/i);
   if (!m) return '';
+
   const dd = m[1].padStart(2, '0');
   const monRaw = m[2].toLowerCase();
   const key = monRaw.slice(0, 3);
   const mm = RU_MONTHS[key] || '';
   if (!mm) return '';
+
   const yyyy = m[3];
   return `${dd}.${mm}.${yyyy}`;
 }
@@ -42,17 +55,63 @@ function normalizeDateWords(s) {
 function normalizeDateSmart(s) {
   return normalizeDateNumeric(s) || normalizeDateWords(s);
 }
+function extractBirthDateByMarkers(text) {
+  const source = String(text || '');
+
+  const patterns = [
+    // 1) дата перед "г.р." / "года рождения"
+    /([0-3]?\d[./-][01]?\d[./-](?:\d{2}|\d{4})|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)\s*(?:г\.?\s*р\.?|года\s*рождения)/i,
+
+    // 2) дата после "дата рождения:"
+    /дата\s*рождения\s*[:\-]?\s*([0-3]?\d[./-][01]?\d[./-](?:\d{2}|\d{4})|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)(?:\s+рождения)?/i,
+
+    // 3) дата после просто "рождения:"
+    /рождения\s*[:\-]?\s*([0-3]?\d[./-][01]?\d[./-](?:\d{2}|\d{4})|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)/i,
+  ];
+
+  for (const re of patterns) {
+    const m = source.match(re);
+    if (m && m[1]) {
+      const d = normalizeDateSmart(m[1]);
+      if (d) return d;
+    }
+  }
+
+  return '';
+}
 
 // Сохраняем ПОРЯДОК дат по тексту (и числовых, и словесных)
 function extractAllDates(raw) {
   const text = String(raw || '');
-  const re = /([0-3]?\d[./-][01]?\d[./-](\d{4}|\d{2}))|([0-3]?\d\s+[А-Яа-яё]+\s+\d{4})/gi;
+  const re = /([0-3]?\d[./-][01]?\d[./-](\d{4}|\d{2}))|([0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?(?:\s+рождения)?)/gi;
   const out = [];
+
   for (const m of text.matchAll(re)) {
     const hit = m[1] || m[3];
     const d = normalizeDateSmart(hit);
     if (d) out.push(d);
   }
+
+  return out;
+}
+
+function extractAllDatesWithPos(raw) {
+  const text = String(raw || '');
+  const re = /([0-3]?\d[./-][01]?\d[./-](\d{4}|\d{2}))|([0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?(?:\s+рождения)?)/gi;
+  const out = [];
+
+  for (const m of text.matchAll(re)) {
+    const hit = m[1] || m[3];
+    const d = normalizeDateSmart(hit);
+    if (d) {
+      out.push({
+        raw: hit,
+        s: d,
+        index: m.index ?? -1,
+      });
+    }
+  }
+
   return out;
 }
 
@@ -199,24 +258,27 @@ export function parseFreeTextPerson(raw) {
   }
   if (!fullName) fullName = findNameNearPassport(text);
 
+  const passportPivotMatch = /(?:пас+порт|Серия\s*и\s*номер|серия|номер|выдан(?:ный|а|о|ы)?)/iu.exec(text);
+  const passportIdx = passportPivotMatch ? passportPivotMatch.index : -1;
+  const beforePassport = passportIdx >= 0 ? text.slice(0, passportIdx) : text;
+  const passportBlock = passportIdx >= 0 ? text.slice(passportIdx) : '';
+  const passportDates = passportBlock ? extractAllDates(passportBlock) : [];
+    
+
   // --- ПОЛ ---
   const gender = detectGender(
     grab(text, [/Пол\s*[:\-]?\s*(мужской|женский)/i]) || text
   );
 
-  // --- ДАТА РОЖДЕНИЯ (с метками) ---
-  let birthDate = normalizeDateSmart(
-    grab(text, [
-      // "Дата рождения: 22.12.1983" или "Дата рождения: 15 марта 1986"
-      /Дата\s*рождения\s*[:\-]?\s*([0-3]?\d[./-][01]?\d[./-]\d{2,4}|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4})/i,
-      // "22.12.1983 г.р." / "22.12.1983 года рождения"
-      /([0-3]?\d[./-][01]?\d[./-]\d{2,4})\s*(?:г\.?\s*р\.?|года\s*рождения)/i,
-      // "15 марта 1986 года рождения"
-      /([0-3]?\d\s+[А-Яа-яё]+\s+\d{4})\s*(?:г(?:ода)?\s*рождения|г\.?\s*р\.?)/i,
-      // "… рождения: 15 марта 1986"
-      /рождения\s*[:\-]?\s*([0-3]?\d\s+[А-Яа-яё]+\s+\d{4})/i,
-    ])
-  );
+  // --- ДАТА РОЖДЕНИЯ ---
+  let birthDate = extractBirthDateByMarkers(beforePassport);
+
+  if (!birthDate) {
+    const beforePassportDates = extractAllDates(beforePassport);
+    if (beforePassportDates.length) {
+      birthDate = beforePassportDates[0];
+    }
+  }
 
   // --- ПАСПОРТ (серия+номер) ---
   let passport = normalizePassportNumber(
@@ -237,10 +299,10 @@ export function parseFreeTextPerson(raw) {
   ]);
   if (!passportIssued) {
     passportIssued = grab(text, [
-      /выдан\s*[:\-]?\s*([\s\S]*?)(?=\n|дата\s*выдачи|код\s*подразделения|зарегистр|телефон|СНИЛС|$)/i,
+      /выдан(?:ный|а|о|ы)?\s*[:\-]?\s*([\s\S]*?)(?=\n|дата\s*выдачи|код\s*подразделения|зарегистр|телефон|СНИЛС|$)/i,
     ]);
   }
-
+  
   // «выдан <дата> <орган>» → дата в issueDate, остальное — в passportIssued
   let issueDate = '';
   if (!passportIssued) {
@@ -252,6 +314,20 @@ export function parseFreeTextPerson(raw) {
       passportIssued = norm(m[2]);
     }
   }
+  if (!passportIssued || !issueDate) {
+    const issuedTail = text.match(
+      /выдан(?:ный|а|о|ы)?\s+([\s\S]*?)\s+([0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)(?=\s|$)/i
+    );
+
+    if (issuedTail) {
+      if (!passportIssued) {
+        passportIssued = norm(issuedTail[1]);
+      }
+      if (!issueDate) {
+        issueDate = normalizeDateSmart(issuedTail[2]) || '';
+      }
+    }
+  }
 
   // Явная "Дата выдачи: ..."
   if (!issueDate) {
@@ -260,6 +336,13 @@ export function parseFreeTextPerson(raw) {
         /Дата\s*выдачи\s*[:\-]?\s*([0-3]?\d[./-][01]?\d{1}[./-]\d{2,4}|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4})/i,
       ])
     );
+  }
+  if (!issueDate && passportDates.length) {
+    if (passportDates[0] !== birthDate) {
+      issueDate = passportDates[0];
+    } else if (passportDates[1]) {
+      issueDate = passportDates[1];
+    }
   }
 
   // Подчистка "Кем выдан"
@@ -314,6 +397,12 @@ export function parseFreeTextPerson(raw) {
       .replace(/\s*,?\s*Дата\s*выдачи.*$/i, '')
       .replace(/[,\s]+$/g, '')
       .trim();
+    passportIssued = passportIssued.replace(
+      /\s+([0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)\s*$/i,
+      ''
+    );
+    passportIssued = passportIssued.replace(/^\s*ный\s+/i, '');
+    passportIssued = norm(passportIssued);  
   }
 
   // --- КОД ПОДРАЗДЕЛЕНИЯ ---

@@ -2,6 +2,118 @@
 
 const { request } = require('../providers/apiCloudClient');
 
+function formatBirthDateForApi(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return `${iso[3]}.${iso[2]}.${iso[1]}`;
+  }
+
+  return raw;
+}
+
+function normalizeMoney(value) {
+  if (value === undefined || value === null || value === '') return null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const match = raw
+    .replace(/\s+/g, '')
+    .replace(',', '.')
+    .match(/-?\d+(?:\.\d+)?/);
+
+  if (!match) return null;
+
+  const num = Number(match[0]);
+  return Number.isFinite(num) ? num : null;
+}
+
+function normalizeSubjectItems(values) {
+  if (!Array.isArray(values)) return [];
+
+  return values.map((item) => ({
+    title: item?.title || null,
+    sum: normalizeMoney(item?.sum),
+    rawRecord: item,
+  }));
+}
+
+function normalizePhones(values) {
+  if (!Array.isArray(values)) return [];
+
+  return values
+    .flatMap((group) => (Array.isArray(group) ? group : [group]))
+    .map((phone) => String(phone || '').replace(/^[*\\]+/, '').trim())
+    .filter(Boolean);
+}
+
+function buildRegionLabel(record = {}) {
+  return (
+    record?.department_title ||
+    record?.department_address ||
+    record?.document_organization ||
+    'Регион не определён'
+  );
+}
+
+function buildRegionKey(label = '') {
+  return String(label || '')
+    .trim()
+    .toLowerCase();
+}
+
+function buildSummary(items = []) {
+  const totalCount = items.length;
+
+  const totalAmount = items.reduce((acc, item) => {
+    const sum = Number(item?.amount || 0);
+    return acc + (Number.isFinite(sum) ? sum : 0);
+  }, 0);
+
+  const activeCount = items.filter((item) => !item?.stopInfo).length;
+  const closedCount = items.filter((item) => !!item?.stopInfo).length;
+
+  const groupsMap = new Map();
+
+  for (const item of items) {
+    const regionKey = item?.regionKey || 'unknown';
+    const regionLabel = item?.regionLabel || 'Регион не определён';
+
+    if (!groupsMap.has(regionKey)) {
+      groupsMap.set(regionKey, {
+        regionKey,
+        regionLabel,
+        totalCount: 0,
+        totalAmount: 0,
+        items: [],
+      });
+    }
+
+    const group = groupsMap.get(regionKey);
+    group.totalCount += 1;
+    group.totalAmount += Number(item?.amount || 0) || 0;
+    group.items.push(item);
+  }
+
+  const regionGroups = Array.from(groupsMap.values()).sort((a, b) => {
+    if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
+    return b.totalCount - a.totalCount;
+  });
+
+  return {
+    totalCount,
+    totalAmount,
+    activeCount,
+    closedCount,
+    regionsCount: regionGroups.length,
+    bankruptcyRisk: totalAmount >= 500000,
+    regionGroups,
+  };
+}
+
 /**
  * Проверка ФССП через api-cloud (тип physical).
  * person: нормализованный объект из normalizePersonInput
@@ -15,6 +127,15 @@ async function checkFssp(person, options = {}) {
     status: 'empty',
     provider: 'apicloud',
     items: [],
+    summary: {
+      totalCount: 0,
+      totalAmount: 0,
+      activeCount: 0,
+      closedCount: 0,
+      regionsCount: 0,
+      bankruptcyRisk: false,
+      regionGroups: [],
+    },
     raw: null,
   };
 
@@ -35,20 +156,11 @@ async function checkFssp(person, options = {}) {
   }
 
   // Дата рождения: api-cloud ждёт дд.мм.гггг
-  let birthdate = person.birthDate || '';
-  if (birthdate && birthdate.includes('-')) {
-    // очень грубая конверсия из формата YYYY-MM-DD в DD.MM.YYYY, если вдруг так пришло
-    const [y, m, d] = birthdate.split('-');
-    if (y && m && d) {
-      birthdate = `${d}.${m}.${y}`;
-    }
-  }
+  const birthdate = formatBirthDateForApi(person.birthDate || '');
 
   // Регион: если не указан, можно передавать -1 (все регионы),
   // но лучше использовать нормализованный person.region, если он есть
-  const regionParam = person.region != null && person.region !== ''
-    ? String(person.region)
-    : '-1';
+  const regionParam = '-1';
 
   // Запрос к api-cloud
   const response = await request('fssp.php', {
@@ -58,7 +170,7 @@ async function checkFssp(person, options = {}) {
     secondname: secondname || undefined,
     birthdate: birthdate || undefined,
     region: regionParam,
-    onlyActual: 1,
+    onlyActual: 0,
   });
 
   // Сохраняем "сырую" часть ответа, чтобы потом можно было посмотреть в loadRaw
@@ -93,27 +205,104 @@ async function checkFssp(person, options = {}) {
       ...result,
       status: 'empty',
       items: [],
+      summary: {
+        totalCount: 0,
+        totalAmount: 0,
+        activeCount: 0,
+        closedCount: 0,
+        regionsCount: 0,
+        bankruptcyRisk: false,
+        regionGroups: [],
+      },
       message: response.message || 'В базе ФССП отсутствует',
     };
   }
 
   // Есть записи — маппим в наш внутренний формат
-  const items = records.map((rec) => ({
-    debtorName: rec.debtor_name || null,
-    debtorDob: rec.debtor_dob || null,
-    debtorAddress: rec.debtor_address || null,
-    processNumber: rec.process_title || null,
-    processDate: rec.process_date || null,
-    documentType: rec.document_type || null,
-    // Если api-cloud вернёт сумму долга отдельным полем — добавим его
-    amount: rec.sum || rec.debt_sum || null,
-    rawRecord: rec,
-  }));
+  const items = records.map((rec) => {
+    const subjectItems = normalizeSubjectItems(rec.subjectArray);
+    const officerPhones = normalizePhones(rec.officer_phones);
+    const regionLabel = buildRegionLabel(rec);
+    const regionKey = buildRegionKey(regionLabel);
+
+    const recIspDocDetail = Array.isArray(rec.recIspDocDetail)
+      ? rec.recIspDocDetail
+      : [];
+
+    const recIspDocDetailObject =
+      rec.recIspDocDetail &&
+      !Array.isArray(rec.recIspDocDetail) &&
+      typeof rec.recIspDocDetail === 'object'
+        ? rec.recIspDocDetail
+        : null;
+
+    return {
+      kind: 'fssp_proceeding',
+
+      debtorName: rec.debtor_name || null,
+      debtorDob: rec.debtor_dob || null,
+      debtorAddress: rec.debtor_address || null,
+
+      processNumber: rec.process_title || null,
+      processDate: rec.process_date || null,
+      processTotal: rec.process_total || null,
+
+      amount: normalizeMoney(rec.sum || rec.debt_sum),
+
+      subject: rec.subject || null,
+      subjectItems,
+
+      stopInfo: rec.stopIP || null,
+      stopDate: rec.stopIPDate || null,
+      stopReason: rec.stopIPReason || null,
+
+      documentType: rec.document_type || null,
+      documentText: rec.recIspDoc || null,
+
+      documentDetails: {
+        organization:
+          recIspDocDetailObject?.doc_organization ||
+          recIspDocDetail[0] ||
+          null,
+        claimerInn:
+          recIspDocDetailObject?.doc_claimer_inn ||
+          recIspDocDetail[1] ||
+          null,
+        docType:
+          recIspDocDetailObject?.doc_type ||
+          recIspDocDetail[2] ||
+          null,
+        docDate:
+          recIspDocDetailObject?.doc_date ||
+          recIspDocDetail[3] ||
+          null,
+        documentNumber:
+          recIspDocDetailObject?.document_num ||
+          recIspDocDetail[4] ||
+          null,
+      },
+
+      departmentRaw: rec.document_organization || null,
+      departmentName: rec.department_title || null,
+      departmentAddress: rec.department_address || null,
+
+      officerName: rec.officer_name || null,
+      officerPhones,
+
+      regionKey,
+      regionLabel,
+
+      rawRecord: rec,
+    };
+  });
+
+  const summary = buildSummary(items);
 
   return {
     status: 'ok',
     provider: 'apicloud',
     items,
+    summary,
     raw: response,
   };
 }

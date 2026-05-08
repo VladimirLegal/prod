@@ -46,13 +46,9 @@ function buildKonturMeta(existingKontur, checkKey, subjectId, checkId, checkStat
 
 function logKonturCheck(stage, payload) {
   try {
-    console.log(
-      '[kontur][courts]',
-      stage,
-      JSON.stringify(payload, null, 2)
-    );
+    console.log('[kontur][wanted]', stage, JSON.stringify(payload, null, 2));
   } catch (e) {
-    console.log('[kontur][courts]', stage, payload);
+    console.log('[kontur][wanted]', stage, payload);
   }
 }
 
@@ -66,60 +62,50 @@ function normalizeKonturCheckState(response) {
     return { state, phase: 'done' };
   }
 
-  if (
-    state === 'Created' ||
-    state === 'Queued' ||
-    state === 'Processing'
-  ) {
+  if (state === 'Created' || state === 'Queued' || state === 'Processing') {
     return { state, phase: 'processing' };
   }
 
-  if (
-    state === 'Error' ||
-    state === 'Failed'
-  ) {
+  if (state === 'Error' || state === 'Failed') {
     return { state, phase: 'error' };
   }
 
   return { state, phase: 'unknown' };
 }
 
-function normalizeKonturRegionCode(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  if (/^0[1-9]$/.test(raw)) {
-    return String(Number(raw));
-  }
-
-  if (/^\d{1,2}$/.test(raw)) {
-    return raw;
-  }
-
-  return '';
-}
-
-function normalizeKonturRegions(values) {
-  if (!Array.isArray(values)) return [];
-
-  return [...new Set(
-    values
-      .map(normalizeKonturRegionCode)
-      .filter(Boolean)
-  )];
-}
-
-function translateCourtMatchType(value) {
+function translateWantedObject(value) {
   const map = {
-    FullMatch: 'Полное совпадение',
-    PartialMatch: 'Частичное совпадение',
-    NotMatch: 'Совпадение не подтверждено',
+    OrganizationProperty: 'Имущество организации',
+    DebtorProperty: 'Имущество должника',
+    Vehicle: 'Транспортное средство',
+    Child: 'Ребёнок',
+    Defendant: 'Ответчик',
+    Person: 'Физическое лицо',
   };
 
   return map[value] || value || null;
 }
 
-function translateCourtCriterion(value) {
+function translateWantedSourceType(value) {
+  const map = {
+    fsin: 'ФСИН',
+    fsspSuspect: 'ФССП — розыск по подозрению',
+    fsspEnforce: 'ФССП — исполнительный розыск',
+  };
+
+  return map[value] || value || null;
+}
+
+function translateWantedMatchType(value) {
+  const map = {
+    FullMatch: 'Полное совпадение',
+    PartialMatch: 'Частичное совпадение',
+  };
+
+  return map[value] || value || null;
+}
+
+function translateWantedCriterion(value) {
   const map = {
     Fio: 'ФИО',
     BirthDate: 'Дата рождения',
@@ -132,107 +118,167 @@ function translateCourtCriterion(value) {
   return map[value] || value || null;
 }
 
-function buildCourtCriterionText(criteria) {
-  if (!Array.isArray(criteria) || !criteria.length) {
-    return 'Основание совпадения не указано';
-  }
-
-  const translated = criteria
-    .map(translateCourtCriterion)
-    .filter(Boolean);
-
-  return translated.length
-    ? translated.join(', ')
-    : 'Основание совпадения не указано';
+function buildWantedCriterionText(criteria) {
+  if (!Array.isArray(criteria) || !criteria.length) return null;
+  return criteria.map(translateWantedCriterion).filter(Boolean).join(', ');
 }
 
-function translateCourtStatus(value) {
-  const map = {
-    Active: 'Производство активно',
-    Finished: 'Производство завершено',
-    Suspended: 'Производство приостановлено',
-  };
+function extractWantedItems(checkResponse) {
+  const wantedBlock = checkResponse?.wanted || {};
+  const resultBlock =
+    wantedBlock?.result ||
+    checkResponse?.result ||
+    {};
 
-  return map[value] || value || 'Статус не указан';
-}
+  const fsin = Array.isArray(resultBlock?.fsin) ? resultBlock.fsin : [];
+  const fsspSuspect = Array.isArray(resultBlock?.fsspSuspect) ? resultBlock.fsspSuspect : [];
+  const fsspEnforce = Array.isArray(resultBlock?.fsspEnforce) ? resultBlock.fsspEnforce : [];
 
-function buildCourtRoleText(value) {
-  return value || 'Роль не указана';
-}
+  const items = [];
 
-function buildCourtCategoryText(value) {
-  return value || 'Категория не указана';
-}
+  for (const item of fsin) {
+    const criterion = Array.isArray(item.criterion) ? item.criterion : [];
+    const matchType = item.matchType || null;
 
-function extractCourtItems(checkResponse) {
-  const courtsBlock = checkResponse?.courts || {};
-  const proceedings =
-    Array.isArray(courtsBlock?.result?.proceedings)
-      ? courtsBlock.result.proceedings
-      : Array.isArray(checkResponse?.result?.proceedings)
-      ? checkResponse.result.proceedings
-      : [];
+    items.push({
+      kind: 'wanted_person',
+      sourceType: 'fsin',
+      sourceTypeText: translateWantedSourceType('fsin'),
 
-  return proceedings.map((item) => {
-    const proceedingCategory =
-      item.proceedingCategory ||
-      item.proceedingСategory ||
-      null;
+      fullName: item.fio || item.fullName || item.name || null,
+      shortName: null,
 
-    const status = item.status || null;
+      matchType,
+      matchTypeText: translateWantedMatchType(matchType),
 
-    return {
-      kind: 'court_common_case',
-      caseNumber: item.number || null,
-      court: item.courtName || null,
-      judge: item.judge || null,
-      region: item.region || null,
+      criterion,
+      criterionText: buildWantedCriterionText(criterion),
 
-      proceedingType: item.proceedingType || null,
-      proceedingResult: item.proceedingResult || null,
+      category: 'ФСИН',
 
-      proceedingCategory,
-      proceedingCategoryText: buildCourtCategoryText(proceedingCategory),
+      initiator: item.territorialAuth || null,
+      executor: null,
 
-      proceedingStartDate: item.proceedingStartDate || null,
-      proceedingUrl: item.proceedingUrl || null,
+      article: null,
 
-      status,
-      statusText: translateCourtStatus(status),
+      region: item.birthPlace || null,
+      birthPlace: item.birthPlace || null,
 
-      discussionStage: item.discussionStage || null,
-      proceedingDetails: item.proceedingDetails || null,
+      description: item.description || null,
+      measure: null,
+      measureCode: null,
 
-      participants: Array.isArray(item?.participants?.items)
-        ? item.participants.items.map((p) => {
-            const criterion = Array.isArray(p?.criterion) ? p.criterion : [];
-            const matchType = p?.matchType || null;
+      wantedNumber: null,
+      wantedDate: null,
 
-            return {
-              name: p?.name || null,
+      proceedingNumber: null,
+      proceedingDate: null,
 
-              role: p?.role || null,
-              roleText: buildCourtRoleText(p?.role || null),
+      departmentName: null,
+      departmentContacts: null,
 
-              type: p?.type || null,
-
-              matchType,
-              matchTypeText: translateCourtMatchType(matchType),
-
-              criterion,
-              criterionText: buildCourtCriterionText(criterion),
-
-              article: p?.article || null,
-              sentence: p?.sentence || null,
-
-              rawRecord: p,
-            };
-          })
-        : [],
+      sourceUrl: item.url || null,
 
       rawRecord: item,
-    };
-  });
+    });
+  }
+
+  for (const item of fsspSuspect) {
+    const criterion = Array.isArray(item.criterion) ? item.criterion : [];
+    const matchType = item.matchType || null;
+    const fio = item.fio || item.fullName || item.name || null;
+
+    items.push({
+      kind: 'wanted_person',
+      sourceType: 'fsspSuspect',
+      sourceTypeText: translateWantedSourceType('fsspSuspect'),
+
+      fullName: fio,
+      shortName: fio,
+
+      matchType,
+      matchTypeText: translateWantedMatchType(matchType),
+
+      criterion,
+      criterionText: buildWantedCriterionText(criterion),
+
+      category: 'ФССП / подозрение в преступлении',
+
+      initiator: item.initiator || null,
+      executor: item.executor || null,
+
+      article: item.article || null,
+
+      region: item.birthPlace || null,
+      birthPlace: item.birthPlace || null,
+
+      description: null,
+      measure: null,
+      measureCode: null,
+
+      wantedNumber: null,
+      wantedDate: null,
+
+      proceedingNumber: null,
+      proceedingDate: null,
+
+      departmentName: null,
+      departmentContacts: null,
+
+      sourceUrl: null,
+
+      rawRecord: item,
+    });
+  }
+
+  for (const item of fsspEnforce) {
+    const criterion = Array.isArray(item.criterion) ? item.criterion : [];
+    const matchType = item.matchType || null;
+
+    items.push({
+      kind: 'wanted_person',
+      sourceType: 'fsspEnforce',
+      sourceTypeText: translateWantedSourceType('fsspEnforce'),
+
+      fullName: item.fio || item.fullName || item.name || null,
+      shortName: null,
+
+      matchType,
+      matchTypeText: translateWantedMatchType(matchType),
+
+      criterion,
+      criterionText: buildWantedCriterionText(criterion),
+
+      category: 'ФССП / исполнительный розыск',
+
+      initiator: item.departmentName || null,
+      executor: null,
+
+      article: null,
+
+      region: item.departmentContacts || null,
+      birthPlace: null,
+
+      description: null,
+      measure: translateWantedObject(item.wantedObject),
+      measureCode: item.wantedObject || null,
+
+      wantedNumber: item.wantedNumber || null,
+      wantedDate: item.wantedDate || null,
+
+      proceedingNumber: item.proceedingNumber || null,
+      proceedingDate: item.proceedingDate || null,
+
+      departmentName: item.departmentName || null,
+      departmentContacts: item.departmentContacts || null,
+
+      sourceUrl: null,
+
+      rawRecord: item,
+    });
+  }
+
+  return items;
 }
 
 function buildCachedSourcePayload(source) {
@@ -258,19 +304,17 @@ function attachScenarioCache(metaWrapper, scenarioKey, extra = {}) {
   return metaWrapper;
 }
 
-async function checkCourtsCommon(person) {
+async function wantedKontur(person) {
   const existingKontur = person?._kontur || {};
   const existingSubjectId =
-    existingKontur.checks?.courtsCommon?.subjectId ||
+    existingKontur.checks?.wanted?.subjectId ||
     existingKontur.subjectId ||
     null;
-  const existingCheckId = existingKontur.checks?.courtsCommon?.checkId || null;
-
-  const existingScenarioMeta = existingKontur.checks?.courtsCommon || {};
+  const existingCheckId = existingKontur.checks?.wanted?.checkId || null;
+  const existingScenarioMeta = existingKontur.checks?.wanted || {};
   const existingEtag = existingScenarioMeta.etag || null;
   const cachedSource = existingScenarioMeta.cachedSource || null;
 
-  // Если проверка уже создана ранее — просто опрашиваем её
   if (existingCheckId) {
     const finalResponse = await getCheck(
       existingCheckId,
@@ -290,13 +334,13 @@ async function checkCourtsCommon(person) {
             {
               _kontur: buildKonturMeta(
                 existingKontur,
-                'courtsCommon',
+                'wanted',
                 existingSubjectId,
                 existingCheckId,
                 existingScenarioMeta.checkState || 'Processing'
               ),
             },
-            'courtsCommon',
+            'wanted',
             {
               etag: existingEtag,
               cachedSource,
@@ -310,19 +354,19 @@ async function checkCourtsCommon(person) {
       return {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка на розыск в Контуре ещё выполняется',
         items: [],
         meta: attachScenarioCache(
           {
             _kontur: buildKonturMeta(
               existingKontur,
-              'courtsCommon',
+              'wanted',
               existingSubjectId,
               existingCheckId,
               existingScenarioMeta.checkState || 'Processing'
             ),
           },
-          'courtsCommon',
+          'wanted',
           {
             etag: existingEtag,
             cachedSource: null,
@@ -342,13 +386,13 @@ async function checkCourtsCommon(person) {
         provider: 'kontur',
         error: buildValidationMessage(
           finalResponse,
-          'Ошибка при получении результата проверки courts'
+          'Ошибка при получении результата проверки wanted'
         ),
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'wanted',
             existingSubjectId,
             existingCheckId,
             finalResponse?.checkState || finalResponse?.state || 'Error'
@@ -367,12 +411,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка на розыск в Контуре ещё выполняется',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'wanted',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -384,13 +428,13 @@ async function checkCourtsCommon(person) {
           checkState: currentState,
           checkType: finalResponse?.checkType || null,
           creationDate: finalResponse?.creationDate || null,
-          courts: finalResponse?.courts || null,
+          wanted: finalResponse?.wanted || null,
           result: finalResponse?.result || null,
           fullResponse: finalResponse,
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'wanted', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -405,12 +449,12 @@ async function checkCourtsCommon(person) {
         error:
           finalResponse?.error?.message ||
           finalResponse?.message ||
-          'Контур завершил проверку courtsCommon с ошибкой',
+          'Контур завершил проверку wanted с ошибкой',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'wanted',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -422,7 +466,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'wanted', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -434,12 +478,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: `Проверка courtsCommon вернула нестандартный статус: ${currentState}`,
+        error: `Проверка wanted вернула нестандартный статус: ${currentState}`,
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'wanted',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -453,7 +497,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'wanted', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -461,7 +505,7 @@ async function checkCourtsCommon(person) {
       return result;
     }
 
-    const items = extractCourtItems(finalResponse);
+    const items = extractWantedItems(finalResponse);
 
     const result = {
       status: items.length ? 'ok' : 'empty',
@@ -469,14 +513,12 @@ async function checkCourtsCommon(person) {
       items,
       summary: {
         totalCount: items.length,
-        hasCases: items.length > 0,
-        activeCount: items.filter((item) => item.status === 'Active').length,
-        finishedCount: items.filter((item) => item.status === 'Finished').length,
+        hasMatches: items.length > 0,
       },
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'wanted',
           existingSubjectId,
           existingCheckId,
           currentState
@@ -488,13 +530,13 @@ async function checkCourtsCommon(person) {
         checkState: currentState,
         checkType: finalResponse?.checkType || null,
         creationDate: finalResponse?.creationDate || null,
-        courts: finalResponse?.courts || null,
+        wanted: finalResponse?.wanted || null,
         result: finalResponse?.result || null,
         fullResponse: finalResponse,
       },
     };
 
-    result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+    result.meta = attachScenarioCache(result.meta, 'wanted', {
       etag: finalResponse?.etag || existingEtag || null,
       cachedSource: buildCachedSourcePayload(result),
     });
@@ -510,28 +552,9 @@ async function checkCourtsCommon(person) {
         surname: person.lastName,
         name: person.firstName,
         patronymic: person.middleName,
+        birthDate: person.birthDate,
       },
     };
-
-    if (person.birthDate) {
-      subjectBody.person.birthDate = person.birthDate;
-    }
-
-    if (
-      person.passportSeries &&
-      person.passportNumber &&
-      person.passportIssueDate &&
-      person.passportIssuerCode
-    ) {
-      subjectBody.person.identityDocument = {
-        series: person.passportSeries,
-        number: person.passportNumber,
-        issueDate: person.passportIssueDate,
-        issuer: {
-          issuerCode: person.passportIssuerCode,
-        },
-      };
-    }
 
     const subjectResponse = await createSubject(subjectBody);
     logKonturCheck('createSubject_response', {
@@ -545,7 +568,7 @@ async function checkCourtsCommon(person) {
         provider: 'kontur',
         error: buildValidationMessage(
           subjectResponse,
-          'Не удалось создать субъекта в Контур'
+          'Не удалось создать субъекта в Контур для проверки розыска'
         ),
         items: [],
         raw: {
@@ -559,70 +582,69 @@ async function checkCourtsCommon(person) {
     subjectId = subjectResponse.subjectId;
   }
 
-  // Создаём проверку courts
-  const regionCodes = normalizeKonturRegions(person?.regions);
-
-  const createCheckPayload = {
-    courts: {
+  const checkBody = {
+    wanted: {
       subjectId,
-      ...(regionCodes.length ? { regions: regionCodes } : {}),
     },
   };
 
-  const createCheckResponse = await createCheck(createCheckPayload);
+  const checkResponse = await createCheck(checkBody);
   logKonturCheck('createCheck_response', {
-    request: createCheckPayload,
-    response: createCheckResponse,
+    request: checkBody,
+    response: checkResponse,
   });
 
-  if (!createCheckResponse?.ok || !createCheckResponse?.checkId) {
+  if (!checkResponse?.ok || !checkResponse?.checkId) {
+    const isTimeout = checkResponse?.error === 'timeout_error';
+
     return {
-      status: 'error',
+      status: isTimeout ? 'processing' : 'error',
       provider: 'kontur',
       error: buildValidationMessage(
-        createCheckResponse,
-        'Не удалось создать проверку courts в Контур'
+        checkResponse,
+        isTimeout
+          ? 'Создание проверки wanted в Контуре заняло слишком много времени, попробуем дочитать позже'
+          : 'Не удалось создать проверку wanted в Контур'
       ),
       items: [],
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'wanted',
           subjectId,
           null,
-          'Error'
+          isTimeout ? 'Processing' : 'Error'
         ),
       },
       raw: {
         step: 'createCheck',
         subjectId,
-        request: createCheckPayload,
-        response: createCheckResponse,
+        request: checkBody,
+        response: checkResponse,
       },
     };
   }
 
-  // Не ждём результат внутри одного вызова — worker сам повторит polling позже
   return {
     status: 'processing',
     provider: 'kontur',
-    error: 'Проверка в Контуре ещё выполняется',
+    error: 'Проверка розыска в Контуре ещё выполняется',
     items: [],
     meta: {
       _kontur: buildKonturMeta(
         existingKontur,
-        'courtsCommon',
+        'wanted',
         subjectId,
-        createCheckResponse.checkId,
-        createCheckResponse?.checkState || createCheckResponse?.state || 'Processing'
+        checkResponse.checkId,
+        checkResponse?.checkState || checkResponse?.state || 'Processing'
       ),
     },
     raw: {
       step: 'createCheck_processing',
       subjectId,
-      check: createCheckResponse,
+      check: checkResponse,
     },
   };
 }
 
-module.exports = checkCourtsCommon;
+module.exports = wantedKontur;

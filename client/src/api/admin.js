@@ -66,9 +66,23 @@ const AdminAPI = {
     const query = new URLSearchParams(params).toString();
     return request(`/audit${query ? `?${query}` : ''}`);
   },
-  getSettings: () => request('/settings'),
-  updateSettings: (payload) => request('/settings', { method: 'PATCH', body: payload }),
-  getRolesSummary: () => request('/roles'),
+    getSettings: () => request('/settings'),
+    updateSettings: (payload) => request('/settings', { method: 'PATCH', body: payload }),
+    getRolesSummary: () => request('/roles'),
+
+    getApiCloudBillingBalance: () => request('/billing/apicloud/balance'),
+
+    getApiCloudBillingOperations: (params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(`/billing/apicloud/operations${query ? `?${query}` : ''}`);
+    },
+
+    getKonturBillingBalance: () => request('/billing/kontur/balance'),
+
+    getKonturBillingOperations: (params = {}) => {
+      const query = new URLSearchParams(params).toString();
+      return request(`/billing/kontur/operations${query ? `?${query}` : ''}`);
+    },
 };
 
 export default AdminAPI;

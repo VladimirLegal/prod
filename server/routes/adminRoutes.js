@@ -6,6 +6,9 @@ const { requireAuth, requireRole } = require('../middlewares/authz');
 const { exportPdf } = require('../services/documentService');
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 
+const apiCloudBilling = require('../services/billing/apiCloudBillingClient');
+const konturBilling = require('../services/billing/konturBillingClient');
+
 const VALID_ROLES = ['user', 'manager', 'admin'];
 const VALID_USER_STATUS = ['active', 'blocked', 'deleted'];
 const VALID_FEEDBACK_STATUS = ['new', 'in_progress', 'done'];
@@ -57,6 +60,15 @@ function buildSort(sortParam, allowed) {
   return `${column} ${dir}`;
 }
 
+function getBillingErrorPayload(err) {
+  const raw = err?.raw || null;
+
+  return {
+    message: err?.message || 'billing_error',
+    raw,
+  };
+}
+
 async function logAudit({ user }, { action, entityType, entityId, meta }) {
   try {
     await query(
@@ -72,6 +84,129 @@ async function logAudit({ user }, { action, entityType, entityId, meta }) {
 router.get('/whoami', requireRole('manager', 'admin'), (req, res) => {
   const { id, email, role } = req.user;
   return res.json({ ok: true, user: { id, email, role } });
+});
+
+// ---------- API billing ----------
+router.get('/billing/apicloud/balance', requireRole('admin'), async (req, res) => {
+  try {
+    const data = await apiCloudBilling.getBalance();
+
+    await logAudit(req, {
+      action: 'billing.apicloud.balance',
+      entityType: 'billing',
+      entityId: null,
+      meta: { provider: 'apicloud' },
+    });
+
+    return res.json({ ok: true, data });
+  } catch (err) {
+    console.error('GET /api/admin/billing/apicloud/balance error', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: 'apicloud_balance_failed',
+      details: getBillingErrorPayload(err),
+    });
+  }
+});
+
+router.get('/billing/apicloud/operations', requireRole('admin'), async (req, res) => {
+  try {
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+
+    if (!from || !to) {
+      return res.status(400).json({
+        ok: false,
+        error: 'period_required',
+      });
+    }
+
+    const data = await apiCloudBilling.getOperations({ from, to });
+
+    await logAudit(req, {
+      action: 'billing.apicloud.operations',
+      entityType: 'billing',
+      entityId: null,
+      meta: { provider: 'apicloud', from, to },
+    });
+
+    return res.json({ ok: true, data });
+  } catch (err) {
+    console.error('GET /api/admin/billing/apicloud/operations error', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: 'apicloud_operations_failed',
+      details: getBillingErrorPayload(err),
+    });
+  }
+});
+
+router.get('/billing/kontur/balance', requireRole('admin'), async (req, res) => {
+  try {
+    const data = await konturBilling.getBalance();
+
+    await logAudit(req, {
+      action: 'billing.kontur.balance',
+      entityType: 'billing',
+      entityId: null,
+      meta: { provider: 'kontur' },
+    });
+
+    return res.json({ ok: true, data });
+  } catch (err) {
+    console.error('GET /api/admin/billing/kontur/balance error', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: 'kontur_balance_failed',
+      details: getBillingErrorPayload(err),
+    });
+  }
+});
+
+router.get('/billing/kontur/operations', requireRole('admin'), async (req, res) => {
+  try {
+    const serviceId = String(req.query.serviceId || '').trim();
+
+    if (!serviceId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'serviceId_required',
+      });
+    }
+
+    const from = String(req.query.from || '').trim();
+    const to = String(req.query.to || '').trim();
+    const token = String(req.query.token || '').trim();
+    const count = req.query.count ? Number(req.query.count) : 100;
+
+    const data = await konturBilling.getOperations({
+      serviceId,
+      from,
+      to,
+      token,
+      count,
+    });
+
+    await logAudit(req, {
+      action: 'billing.kontur.operations',
+      entityType: 'billing',
+      entityId: serviceId,
+      meta: { provider: 'kontur', serviceId, from, to, count },
+    });
+
+    return res.json({ ok: true, data });
+  } catch (err) {
+    console.error('GET /api/admin/billing/kontur/operations error', err);
+
+    return res.status(500).json({
+      ok: false,
+      error: 'kontur_operations_failed',
+      details: getBillingErrorPayload(err),
+    });
+  }
 });
 
 // ---------- Users ----------

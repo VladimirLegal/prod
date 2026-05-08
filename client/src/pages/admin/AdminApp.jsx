@@ -10,6 +10,7 @@ import {
   Activity,
   Settings as SettingsIcon,
   BadgeCheck,
+  Wallet,
 } from './icons';
 
 import Dashboard from './Dashboard';
@@ -21,6 +22,7 @@ import Feedback from './Feedback';
 import Audit from './Audit';
 import Settings from './Settings';
 import Roles from './Roles';
+import ApiBalance from './ApiBalance';
 import AdminAPI from '../../api/admin';
 
 export const AdminSessionContext = React.createContext({ user: null, loading: true });
@@ -33,8 +35,10 @@ const navItems = [
   { to: 'templates', label: 'Шаблоны', icon: FileCode },
   { to: 'feedback', label: 'Обратная связь', icon: MessageSquare },
   { to: 'audit', label: 'Активность', icon: Activity },
+  { to: 'api-balance', label: 'Баланс API', icon: Wallet },
   { to: 'settings', label: 'Настройки', icon: SettingsIcon },
   { to: 'roles', label: 'Роли', icon: BadgeCheck },
+  
 ];
 
 function SidebarLink({ item }) {
@@ -99,6 +103,7 @@ function AdminApp() {
             <Route path="templates" element={<Templates />} />
             <Route path="feedback" element={<Feedback />} />
             <Route path="audit" element={<Audit />} />
+            <Route path="api-balance" element={<ApiBalance />} />
             <Route path="settings" element={<Settings />} />
             <Route path="roles" element={<Roles />} />
             <Route path="*" element={<Navigate to="." replace />} />

@@ -38,12 +38,16 @@ class PostgresSessionStore extends session.Store {
   constructor(pgPool) {
     super();
     this.pool = pgPool;
-    this.tableReady = this.#init();
+    this.tableReady = null;
+
     this.cleanupInterval = setInterval(() => {
-      this.#cleanupExpired().catch((err) => {
-        console.warn('[session] cleanup failed:', err.message);
-      });
+      this.#ensureReady()
+        .then(() => this.#cleanupExpired())
+        .catch((err) => {
+          console.warn('[session] cleanup failed:', err.message);
+        });
     }, 60 * 60 * 1000);
+
     this.cleanupInterval.unref?.();
   }
 
@@ -62,13 +66,24 @@ class PostgresSessionStore extends session.Store {
     await this.#cleanupExpired();
   }
 
+  async #ensureReady() {
+    if (!this.tableReady) {
+      this.tableReady = this.#init().catch((err) => {
+        this.tableReady = null;
+        throw err;
+      });
+    }
+
+    return this.tableReady;
+  }
+
   async #cleanupExpired() {
     await this.pool.query('DELETE FROM user_sessions WHERE expire < now()');
   }
 
   async get(sid, callback) {
     try {
-      await this.tableReady;
+      await this.#ensureReady();
       const res = await this.pool.query(
         'SELECT sess, expire FROM user_sessions WHERE sid = $1',
         [sid]
@@ -88,7 +103,7 @@ class PostgresSessionStore extends session.Store {
 
   async set(sid, sessionData, callback) {
     try {
-      await this.tableReady;
+      await this.#ensureReady();
       const expires = sessionData?.cookie?.expires
         ? new Date(sessionData.cookie.expires)
         : new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -108,7 +123,7 @@ class PostgresSessionStore extends session.Store {
 
   async destroy(sid, callback) {
     try {
-      await this.tableReady;
+      await this.#ensureReady();
       await this.pool.query('DELETE FROM user_sessions WHERE sid = $1', [sid]);
       callback?.(null);
     } catch (err) {

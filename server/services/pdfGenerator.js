@@ -68,16 +68,19 @@ module.exports = { generateSimplePDF };
 const { runWithPage } = require('./pdf/browserPool');
 
 async function exportHtmlToPdfBuffer(html) {
-  return runWithPage(async (page) => {
+  const pdfBytes = await runWithPage(async (page) => {
     await page.setContent(String(html || ''), {
       waitUntil: ['domcontentloaded', 'load', 'networkidle0'],
     });
+
     return page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '2cm', right: '1.5cm', bottom: '2cm', left: '3cm' },
     });
-  });  
+  });
+
+  return Buffer.isBuffer(pdfBytes) ? pdfBytes : Buffer.from(pdfBytes);
 }
 
 module.exports.exportHtmlToPdfBuffer = exportHtmlToPdfBuffer;

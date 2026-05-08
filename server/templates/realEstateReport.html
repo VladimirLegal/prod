@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Отчёт по объекту недвижимости</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+    h1 { color: #111827; margin-bottom: 10px; }
+    .meta { margin-bottom: 14px; font-size: 14px; color: #4b5563; }
+    .section { margin-top: 18px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; }
+    .section h2 { margin: 0 0 10px 0; font-size: 18px; color: #111827; }
+    .muted { color: #6b7280; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+    th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; font-weight: 600; }
+    .empty { color: #6b7280; }
+    .notice { font-size: 13px; color: #6b7280; }
+    .toolbar { margin: 12px 0 18px 0; }
+    .btn {
+      display: inline-block;
+      padding: 10px 14px;
+      background: #2563eb;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>Проверка объекта недвижимости</h1>
+
+  <div class="toolbar">
+    <a href="/api/counterparty/report/{{reportId}}/pdf" class="btn">
+      Скачать PDF
+    </a>
+  </div>
+
+  <div class="meta">
+    <div><strong>Кадастровый номер:</strong> {{subject.cadastralNumber}}</div>
+    <div><strong>Адрес:</strong> {{subject.readableAddress}}</div>
+    <div><strong>Тип объекта:</strong> {{subject.objectType}}</div>
+    <div><strong>Дата проверки:</strong> {{createdAt}}</div>
+  </div>
+
+  <div class="section">
+    <h2>Основная информация</h2>
+    <table>
+      <tbody>
+        <tr><th>Адрес</th><td>{{item.readableAddress}}</td></tr>
+        <tr><th>Тип объекта</th><td>{{item.objectType}}</td></tr>
+        <tr><th>Назначение</th><td>{{item.purpose}}</td></tr>
+        <tr><th>Актуальность</th><td>{{item.statusText}}</td></tr>
+        <tr><th>Площадь</th><td>{{item.area}}</td></tr>
+        <tr><th>Этаж</th><td>{{item.level}}</td></tr>
+        <tr><th>Подземный этаж</th><td>{{item.undergroundFloor}}</td></tr>
+        <tr><th>Кадастровая стоимость</th><td>{{item.cadCost}}</td></tr>
+        <tr><th>Дата кадастровой стоимости</th><td>{{item.cadCostDate}}</td></tr>
+        <tr><th>Дата обновления сведений</th><td>{{item.infoUpdate}}</td></tr>
+        <tr><th>Кадастровый квартал</th><td>{{item.cadastralQuarter}}</td></tr>
+        <tr><th>Материал стен</th><td>{{item.oksWallMaterial}}</td></tr>
+        <tr><th>Год ввода в эксплуатацию</th><td>{{item.oksCommisioningYear}}</td></tr>
+        <tr><th>Год постройки</th><td>{{item.oksYearBuild}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Регистрационные сведения</h2>
+    <table>
+      <tbody>
+        <tr><th>Дата кадастрового учёта</th><td>{{registration.regDate}}</td></tr>
+        <tr><th>Дата прекращения</th><td>{{registration.cancelDate}}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Основные характеристики</h2>
+    {{#if mainCharacters}}
+      <table>
+        <tbody>
+          <tr><th>Показатель</th><td>{{mainCharacters.description}}</td></tr>
+          <tr><th>Значение</th><td>{{mainCharacters.value}}</td></tr>
+          <tr><th>Единица измерения</th><td>{{mainCharacters.unitDescription}}</td></tr>
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty">Нет данных</div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Права</h2>
+    {{#if rights.length}}
+      <table>
+        <thead>
+          <tr>
+            <th>Вид права</th>
+            <th>Номер регистрации</th>
+            <th>Дата государственной регистрации</th>
+            <th>Доля</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each rights}}
+            <tr>
+              <td>{{rightTypeDesc}}</td>
+              <td>{{rightNumber}}</td>
+              <td>{{rightRegDate}}</td>
+              <td>{{part}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty">Нет данных о правах</div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Обременения</h2>
+    {{#if encumbrances.length}}
+      <table>
+        <thead>
+          <tr>
+            <th>Тип</th>
+            <th>Номер</th>
+            <th>Дата государственной регистрации</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each encumbrances}}
+            <tr>
+              <td>{{typeDesc}}</td>
+              <td>{{rightNumber}}</td>
+              <td>{{startDate}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty">Не обнаружены</div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Старые номера</h2>
+    {{#if oldNumbers.length}}
+      <table>
+        <thead>
+          <tr>
+            <th>Тип номера</th>
+            <th>Значение</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each oldNumbers}}
+            <tr>
+              <td>{{numType}}</td>
+              <td>{{numValue}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty">Нет данных</div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Разрешённое использование</h2>
+    {{#if permittedUse.length}}
+      <table>
+        <thead>
+          <tr>
+            <th>Значение</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each permittedUse}}
+            <tr>
+              <td>{{this}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    {{else}}
+      <div class="empty">Нет данных</div>
+    {{/if}}
+  </div>
+
+  <div class="section">
+    <h2>Важно</h2>
+    <div class="notice">
+      API-cloud по методу object не возвращает ФИО собственника.
+    </div>
+  </div>
+</body>
+</html>

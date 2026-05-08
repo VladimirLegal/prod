@@ -47,12 +47,12 @@ function buildKonturMeta(existingKontur, checkKey, subjectId, checkId, checkStat
 function logKonturCheck(stage, payload) {
   try {
     console.log(
-      '[kontur][courts]',
+      '[kontur][passport]',
       stage,
       JSON.stringify(payload, null, 2)
     );
   } catch (e) {
-    console.log('[kontur][courts]', stage, payload);
+    console.log('[kontur][passport]', stage, payload);
   }
 }
 
@@ -84,155 +84,107 @@ function normalizeKonturCheckState(response) {
   return { state, phase: 'unknown' };
 }
 
-function normalizeKonturRegionCode(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-
-  if (/^0[1-9]$/.test(raw)) {
-    return String(Number(raw));
-  }
-
-  if (/^\d{1,2}$/.test(raw)) {
-    return raw;
-  }
-
-  return '';
-}
-
-function normalizeKonturRegions(values) {
-  if (!Array.isArray(values)) return [];
-
-  return [...new Set(
-    values
-      .map(normalizeKonturRegionCode)
-      .filter(Boolean)
-  )];
-}
-
-function translateCourtMatchType(value) {
+function translatePassportState(state) {
   const map = {
-    FullMatch: 'Полное совпадение',
-    PartialMatch: 'Частичное совпадение',
-    NotMatch: 'Совпадение не подтверждено',
+    Valid: 'Паспорт действителен',
+    NotFound: 'Сведения в базе МВД не найдены',
+    Expired: 'Истёк срок действия паспорта',
+    Replaced: 'Паспорт заменён',
+    IssuedWithViolation: 'Паспорт выдан с нарушением',
+    WantedByLaw: 'Паспорт числится в розыске',
+    Destroyed: 'Паспорт изъят или уничтожен',
+    OwnerDied: 'Паспорт недействителен в связи со смертью владельца',
+    Defected: 'Паспорт признан бракованным',
+    Lost: 'Паспорт утрачен',
+    CivilTermination: 'Прекращено гражданство РФ',
   };
 
-  return map[value] || value || null;
+  return map[state] || state || 'Статус не определён';
 }
 
-function translateCourtCriterion(value) {
-  const map = {
-    Fio: 'ФИО',
-    BirthDate: 'Дата рождения',
-    SurnameAndInitials: 'Фамилия и инициалы',
-    Inn: 'ИНН',
-    Snils: 'СНИЛС',
-    Passport: 'Паспорт',
-  };
-
-  return map[value] || value || null;
+function getPassportSeverity(state) {
+  if (state === 'Valid') return 'success';
+  if (state === 'NotFound') return 'warning';
+  if (!state) return 'neutral';
+  return 'danger';
 }
 
-function buildCourtCriterionText(criteria) {
-  if (!Array.isArray(criteria) || !criteria.length) {
-    return 'Основание совпадения не указано';
+function isPassportStateValid(state) {
+  return state === 'Valid';
+}
+
+function buildIdentityDocument(person) {
+  const hasAnyPassportField =
+    person?.passportSeries ||
+    person?.passportNumber ||
+    person?.passportIssueDate ||
+    person?.passportIssuerCode;
+
+  if (!hasAnyPassportField) {
+    return null;
   }
 
-  const translated = criteria
-    .map(translateCourtCriterion)
-    .filter(Boolean);
-
-  return translated.length
-    ? translated.join(', ')
-    : 'Основание совпадения не указано';
-}
-
-function translateCourtStatus(value) {
-  const map = {
-    Active: 'Производство активно',
-    Finished: 'Производство завершено',
-    Suspended: 'Производство приостановлено',
+  return {
+    series: person?.passportSeries || undefined,
+    number: person?.passportNumber || undefined,
+    issueDate: person?.passportIssueDate || undefined,
+    issuer: {
+      issuerCode: person?.passportIssuerCode || undefined,
+    },
   };
-
-  return map[value] || value || 'Статус не указан';
 }
 
-function buildCourtRoleText(value) {
-  return value || 'Роль не указана';
-}
+function extractPassportItems(checkResponse, person = {}) {
+  const passportBlock = checkResponse?.passport || {};
+  const resultBlock =
+    passportBlock?.result ||
+    checkResponse?.result ||
+    {};
 
-function buildCourtCategoryText(value) {
-  return value || 'Категория не указана';
-}
+  const rawState =
+    resultBlock?.state ||
+    resultBlock?.status ||
+    passportBlock?.state ||
+    null;
 
-function extractCourtItems(checkResponse) {
-  const courtsBlock = checkResponse?.courts || {};
-  const proceedings =
-    Array.isArray(courtsBlock?.result?.proceedings)
-      ? courtsBlock.result.proceedings
-      : Array.isArray(checkResponse?.result?.proceedings)
-      ? checkResponse.result.proceedings
-      : [];
+  const severity = getPassportSeverity(rawState);
+  const stateText = translatePassportState(rawState);
 
-  return proceedings.map((item) => {
-    const proceedingCategory =
-      item.proceedingCategory ||
-      item.proceedingСategory ||
-      null;
-
-    const status = item.status || null;
-
-    return {
-      kind: 'court_common_case',
-      caseNumber: item.number || null,
-      court: item.courtName || null,
-      judge: item.judge || null,
-      region: item.region || null,
-
-      proceedingType: item.proceedingType || null,
-      proceedingResult: item.proceedingResult || null,
-
-      proceedingCategory,
-      proceedingCategoryText: buildCourtCategoryText(proceedingCategory),
-
-      proceedingStartDate: item.proceedingStartDate || null,
-      proceedingUrl: item.proceedingUrl || null,
-
-      status,
-      statusText: translateCourtStatus(status),
-
-      discussionStage: item.discussionStage || null,
-      proceedingDetails: item.proceedingDetails || null,
-
-      participants: Array.isArray(item?.participants?.items)
-        ? item.participants.items.map((p) => {
-            const criterion = Array.isArray(p?.criterion) ? p.criterion : [];
-            const matchType = p?.matchType || null;
-
-            return {
-              name: p?.name || null,
-
-              role: p?.role || null,
-              roleText: buildCourtRoleText(p?.role || null),
-
-              type: p?.type || null,
-
-              matchType,
-              matchTypeText: translateCourtMatchType(matchType),
-
-              criterion,
-              criterionText: buildCourtCriterionText(criterion),
-
-              article: p?.article || null,
-              sentence: p?.sentence || null,
-
-              rawRecord: p,
-            };
-          })
-        : [],
-
-      rawRecord: item,
-    };
-  });
+  return [
+    {
+      kind: 'passport_lookup',
+      state: rawState,
+      stateText,
+      severity,
+      isValid: isPassportStateValid(rawState),
+      message: stateText,
+      series:
+        passportBlock?.series ||
+        resultBlock?.series ||
+        person?.passportSeries ||
+        person?.passport?.series ||
+        null,
+      number:
+        passportBlock?.number ||
+        resultBlock?.number ||
+        person?.passportNumber ||
+        person?.passport?.number ||
+        null,
+      issueDate:
+        passportBlock?.issueDate ||
+        resultBlock?.issueDate ||
+        person?.passportIssueDate ||
+        person?.passport?.issueDate ||
+        null,
+      issuerCode:
+        passportBlock?.issuer?.issuerCode ||
+        resultBlock?.issuer?.issuerCode ||
+        person?.passportIssuerCode ||
+        person?.passport?.issuerCode ||
+        null,
+      rawRecord: checkResponse,
+    },
+  ];
 }
 
 function buildCachedSourcePayload(source) {
@@ -258,19 +210,18 @@ function attachScenarioCache(metaWrapper, scenarioKey, extra = {}) {
   return metaWrapper;
 }
 
-async function checkCourtsCommon(person) {
+async function passportKontur(person) {
+    
   const existingKontur = person?._kontur || {};
   const existingSubjectId =
-    existingKontur.checks?.courtsCommon?.subjectId ||
+    existingKontur.checks?.passport?.subjectId ||
     existingKontur.subjectId ||
     null;
-  const existingCheckId = existingKontur.checks?.courtsCommon?.checkId || null;
-
-  const existingScenarioMeta = existingKontur.checks?.courtsCommon || {};
+  const existingCheckId = existingKontur.checks?.passport?.checkId || null;
+  const existingScenarioMeta = existingKontur.checks?.passport || {};
   const existingEtag = existingScenarioMeta.etag || null;
   const cachedSource = existingScenarioMeta.cachedSource || null;
 
-  // Если проверка уже создана ранее — просто опрашиваем её
   if (existingCheckId) {
     const finalResponse = await getCheck(
       existingCheckId,
@@ -290,13 +241,13 @@ async function checkCourtsCommon(person) {
             {
               _kontur: buildKonturMeta(
                 existingKontur,
-                'courtsCommon',
+                'passport',
                 existingSubjectId,
                 existingCheckId,
                 existingScenarioMeta.checkState || 'Processing'
               ),
             },
-            'courtsCommon',
+            'passport',
             {
               etag: existingEtag,
               cachedSource,
@@ -310,19 +261,19 @@ async function checkCourtsCommon(person) {
       return {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка паспорта в Контуре ещё выполняется',
         items: [],
         meta: attachScenarioCache(
           {
             _kontur: buildKonturMeta(
               existingKontur,
-              'courtsCommon',
+              'passport',
               existingSubjectId,
               existingCheckId,
               existingScenarioMeta.checkState || 'Processing'
             ),
           },
-          'courtsCommon',
+          'passport',
           {
             etag: existingEtag,
             cachedSource: null,
@@ -342,13 +293,13 @@ async function checkCourtsCommon(person) {
         provider: 'kontur',
         error: buildValidationMessage(
           finalResponse,
-          'Ошибка при получении результата проверки courts'
+          'Ошибка при получении результата проверки passport'
         ),
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'passport',
             existingSubjectId,
             existingCheckId,
             finalResponse?.checkState || finalResponse?.state || 'Error'
@@ -367,12 +318,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: 'Проверка судов общей юрисдикции в Контуре ещё выполняется',
+        error: 'Проверка паспорта в Контуре ещё выполняется',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'passport',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -384,13 +335,13 @@ async function checkCourtsCommon(person) {
           checkState: currentState,
           checkType: finalResponse?.checkType || null,
           creationDate: finalResponse?.creationDate || null,
-          courts: finalResponse?.courts || null,
+          passport: finalResponse?.passport || null,
           result: finalResponse?.result || null,
           fullResponse: finalResponse,
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'passport', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -405,12 +356,12 @@ async function checkCourtsCommon(person) {
         error:
           finalResponse?.error?.message ||
           finalResponse?.message ||
-          'Контур завершил проверку courtsCommon с ошибкой',
+          'Контур завершил проверку passport с ошибкой',
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'passport',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -422,7 +373,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'passport', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -434,12 +385,12 @@ async function checkCourtsCommon(person) {
       const result = {
         status: 'processing',
         provider: 'kontur',
-        error: `Проверка courtsCommon вернула нестандартный статус: ${currentState}`,
+        error: `Проверка passport вернула нестандартный статус: ${currentState}`,
         items: [],
         meta: {
           _kontur: buildKonturMeta(
             existingKontur,
-            'courtsCommon',
+            'passport',
             existingSubjectId,
             existingCheckId,
             currentState
@@ -453,7 +404,7 @@ async function checkCourtsCommon(person) {
         },
       };
 
-      result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+      result.meta = attachScenarioCache(result.meta, 'passport', {
         etag: finalResponse?.etag || existingEtag || null,
         cachedSource: buildCachedSourcePayload(result),
       });
@@ -461,22 +412,17 @@ async function checkCourtsCommon(person) {
       return result;
     }
 
-    const items = extractCourtItems(finalResponse);
+    
+    const items = extractPassportItems(finalResponse, person);
 
     const result = {
-      status: items.length ? 'ok' : 'empty',
+      status: items.some((item) => item?.isValid === true) ? 'ok' : 'empty',
       provider: 'kontur',
       items,
-      summary: {
-        totalCount: items.length,
-        hasCases: items.length > 0,
-        activeCount: items.filter((item) => item.status === 'Active').length,
-        finishedCount: items.filter((item) => item.status === 'Finished').length,
-      },
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'passport',
           existingSubjectId,
           existingCheckId,
           currentState
@@ -488,13 +434,13 @@ async function checkCourtsCommon(person) {
         checkState: currentState,
         checkType: finalResponse?.checkType || null,
         creationDate: finalResponse?.creationDate || null,
-        courts: finalResponse?.courts || null,
+        passport: finalResponse?.passport || null,
         result: finalResponse?.result || null,
         fullResponse: finalResponse,
       },
     };
 
-    result.meta = attachScenarioCache(result.meta, 'courtsCommon', {
+    result.meta = attachScenarioCache(result.meta, 'passport', {
       etag: finalResponse?.etag || existingEtag || null,
       cachedSource: buildCachedSourcePayload(result),
     });
@@ -503,13 +449,43 @@ async function checkCourtsCommon(person) {
   }
 
   let subjectId = existingSubjectId;
+  const identityDocument = buildIdentityDocument(person);
+
+  if (!identityDocument) {
+    return {
+      status: 'error',
+      provider: 'kontur',
+      error: 'Для проверки паспорта в Контуре нужны серия, номер, дата выдачи и код подразделения',
+      items: [],
+      meta: {
+        _kontur: buildKonturMeta(
+          existingKontur,
+          'passport',
+          subjectId,
+          null,
+          'Error'
+        ),
+      },
+      raw: {
+        step: 'createCheck_validation',
+        subjectId,
+        missingIdentityDocument: true,
+        person: {
+          passportSeries: person?.passportSeries || null,
+          passportNumber: person?.passportNumber || null,
+          passportIssueDate: person?.passportIssueDate || null,
+          passportIssuerCode: person?.passportIssuerCode || null,
+        },
+      },
+    };
+  }
 
   if (!subjectId) {
     const subjectBody = {
       person: {
         surname: person.lastName,
         name: person.firstName,
-        patronymic: person.middleName,
+        patronymic: person.middleName || undefined,
       },
     };
 
@@ -517,20 +493,10 @@ async function checkCourtsCommon(person) {
       subjectBody.person.birthDate = person.birthDate;
     }
 
-    if (
-      person.passportSeries &&
-      person.passportNumber &&
-      person.passportIssueDate &&
-      person.passportIssuerCode
-    ) {
-      subjectBody.person.identityDocument = {
-        series: person.passportSeries,
-        number: person.passportNumber,
-        issueDate: person.passportIssueDate,
-        issuer: {
-          issuerCode: person.passportIssuerCode,
-        },
-      };
+    const identityDocument = buildIdentityDocument(person);
+
+    if (identityDocument) {
+    subjectBody.person.identityDocument = identityDocument;
     }
 
     const subjectResponse = await createSubject(subjectBody);
@@ -559,35 +525,32 @@ async function checkCourtsCommon(person) {
     subjectId = subjectResponse.subjectId;
   }
 
-  // Создаём проверку courts
-  const regionCodes = normalizeKonturRegions(person?.regions);
-
-  const createCheckPayload = {
-    courts: {
+  const checkBody = {
+    passport: {
       subjectId,
-      ...(regionCodes.length ? { regions: regionCodes } : {}),
+      identityDocument,
     },
   };
 
-  const createCheckResponse = await createCheck(createCheckPayload);
+  const checkResponse = await createCheck(checkBody);
   logKonturCheck('createCheck_response', {
-    request: createCheckPayload,
-    response: createCheckResponse,
+    request: checkBody,
+    response: checkResponse,
   });
 
-  if (!createCheckResponse?.ok || !createCheckResponse?.checkId) {
+  if (!checkResponse?.ok || !checkResponse?.checkId) {
     return {
       status: 'error',
       provider: 'kontur',
       error: buildValidationMessage(
-        createCheckResponse,
-        'Не удалось создать проверку courts в Контур'
+        checkResponse,
+        'Не удалось создать проверку passport в Контур. Проверь серию, номер, дату выдачи и код подразделения'
       ),
       items: [],
       meta: {
         _kontur: buildKonturMeta(
           existingKontur,
-          'courtsCommon',
+          'passport',
           subjectId,
           null,
           'Error'
@@ -596,33 +559,32 @@ async function checkCourtsCommon(person) {
       raw: {
         step: 'createCheck',
         subjectId,
-        request: createCheckPayload,
-        response: createCheckResponse,
+        request: checkBody,
+        response: checkResponse,
       },
     };
   }
 
-  // Не ждём результат внутри одного вызова — worker сам повторит polling позже
   return {
     status: 'processing',
     provider: 'kontur',
-    error: 'Проверка в Контуре ещё выполняется',
+    error: 'Проверка паспорта в Контуре ещё выполняется',
     items: [],
     meta: {
       _kontur: buildKonturMeta(
         existingKontur,
-        'courtsCommon',
+        'passport',
         subjectId,
-        createCheckResponse.checkId,
-        createCheckResponse?.checkState || createCheckResponse?.state || 'Processing'
+        checkResponse.checkId,
+        checkResponse?.checkState || checkResponse?.state || 'Processing'
       ),
     },
     raw: {
       step: 'createCheck_processing',
       subjectId,
-      check: createCheckResponse,
+      check: checkResponse,
     },
   };
 }
 
-module.exports = checkCourtsCommon;
+module.exports = passportKontur;
