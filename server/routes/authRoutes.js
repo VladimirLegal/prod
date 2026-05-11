@@ -124,7 +124,11 @@ async function createUserForRegistration(email) {
 }
 
 async function validateRegistrationProfile({ full_name, phone, profile_role, birth_date }) {
-  if (!(full_name && phone && profile_role && birth_date)) return;
+  if (!(full_name && phone && profile_role && birth_date)) {
+    const err = new Error('registration_profile_required');
+    err.status = 400;
+    throw err;
+  }
 
   normalizeProfileRole(profile_role);
 
@@ -165,7 +169,11 @@ async function savePendingProfile(email, { full_name, phone, profile_role, birth
       [email, full_name, phone, safeProfileRole, birth_date]
     );
   } catch(e) {
-    console.warn('[magic/request] pending_profiles upsert failed:', e.message);
+    console.error('[magic/request] pending_profiles upsert failed:', e.message);
+
+    const err = new Error('pending_profile_save_failed');
+    err.status = 500;
+    throw err;
   }
 }
 
@@ -228,6 +236,10 @@ router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res
 
     await validateRegistrationProfile({ full_name, phone, profile_role, birth_date });
 
+    // Сначала сохраняем черновик анкеты.
+    // Если это не получилось — пользователя не создаём и magic-link не отправляем.
+    await savePendingProfile(email, { full_name, phone, profile_role, birth_date });
+
     const user = await createUserForRegistration(email);
     if (!user) {
       return res.status(500).json({ ok: false, error: 'registration_failed' });
@@ -236,7 +248,7 @@ router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res
     if (isUserUnavailable(user)) {
       return res.status(403).json({ ok: false, error: 'account_unavailable' });
     }
-    await savePendingProfile(email, { full_name, phone, profile_role, birth_date });
+
     await createMagicTokenAndSend({ req, user, email, continueUrl });
     res.json({ ok: true, sent: true });
   } catch (e) {

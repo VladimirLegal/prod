@@ -698,7 +698,7 @@ export default function UserDashboard() {
       setFormFullName(me.full_name || '');
       // нормализуем телефон к +7XXXXXXXXXX → для ввода можно оставить так
       setFormPhone(me.phone || '');
-      setFormRole(me.role || 'private');
+      setFormRole(me.profile_role || 'private');
       // приводим birth_date к YYYY-MM-DD (input[type=date])
       const d = me.birth_date ? new Date(me.birth_date) : null;
       const y = d ? d.getFullYear() : '';
@@ -749,7 +749,7 @@ export default function UserDashboard() {
           body: JSON.stringify({
             full_name: formFullName.trim(),
             phone: formPhone.trim(),
-            role: formRole,
+            profile_role: formRole,
             birth_date: formBirthDate, // YYYY-MM-DD
           })
         });
@@ -862,7 +862,7 @@ export default function UserDashboard() {
                         <span className="text-green-600 ml-1">[Подтверждён]</span>
                       )}
                     </div>
-                    <div><b>Роль:</b> {roleLabels[me?.role] || '—'}</div>
+                    <div><b>Роль:</b> {roleLabels[me.profile_role] || '—'}</div>
                     <div><b>Организация:</b> —</div>
                   </div>
                 ) : (
