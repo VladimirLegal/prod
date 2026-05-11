@@ -24,6 +24,13 @@ import AdminApp from './pages/admin/AdminApp';
 import ReviewEditorPage from './pages/ReviewEditorPage';
 import CounterpartyCheckPage from './pages/CounterpartyCheckPage';
 
+
+function buildReconsentUrl(location, fallbackNext = null) {
+  const currentPath = `${location.pathname}${location.search || ''}`;
+  const next = fallbackNext || currentPath || '/cabinet';
+  return `/register?mode=reconsent&next=${encodeURIComponent(next)}`;
+}
+
 function AdminRoute({ roles = ['admin', 'manager'], children }) {
   const [state, setState] = React.useState({ loading: true, user: null });
   const location = useLocation();
@@ -32,25 +39,28 @@ function AdminRoute({ roles = ['admin', 'manager'], children }) {
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch('/api/me', { credentials: 'include' });
+        const response = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
         const data = await response.json().catch(() => ({}));
         if (!cancelled) {
           setState({ loading: false, user: data?.user || null });
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) setState({ loading: false, user: null });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   if (state.loading) {
     return <div className="py-10 text-center text-gray-500">Загрузка…</div>;
   }
   if (!state.user) {
     return <Navigate to="/login" replace />;
+  }
+  if (state.user.agreementsRequired === true) {
+    return <Navigate to={buildReconsentUrl(location, '/admin')} replace />;
   }
   if (!roles.includes(state.user.role)) {
     return <Navigate to="/login" replace />;
@@ -66,25 +76,28 @@ function ProtectedRoute({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch('/api/me', { credentials: 'include' });
+        const response = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
         const data = await response.json().catch(() => ({}));
         if (!cancelled) {
           setState({ loading: false, user: data?.user || null });
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) setState({ loading: false, user: null });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   if (state.loading) {
     return <div className="py-10 text-center text-gray-500">Загрузка…</div>;
   }
   if (!state.user) {
     return <Navigate to="/login" replace />;
+  }
+  if (state.user.agreementsRequired === true && location.pathname !== '/register') {
+    return <Navigate to={buildReconsentUrl(location)} replace />;
   }
   return children;
 }
@@ -101,7 +114,10 @@ function AppRoutes() {
       <Route path="/about" element={<AboutPage />} />
       <Route path="/property-type/:transactionType" element={<PropertyTypePage />} />
       <Route path="/rent/apartment" element={<RentApartmentWizard />} />
-      <Route path="/cabinet" element={<UserDashboard />} />
+      <Route
+        path="/cabinet"
+        element={(<ProtectedRoute><UserDashboard /></ProtectedRoute>)}
+      />
       <Route path="/user-dashboard" element={<Navigate to="/cabinet" replace />} />
       <Route path="/document-editor" element={<DocumentEditorPage />} />
       <Route path="/document-diff" element={<DocumentDiffPage />} />

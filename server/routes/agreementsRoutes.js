@@ -2,7 +2,22 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 
+const { CURRENT_AGREEMENTS, AGREEMENT_DOC_TYPES } = require('../config/currentAgreements');
+
 const router = express.Router();
+
+
+router.get('/current', (req, res) => {
+  const versions = { ...CURRENT_AGREEMENTS };
+  return res.json({
+    ok: true,
+    versions,
+    documents: AGREEMENT_DOC_TYPES.map((docType) => ({
+      docType,
+      version: versions[docType],
+    })),
+  });
+});
 
 /**
  * GET /api/agreements/html?doc=privacy|terms|pdn&v=v2025-10-01

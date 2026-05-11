@@ -850,6 +850,25 @@ export default function UserDashboard() {
 
             {!loadingMe && me && (
               <>
+                
+                {me?.agreementsRequired && (
+                  <div className="mb-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-yellow-900">
+                    <div className="font-semibold mb-2">Необходимо подписать актуальные редакции документов</div>
+                    <p className="mb-2">Для продолжения работы необходимо подписать актуальные редакции документов:</p>
+                    <ul className="list-disc pl-5 mb-3">
+                      <li>Политика конфиденциальности</li>
+                      <li>Пользовательское соглашение</li>
+                      <li>Согласие на обработку персональных данных</li>
+                    </ul>
+                    <Link
+                      to="/register?mode=reconsent&next=%2Fcabinet"
+                      className={`${BTN.base} ${BTN.primary} w-full sm:w-auto`}
+                    >
+                      Подписать актуальные документы
+                    </Link>
+                  </div>
+                )}
+
                 {!editMode ? (
                   // ===== ПРОСМОТР =====
                   <div className="grid md:grid-cols-2 gap-x-8 gap-y-3 text-gray-800">
@@ -958,11 +977,11 @@ export default function UserDashboard() {
                         </button>
                       ) : (
                         <Link
-                          to="/register?mode=reconsent"
+                          to="/register?mode=reconsent&next=%2Fcabinet"
                           className={`${BTN.base} ${BTN.primary} w-full sm:w-auto`}
                           title="Открыть мастер повторной подписи документов"
                         >
-                          Повторно подписать
+                          Подписать актуальные документы
                         </Link>
                       )}
                     </>
@@ -993,19 +1012,18 @@ export default function UserDashboard() {
         {/* Рабочая зона */}
         {tab==='workspace' && (
           <div className="mt-4">
-            {!me?.pdnActive ? (
+            {(me?.agreementsRequired || !me?.pdnActive) ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-900">
                 <div className="font-semibold mb-2">Доступ ограничен</div>
                 <p className="mb-3">
-                  Ваше согласие на обработку персональных данных отозвано или отсутствует.
-                  Для продолжения работы необходимо повторно ознакомиться и подписать
+                  Для продолжения работы необходимо подписать актуальные редакции документов:
                   Политику конфиденциальности, Пользовательское соглашение и Согласие на ПДн.
                 </p>
                 <Link
-                  to="/register?mode=reconsent"
+                  to="/register?mode=reconsent&next=%2Fcabinet"
                   className={`${BTN.base} ${BTN.primary} w-full sm:w-auto inline-flex`}
                 >
-                  Повторно подписать
+                  Подписать актуальные документы
                 </Link>
               </div>
             ) : (

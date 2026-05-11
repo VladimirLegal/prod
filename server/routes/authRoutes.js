@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const { query } = require('../db');
 const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
+const { CURRENT_AGREEMENTS, AGREEMENT_DOC_TYPES } = require('../config/currentAgreements');
 
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://legal-portal.pro';
 const MAGIC_TTL_MIN = 15; // время жизни токена, минут
@@ -390,8 +391,6 @@ router.get('/me', async (req, res) => {
       return res.json({ ok: true, user: null });
     }
 
-    // Берём профиль + последнюю подписанную версию ПДн через LATERAL,
-    // и смотрим флаг блокировки по users.pdn_revoked_at
     const { rows } = await query(`
       SELECT
         u.id,
@@ -403,17 +402,8 @@ router.get('/me', async (req, res) => {
         u.birth_date,
         u.email_verified_at,
         u.phone_verified_at,
-        u.pdn_revoked_at,
-        c.doc_version AS consent_version,
-        c.signed_at   AS consent_signed_at
+        u.pdn_revoked_at
       FROM users u
-      LEFT JOIN LATERAL (
-        SELECT c1.doc_version, c1.signed_at
-        FROM consents c1
-        WHERE c1.user_id = u.id AND c1.doc_type = 'pdn'
-        ORDER BY c1.signed_at DESC NULLS LAST, c1.created_at DESC
-        LIMIT 1
-      ) c ON TRUE
       WHERE u.id = $1
       LIMIT 1
     `, [uid]);
@@ -423,6 +413,45 @@ router.get('/me', async (req, res) => {
     }
 
     const r = rows[0];
+    const latest = await query(
+      `SELECT DISTINCT ON (doc_type)
+          doc_type,
+          doc_version,
+          signed_at
+         FROM consents
+        WHERE user_id = $1
+          AND doc_type = ANY($2::text[])
+          AND signed_at IS NOT NULL
+          AND revoked_at IS NULL
+        ORDER BY doc_type, signed_at DESC NULLS LAST, created_at DESC`,
+      [uid, AGREEMENT_DOC_TYPES]
+    );
+
+    const latestByType = latest.rows.reduce((acc, row) => {
+      acc[row.doc_type] = row;
+      return acc;
+    }, {});
+
+    const agreements = AGREEMENT_DOC_TYPES.reduce((acc, docType) => {
+      const signed = latestByType[docType] || null;
+      const isCurrent = Boolean(
+        signed?.doc_version &&
+        signed.doc_version === CURRENT_AGREEMENTS[docType] &&
+        !(docType === 'pdn' && r.pdn_revoked_at)
+      );
+
+      acc[docType] = {
+        currentVersion: CURRENT_AGREEMENTS[docType],
+        signedVersion: signed?.doc_version || null,
+        signedAt: signed?.signed_at || null,
+        isCurrent,
+      };
+      return acc;
+    }, {});
+
+    const pdnActive = Boolean(agreements.pdn.signedVersion && !r.pdn_revoked_at);
+    const agreementsRequired = AGREEMENT_DOC_TYPES.some((docType) => !agreements[docType].isCurrent);
+
     return res.json({
       ok: true,
       user: {
@@ -435,13 +464,15 @@ router.get('/me', async (req, res) => {
         birth_date: r.birth_date,
         email_verified_at: r.email_verified_at,
         phone_verified_at: r.phone_verified_at,
-        consentVersion: r.consent_version || null,
-        consentSignedAt: r.consent_signed_at || null,
-        consent: r.consent_version ? {
-          doc_version: r.consent_version,
-          signed_at: r.consent_signed_at,
+        agreementsRequired,
+        agreements,
+        consentVersion: agreements.pdn.signedVersion,
+        consentSignedAt: agreements.pdn.signedAt,
+        consent: agreements.pdn.signedVersion ? {
+          doc_version: agreements.pdn.signedVersion,
+          signed_at: agreements.pdn.signedAt,
         } : null,
-        pdnActive: !r.pdn_revoked_at, // активно если НЕ отозвано
+        pdnActive,
       },
     });
   } catch (e) {

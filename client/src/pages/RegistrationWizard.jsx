@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 function DocViewer({ title, version, contentUrl, onReadyToContinue }) {
   const [html, setHtml] = useState('<p style="color:#6b7280">Загружаем документ…</p>');
@@ -104,12 +104,36 @@ export default function RegistrationWizard() {
   const [role, setRole] = useState('private'); // private | realtor | lawyer
   const [birthDate, setBirthDate] = useState('');
 
-  // согласие ПДн
-  const PD_VERSION = 'v2025-10-01';
-  const [consentId, setConsentId] = useState(null);
+  const [agreementVersions, setAgreementVersions] = useState(null);
+  const [agreementsError, setAgreementsError] = useState('');
   const [agreeChecked, setAgreeChecked] = useState(false);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState('');
+  
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/agreements/current', { credentials: 'include', cache: 'no-store' });
+        const j = await r.json().catch(() => ({}));
+        const versions = j?.versions || {};
+        if (!r.ok || !j?.ok || !versions.privacy || !versions.terms || !versions.pdn) {
+          throw new Error('agreements_current_failed');
+        }
+        if (!cancelled) {
+          setAgreementVersions(versions);
+          setAgreementsError('');
+        }
+      } catch {
+        if (!cancelled) {
+          setAgreementVersions(null);
+          setAgreementsError('Не удалось загрузить актуальные документы. Попробуйте позже.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
 
   useEffect(() => { setAllowNext(false); }, [step]);
 
@@ -138,24 +162,15 @@ export default function RegistrationWizard() {
     setSending(true);
     setStatus('');
     try {
-      // Если на шаге 3 пользователь согласился, а consentId ещё нет — подпишем сейчас (теперь у нас есть email)
-      let consentIdNow = consentId;
-      if (agreeChecked && !consentId) {
-        try {
-          const pres = await fetch('/api/consents/presign', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ docType: 'pdn', docVersion: PD_VERSION, email })
-          });
-          const pj = await pres.json().catch(() => ({}));
-          if (pres.ok && pj.ok && pj.consentId) {
-            setConsentId(pj.consentId);
-          }
-       } catch {
-         // не критично для UX на этом шаге: продолжим; сервер потом привяжет все висящие по email после verify
-       }
-     }
+      const pres = await fetch('/api/consents/presign-bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email })
+      });
+      const presJson = await pres.json().catch(() => ({}));
+      if (!pres.ok || !presJson.ok) throw new Error(presJson?.error || 'presign_bundle_failed');
+      
       // 1) сохраним черновик профиля на бэке вместе с запросом magic-link
       const res = await fetch('/api/auth/register/magic/request', {
         method: 'POST',
@@ -166,27 +181,14 @@ export default function RegistrationWizard() {
           continueUrl: '/cabinet',
           full_name: fullName,
           phone,
-          role,
+          profile_role: role,
           birth_date: birthDate
         })
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) throw new Error(j?.error || 'send_failed');
-
-      // 2) на всякий случай — привяжем конкретное согласие по его id
-      if (consentIdNow) {
-        try {
-          await fetch('/api/consents/attach', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ consentId: consentIdNow, email })
-          });
-        } catch {}
-      }
-
       setStatus(`Мы отправили ссылку на ${email}. Проверьте Inbox/Спам.`);
-    } catch (e) {
+    } catch {
       setStatus('Не удалось отправить ссылку. Попробуйте позже.');
     } finally {
       setSending(false);
@@ -197,17 +199,17 @@ export default function RegistrationWizard() {
     setSending(true);
     setStatus('');
     try {
-      const res = await fetch('/api/consents/sign-auth', {
+      const res = await fetch('/api/consents/sign-auth-bundle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ docVersion: PD_VERSION })
+        body: JSON.stringify({})
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) throw new Error(j?.error || 'sign_failed');
 
-      // Готово — сразу в кабинет
-      window.location.href = '/cabinet';
+      const nextUrl = urlParams.get('next');
+      window.location.href = nextUrl || '/cabinet';
     } catch (e) {
       console.error('sign-auth error:', e);
       setStatus('Не удалось подписать. Попробуйте ещё раз.');
@@ -217,17 +219,37 @@ export default function RegistrationWizard() {
   }
 
 
+  if (agreementsError) {
+    return (
+      <div className="max-w-2xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-semibold">Регистрация</h1>
+        <div className="text-red-600">{agreementsError}</div>
+      </div>
+    );
+  }
+
+  if (!agreementVersions) {
+    return (
+      <div className="max-w-2xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-semibold">Регистрация</h1>
+        <div className="text-gray-600">Загружаем актуальные документы...</div>
+      </div>
+    );
+  }
+
+  const totalSteps = (isReconsent || me) ? 3 : 4;
+
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Регистрация</h1>
-      <div className="text-sm text-gray-500">Шаг {step} из 4</div>
+      <h1 className="text-2xl font-semibold">{isReconsent ? 'Подписание актуальных документов' : 'Регистрация'}</h1>
+      <div className="text-sm text-gray-500">Шаг {Math.min(step, totalSteps)} из {totalSteps}</div>
 
       {step === 1 && (
         <>
           <DocViewer
             title="Политика конфиденциальности"
-            version="v2025-10-01"
-            contentUrl="/api/agreements/html?doc=privacy&v=v2025-10-01"  // используй ваш роут показа политики
+            version={agreementVersions.privacy}
+            contentUrl={`/api/agreements/html?doc=privacy&v=${encodeURIComponent(agreementVersions.privacy)}`}
             onReadyToContinue={() => setAllowNext(true)}
           />
           <div className="flex justify-between mt-4">
@@ -247,8 +269,8 @@ export default function RegistrationWizard() {
         <>
           <DocViewer
             title="Пользовательское соглашение"
-            version="v2025-10-01"
-            contentUrl="/api/agreements/html?doc=terms&v=v2025-10-01"
+            version={agreementVersions.terms}
+            contentUrl={`/api/agreements/html?doc=terms&v=${encodeURIComponent(agreementVersions.terms)}`}
             onReadyToContinue={() => setAllowNext(true)}
           />
           <div className="flex justify-between mt-4">
@@ -268,8 +290,8 @@ export default function RegistrationWizard() {
         <>
           <DocViewer
             title="Согласие на обработку персональных данных"
-            version={PD_VERSION}
-            contentUrl={`/api/agreements/html?doc=pdn&v=${encodeURIComponent(PD_VERSION)}`}
+            version={agreementVersions.pdn}
+            contentUrl={`/api/agreements/html?doc=pdn&v=${encodeURIComponent(agreementVersions.pdn)}`}
             onReadyToContinue={undefined}
           />
 

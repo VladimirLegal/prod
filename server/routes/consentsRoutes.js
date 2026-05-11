@@ -3,12 +3,78 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const router = express.Router();
-const { query } = require('../db');
+const { pool, query } = require('../db');
 const requireAuth = require('../middlewares/requireAuth');
 const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
+const { CURRENT_AGREEMENTS, AGREEMENT_DOC_TYPES } = require('../config/currentAgreements');
 
 const AGREEMENTS_DIR = path.join(__dirname, '..', 'templates', 'agreements');
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+
+function normalizeDocType(docType) {
+  return String(docType || '').trim().toLowerCase();
+}
+
+function normalizeDocVersion(docVersion) {
+  return String(docVersion || '').trim().toLowerCase();
+}
+
+function assertKnownDoc(docType) {
+  if (!AGREEMENT_DOC_TYPES.includes(docType)) {
+    const err = new Error('unknown_doc_type');
+    err.status = 400;
+    throw err;
+  }
+}
+
+function assertAgreementFileExists(docType, docVersion) {
+  const versionFile = path.join(AGREEMENTS_DIR, `${docType}_${docVersion}.html`);
+  if (!fs.existsSync(versionFile)) {
+    const err = new Error('unknown_version');
+    err.status = 400;
+    throw err;
+  }
+}
+
+async function signConsent(db, { userId = null, email, docType, docVersion, ip, userAgent }) {
+  const normalizedType = normalizeDocType(docType);
+  const normalizedVersion = normalizeDocVersion(docVersion);
+  assertKnownDoc(normalizedType);
+  assertAgreementFileExists(normalizedType, normalizedVersion);
+
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+  const hash = crypto.createHash('sha256').update(`${normalizedType}:${normalizedVersion}`).digest('hex');
+
+  const ins = await db.query(
+    `INSERT INTO consents(user_id, email, doc_type, doc_version, hash, ip, user_agent, signed_at, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
+     RETURNING id, doc_type, doc_version, signed_at`,
+    [userId, normalizedEmail, normalizedType, normalizedVersion, hash, ip || null, userAgent || null]
+  );
+
+  const row = ins.rows[0];
+  return {
+    id: row.id,
+    docType: row.doc_type,
+    docVersion: row.doc_version,
+    signedAt: row.signed_at,
+  };
+}
+
+async function signCurrentAgreementBundle(db, { userId = null, email, ip, userAgent }) {
+  const consents = [];
+  for (const docType of AGREEMENT_DOC_TYPES) {
+    consents.push(await signConsent(db, {
+      userId,
+      email,
+      docType,
+      docVersion: CURRENT_AGREEMENTS[docType],
+      ip,
+      userAgent,
+    }));
+  }
+  return consents;
+}
 
 function getClientIp(req) {
   return (
@@ -75,29 +141,92 @@ router.post('/presign', presignLimiter, async (req, res) => {
       return res.status(400).json({ ok: false, error: 'invalid_email' });
     }
 
-    const normalizedType = String(docType).trim().toLowerCase();
-    const normalizedVersion = String(docVersion).trim().toLowerCase();
-    const versionFile = path.join(AGREEMENTS_DIR, `${normalizedType}_${normalizedVersion}.html`);
-    if (!fs.existsSync(versionFile)) {
-      return res.status(400).json({ ok: false, error: 'unknown_version' });
-    }
-    
-    const ua = req.get('user-agent') || '';
-    const ip = getClientIp(req);
+    const consent = await signConsent({ query }, {
+      userId: null,
+      email: normalizedEmail,
+      docType,
+      docVersion,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || '',
+    });
 
-    const hash = crypto.createHash('sha256').update(`${normalizedType}:${normalizedVersion}`).digest('hex');
-   
-    const ins = await query(
-      `INSERT INTO consents(email, user_id, doc_type, doc_version, hash, ip, user_agent, signed_at, created_at)
-       VALUES ($1, NULL, $2, $3, $4, $5, $6, now(), now())
-       RETURNING id`,
-      [normalizedEmail, normalizedType, normalizedVersion, hash, ip, ua]
-    );
-
-    return res.json({ ok: true, consentId: ins.rows[0].id });
+    return res.json({ ok: true, consentId: consent.id });
   } catch (e) {
     console.error('POST /api/consents/presign', e);
-    return res.status(500).json({ ok: false, error: 'presign_failed' });
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: status === 500 ? 'presign_failed' : e.message });
+  }
+});
+
+
+// === PRESIGN-BUNDLE: предварительная подпись актуального пакета документов (без user_id) ===
+// POST /api/consents/presign-bundle  { email }
+router.post('/presign-bundle', presignLimiter, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      return res.status(400).json({ ok: false, error: 'email_required' });
+    }
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      return res.status(400).json({ ok: false, error: 'invalid_email' });
+    }
+    
+    await client.query('BEGIN');
+    const consents = await signCurrentAgreementBundle(client, {
+      userId: null,
+      email: normalizedEmail,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || '',
+    });
+    await client.query('COMMIT');
+
+    return res.json({ ok: true, consents });
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('[consents] rollback failed:', rollbackError?.message || rollbackError);
+    }
+    console.error('POST /api/consents/presign-bundle', e);
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: status === 500 ? 'presign_bundle_failed' : e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// === SIGN-AUTH-BUNDLE: подписать актуальный пакет от имени текущего пользователя ===
+// POST /api/consents/sign-auth-bundle
+router.post('/sign-auth-bundle', requireAuth, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const userId = req.userId;
+    const u = await client.query(`SELECT email FROM users WHERE id=$1`, [userId]);
+    if (!u.rows[0]) return res.status(404).json({ ok: false, error: 'user_not_found' });
+
+    await client.query('BEGIN');
+    const consents = await signCurrentAgreementBundle(client, {
+      userId,
+      email: u.rows[0].email,
+      ip: getClientIp(req),
+      userAgent: req.get('user-agent') || '',
+    });
+    await client.query(`UPDATE users SET pdn_revoked_at = NULL, updated_at = now() WHERE id=$1`, [userId]);
+    await client.query('COMMIT');
+
+    return res.json({ ok: true, consents });
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.warn('[consents] rollback failed:', rollbackError?.message || rollbackError);
+    }
+    console.error('POST /api/consents/sign-auth-bundle', e);
+    const status = e.status || 500;
+    return res.status(status).json({ ok: false, error: status === 500 ? 'sign_bundle_failed' : e.message });
+  } finally {
+    client.release();
   }
 });
 
