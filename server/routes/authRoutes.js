@@ -72,6 +72,24 @@ function sha256(s) {
 const USER_NOT_FOUND_MESSAGE = 'Пользователь с таким email не зарегистрирован. Сначала пройдите регистрацию.';
 const USER_NOT_REGISTERED_MESSAGE = 'Пользователь не зарегистрирован.';
 
+const PROFILE_ROLE_VALUES = ['private', 'realtor', 'lawyer'];
+
+function normalizeProfileRole(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return '';
+  }
+
+  if (!PROFILE_ROLE_VALUES.includes(normalized)) {
+    const err = new Error('invalid_profile_role');
+    err.status = 400;
+    throw err;
+  }
+
+  return normalized;
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -96,17 +114,19 @@ async function createUserForRegistration(email) {
   if (existing) return existing;
 
   const { rows } = await query(
-    `INSERT INTO users(email, email_verified_at)
-     VALUES ($1, NULL)
-     ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-     RETURNING id, email, status`,
+    `INSERT INTO users(email, email_verified_at, role)
+    VALUES ($1, NULL, 'user')
+    ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+    RETURNING id, email, status`,
     [email]
   );
   return rows[0] || null;
 }
 
-async function validateRegistrationProfile({ full_name, phone, role, birth_date }) {
-  if (!(full_name && phone && role && birth_date)) return;
+async function validateRegistrationProfile({ full_name, phone, profile_role, birth_date }) {
+  if (!(full_name && phone && profile_role && birth_date)) return;
+
+  normalizeProfileRole(profile_role);
 
   const bd = new Date(birth_date);
   if (isNaN(bd.getTime())) {
@@ -119,6 +139,7 @@ async function validateRegistrationProfile({ full_name, phone, role, birth_date 
   const age =
     today.getFullYear() - bd.getFullYear() -
     ((today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) ? 1 : 0);
+
   if (age < 14) {
     const err = new Error('age_restriction');
     err.status = 400;
@@ -126,20 +147,22 @@ async function validateRegistrationProfile({ full_name, phone, role, birth_date 
   }
 }
 
-async function savePendingProfile(email, { full_name, phone, role, birth_date }) {
-  if (!(full_name && phone && role && birth_date)) return;
+async function savePendingProfile(email, { full_name, phone, profile_role, birth_date }) {
+  if (!(full_name && phone && profile_role && birth_date)) return;
+
+  const safeProfileRole = normalizeProfileRole(profile_role);
 
   try {
     await query(
-      `INSERT INTO pending_profiles(email, full_name, phone, role, birth_date)
+      `INSERT INTO pending_profiles(email, full_name, phone, profile_role, birth_date)
       VALUES ($1,$2,$3,$4,$5)
       ON CONFLICT (email) DO UPDATE SET
         full_name=EXCLUDED.full_name,
         phone=EXCLUDED.phone,
-        role=EXCLUDED.role,
+        profile_role=EXCLUDED.profile_role,
         birth_date=EXCLUDED.birth_date,
         created_at=now()`,
-      [email, full_name, phone, role, birth_date]
+      [email, full_name, phone, safeProfileRole, birth_date]
     );
   } catch(e) {
     console.warn('[magic/request] pending_profiles upsert failed:', e.message);
@@ -196,13 +219,14 @@ router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
 // POST /api/auth/register/magic/request
 router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res) => {
   try {
-    const { continueUrl, full_name, phone, role, birth_date } = req.body || {};
+    const { continueUrl, full_name, phone, birth_date } = req.body || {};
+    const profile_role = normalizeProfileRole(req.body?.profile_role || req.body?.role);
     const email = normalizeEmail(req.body?.email);
     if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
 
     console.log('[register/magic/request] email=', email, 'continueUrl=', continueUrl);
 
-    await validateRegistrationProfile({ full_name, phone, role, birth_date });
+    await validateRegistrationProfile({ full_name, phone, profile_role, birth_date });
 
     const user = await createUserForRegistration(email);
     if (!user) {
@@ -212,7 +236,7 @@ router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res
     if (isUserUnavailable(user)) {
       return res.status(403).json({ ok: false, error: 'account_unavailable' });
     }
-    await savePendingProfile(email, { full_name, phone, role, birth_date });
+    await savePendingProfile(email, { full_name, phone, profile_role, birth_date });
     await createMagicTokenAndSend({ req, user, email, continueUrl });
     res.json({ ok: true, sent: true });
   } catch (e) {
@@ -291,19 +315,34 @@ router.post('/auth/magic/verify', async (req, res) => {
     req.session.userId = user.id;
     try {
       // 1) если есть черновик — применим к профилю
-      const p = await query(`SELECT full_name, phone, role, birth_date FROM pending_profiles WHERE email=$1`, [email]);
+      // ВАЖНО: users.role не трогаем. Это техническая роль доступа: user / manager / admin.
+      // Анкетную роль сохраняем отдельно в users.profile_role.
+      const p = await query(
+        `SELECT
+            full_name,
+            phone,
+            COALESCE(profile_role, role) AS profile_role,
+            birth_date
+        FROM pending_profiles
+        WHERE email=$1`,
+        [email]
+      );
+
       if (p.rows[0]) {
         const pf = p.rows[0];
+        const safeProfileRole = normalizeProfileRole(pf.profile_role);
+
         await query(
           `UPDATE users
             SET full_name = COALESCE($2, full_name),
-                phone     = COALESCE($3, phone),
-                role      = COALESCE($4, role),
-                birth_date= COALESCE($5, birth_date),
+                phone = COALESCE($3, phone),
+                profile_role = COALESCE($4, profile_role),
+                birth_date = COALESCE($5, birth_date),
                 last_login_at = now()
           WHERE id=$1`,
-          [user.id, pf.full_name, pf.phone, pf.role, pf.birth_date]
+          [user.id, pf.full_name, pf.phone, safeProfileRole, pf.birth_date]
         );
+
         await query(`DELETE FROM pending_profiles WHERE email=$1`, [email]);
       } else {
         // просто обновим last_login_at
@@ -348,6 +387,7 @@ router.get('/me', async (req, res) => {
         u.full_name,
         u.phone,
         u.role,
+        u.profile_role,
         u.birth_date,
         u.email_verified_at,
         u.phone_verified_at,
@@ -379,6 +419,7 @@ router.get('/me', async (req, res) => {
         full_name: r.full_name,
         phone: r.phone,
         role: r.role,
+        profile_role: r.profile_role,
         birth_date: r.birth_date,
         email_verified_at: r.email_verified_at,
         phone_verified_at: r.phone_verified_at,
@@ -422,7 +463,10 @@ router.patch('/me', async (req, res) => {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ ok:false, error:'unauthorized' });
 
-    const { full_name, phone, role, birth_date } = req.body || {};
+    const { full_name, phone, birth_date } = req.body || {};
+    const profile_role = req.body?.profile_role !== undefined
+      ? normalizeProfileRole(req.body.profile_role)
+      : undefined;
 
     // Валидация и нормализация телефона
     let cleanPhone = null;
@@ -434,11 +478,6 @@ router.patch('/me', async (req, res) => {
         return res.status(400).json({ ok:false, error:'invalid_phone_format' });
       cleanPhone = digits;
     }
-
-    // Валидация роли
-    const allowedRoles = ['private', 'realtor', 'lawyer'];
-    if (role && !allowedRoles.includes(role))
-      return res.status(400).json({ ok:false, error:'invalid_role' });
 
     // Валидация возраста
     if (birth_date) {
@@ -459,7 +498,7 @@ router.patch('/me', async (req, res) => {
     const values = [];
     let idx = 1;
     for (const [key, val] of Object.entries({
-      full_name, phone: cleanPhone, role, birth_date, updated_at: new Date(),
+      full_name, phone: cleanPhone, profile_role, birth_date, updated_at: new Date(),
     })) {
       if (val !== undefined && val !== null) {
         fields.push(`${key} = $${idx++}`);
@@ -472,7 +511,7 @@ router.patch('/me', async (req, res) => {
       UPDATE users
       SET ${fields.join(', ')}
       WHERE id = $${idx}
-      RETURNING id, email, full_name, phone, role, birth_date, email_verified_at, updated_at
+      RETURNING id, email, full_name, phone, role, profile_role, birth_date, email_verified_at, updated_at
     `;
     const { rows } = await query(sql, [...values, userId]);
     return res.json({ ok:true, user: rows[0] });
