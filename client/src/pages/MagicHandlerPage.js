@@ -65,6 +65,19 @@ export default function MagicHandlerPage() {
                 // не ждём — просто убедимся, что кука реально видна
                 return waitSessionAndGo();
             }
+
+            if (j?.error) {
+                const messageByError = {
+                    user_not_found: j.message || 'Пользователь не зарегистрирован.',
+                    token_expired: 'Ссылка недействительна или устарела.',
+                    invalid_token: 'Ссылка недействительна или устарела.',
+                    already_used: 'Эта ссылка уже была использована.',
+                    account_unavailable: 'Аккаунт недоступен. Обратитесь в поддержку.'
+                };
+                setApiError(j.error);
+                setStatus(messageByError[j.error] || 'Ссылка недействительна или устарела.');
+                return;
+            }
             } catch {
             // игнорируем — пойдём проверять сессию ниже
             }
@@ -93,7 +106,11 @@ export default function MagicHandlerPage() {
         setStatus('Мы отправили новую ссылку на ' + emailQ + '. Проверьте Inbox/Спам.');
         setApiError(null);
         } catch (e) {
-        setStatus('Не удалось отправить новую ссылку. Попробуйте позже.');
+        const code = e.message || 'send_failed';
+        setApiError(code);
+        setStatus(code === 'user_not_found'
+            ? 'Пользователь с таким email не зарегистрирован. Сначала пройдите регистрацию.'
+            : 'Не удалось отправить новую ссылку. Попробуйте позже.');
         } finally {
         setResending(false);
         }
@@ -115,7 +132,12 @@ export default function MagicHandlerPage() {
 
         {apiError && (
             <div style={{ display: 'grid', gap: 8 }}>
-            {(apiError === 'expired' || apiError === 'invalid_token' || apiError === 'already_used') && (
+            {apiError === 'user_not_found' && (
+                <a href="/register" style={{ color: '#2563eb', fontSize: 14, width: 'fit-content' }}>
+                    Зарегистрироваться
+                </a>
+            )}
+            {(['token_expired', 'invalid_token', 'already_used'].includes(apiError)) && (
                 <>
                 <div style={{ color: '#6b7280', fontSize: 14 }}>
                     {emailQ

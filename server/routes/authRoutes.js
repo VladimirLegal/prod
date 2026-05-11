@@ -69,86 +69,157 @@ function sha256(s) {
   return crypto.createHash('sha256').update(String(s)).digest('hex');
 }
 
+const USER_NOT_FOUND_MESSAGE = 'Пользователь с таким email не зарегистрирован. Сначала пройдите регистрацию.';
+const USER_NOT_REGISTERED_MESSAGE = 'Пользователь не зарегистрирован.';
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function isUserUnavailable(user) {
+  return user?.status === 'blocked' || user?.status === 'deleted';
+}
+
+async function findUserByEmail(email) {
+  const { rows } = await query(
+    `SELECT id, email, status
+       FROM users
+      WHERE lower(email) = lower($1)
+      LIMIT 1`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+async function createUserForRegistration(email) {
+  const existing = await findUserByEmail(email);
+  if (existing) return existing;
+
+  const { rows } = await query(
+    `INSERT INTO users(email, email_verified_at)
+     VALUES ($1, NULL)
+     ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+     RETURNING id, email, status`,
+    [email]
+  );
+  return rows[0] || null;
+}
+
+async function validateRegistrationProfile({ full_name, phone, role, birth_date }) {
+  if (!(full_name && phone && role && birth_date)) return;
+
+  const bd = new Date(birth_date);
+  if (isNaN(bd.getTime())) {
+    const err = new Error('invalid_birth_date');
+    err.status = 400;
+    throw err;
+  }
+
+  const today = new Date();
+  const age =
+    today.getFullYear() - bd.getFullYear() -
+    ((today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) ? 1 : 0);
+  if (age < 14) {
+    const err = new Error('age_restriction');
+    err.status = 400;
+    throw err;
+  }
+}
+
+async function savePendingProfile(email, { full_name, phone, role, birth_date }) {
+  if (!(full_name && phone && role && birth_date)) return;
+
+  try {
+    await query(
+      `INSERT INTO pending_profiles(email, full_name, phone, role, birth_date)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (email) DO UPDATE SET
+        full_name=EXCLUDED.full_name,
+        phone=EXCLUDED.phone,
+        role=EXCLUDED.role,
+        birth_date=EXCLUDED.birth_date,
+        created_at=now()`,
+      [email, full_name, phone, role, birth_date]
+    );
+  } catch(e) {
+    console.warn('[magic/request] pending_profiles upsert failed:', e.message);
+  }
+}
+
+async function createMagicTokenAndSend({ req, user, email, continueUrl }) {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + (MAGIC_TTL_MIN * 60 * 1000));
+
+  await query(
+    `INSERT INTO magic_tokens(user_id, token_hash, expires_at, ip, user_agent)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [user.id, tokenHash, expiresAt, req.ip || null, req.get('user-agent') || null]
+  );
+
+  const link = `${APP_URL}/auth/magic?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}&continue=${encodeURIComponent(continueUrl || '/cabinet')}`;
+  console.log('[magic/request] send email…');
+  await sendMagicEmail({ to: email, link });
+  console.log('[magic/request] ok, sent.');
+}
+
+
 // POST /api/auth/magic/request
 router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
   try {
-    const { email, continueUrl } = req.body || {};
+    const { continueUrl } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
     if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
 
     console.log('[magic/request] email=', email, 'continueUrl=', continueUrl);
-
-    // 1) найдём/создадим пользователя
-    let user = null;
-    {
-      const { rows: u1rows } = await query('SELECT id, email FROM users WHERE email = $1', [email]);
-      user = u1rows[0] || null;
-      if (!user) {
-        const { rows: u2rows } = await query(
-          'INSERT INTO users(email, email_verified_at) VALUES ($1, NULL) RETURNING id, email',
-          [email]
-        );
-        user = u2rows[0];
-      }
-    }
-    console.log('[magic/request] user.id =', user.id);
-    // (опционально) принять черновик профиля с клиента
-    const { full_name, phone, role, birth_date } = req.body || {};
-    if (full_name && phone && role && birth_date) {
-      // серверная проверка 14+
-      try {
-        const bd = new Date(birth_date);
-        if (isNaN(bd.getTime())) {
-          return res.status(400).json({ ok:false, error:'invalid_birth_date' });
-        }
-        const today = new Date();
-        const age =
-          today.getFullYear() - bd.getFullYear() -
-          ( (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) ? 1 : 0 );
-        if (age < 14) {
-          return res.status(400).json({ ok:false, error:'age_restriction' });
-        }
-      } catch {
-        return res.status(400).json({ ok:false, error:'invalid_birth_date' });
-      }
-
-      try {
-        await query(
-          `INSERT INTO pending_profiles(email, full_name, phone, role, birth_date)
-          VALUES ($1,$2,$3,$4,$5)
-          ON CONFLICT (email) DO UPDATE SET
-            full_name=EXCLUDED.full_name,
-            phone=EXCLUDED.phone,
-            role=EXCLUDED.role,
-            birth_date=EXCLUDED.birth_date,
-            created_at=now()`,
-          [email, full_name, phone, role, birth_date]
-        );
-      } catch(e) {
-        console.warn('[magic/request] pending_profiles upsert failed:', e.message);
-      }
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return res.status(404).json({
+        ok: false,
+        error: 'user_not_found',
+        message: USER_NOT_FOUND_MESSAGE,
+      });
     }
 
-
-    // 2) одноразовый токен
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = sha256(rawToken);
-    const expiresAt = new Date(Date.now() + (MAGIC_TTL_MIN * 60 * 1000));
-
-      await query(
-      `INSERT INTO magic_tokens(user_id, token_hash, expires_at, ip, user_agent)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [user.id, tokenHash, expiresAt, req.ip || null, req.get('user-agent') || null]
-    );
-
-    // 3) отправка письма (dev-лог)
-    const link = `${APP_URL}/auth/magic?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}&continue=${encodeURIComponent(continueUrl || '/cabinet')}`;
-    console.log('[magic/request] send email…');
-    await sendMagicEmail({ to: email, link });
-
-    console.log('[magic/request] ok, sent.');
+    if (isUserUnavailable(user)) {
+      return res.status(403).json({ ok: false, error: 'account_unavailable' });
+    }
+    await createMagicTokenAndSend({ req, user, email, continueUrl });
     res.json({ ok: true, sent: true });
   } catch (e) {
     console.error('POST /auth/magic/request', e);
+    res.status(500).json({ ok: false, error: 'send_failed', detail: String(e?.message || e) });
+  }
+});
+    
+
+// POST /api/auth/register/magic/request
+router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res) => {
+  try {
+    const { continueUrl, full_name, phone, role, birth_date } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
+    if (!email) return res.status(400).json({ ok: false, error: 'email_required' });
+
+    console.log('[register/magic/request] email=', email, 'continueUrl=', continueUrl);
+
+    await validateRegistrationProfile({ full_name, phone, role, birth_date });
+
+    const user = await createUserForRegistration(email);
+    if (!user) {
+      return res.status(500).json({ ok: false, error: 'registration_failed' });
+    }
+
+    if (isUserUnavailable(user)) {
+      return res.status(403).json({ ok: false, error: 'account_unavailable' });
+    }
+    await savePendingProfile(email, { full_name, phone, role, birth_date });
+    await createMagicTokenAndSend({ req, user, email, continueUrl });
+    res.json({ ok: true, sent: true });
+  } catch (e) {
+    if (e.status) {
+      return res.status(e.status).json({ ok: false, error: e.message });
+    }
+    console.error('POST /auth/register/magic/request', e);
     res.status(500).json({ ok: false, error: 'send_failed', detail: String(e?.message || e) });
   }
 });
@@ -157,15 +228,27 @@ router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
 // POST /api/auth/magic/verify
 router.post('/auth/magic/verify', async (req, res) => {
   try {
-    const { token, email } = req.body || {};
+    const { token } = req.body || {};
+    const email = normalizeEmail(req.body?.email);
     if (!token || !email) return res.status(400).json({ ok: false, error: 'missing' });
 
     const tokenHash = sha256(token);
 
-    // пользователь
-    const u1 = await query('select id from users where email = $1', [email]);
-    const user = u1.rows[0];
-    if (!user) return res.status(400).json({ ok: false, error: 'user_not_found' });
+    // пользователь должен уже существовать: login-flow не создаёт аккаунт на verify
+    const user = await findUserByEmail(email);
+    if (!user) {
+      await query(`UPDATE magic_tokens SET consumed_at = now() WHERE token_hash = $1 AND consumed_at IS NULL`, [tokenHash]);
+      return res.status(404).json({
+        ok: false,
+        error: 'user_not_found',
+        message: USER_NOT_REGISTERED_MESSAGE,
+      });
+    }
+
+    if (isUserUnavailable(user)) {
+      await query(`UPDATE magic_tokens SET consumed_at = now() WHERE token_hash = $1 AND consumed_at IS NULL`, [tokenHash]);
+      return res.status(403).json({ ok: false, error: 'account_unavailable' });
+    }
 
     // токен
     const t1 = await query(
@@ -176,11 +259,7 @@ router.post('/auth/magic/verify', async (req, res) => {
     );
     const t = t1.rows[0];
     if (!t) return res.status(400).json({ ok: false, error: 'invalid_token' });
-    // если токен уже использован, но у клиента уже есть сессия этого юзера — считаем вход валидным
     if (t.consumed_at) {
-      if (req.session?.userId === user.id) {
-        return res.json({ ok: true, user: { id: user.id, email } });
-      }
       return res.status(400).json({ ok: false, error: 'already_used' });
     }
 
@@ -243,7 +322,7 @@ router.post('/auth/magic/verify', async (req, res) => {
       console.warn('[magic/verify] attach pending failed:', e.message);
     }
 
-    res.json({ ok: true, user: { id: user.id, email } });
+    res.json({ ok: true, user: { id: user.id, email: user.email } });
   } catch (e) {
     console.error('POST /auth/magic/verify', e);
     res.status(500).json({ ok: false, error: 'verify_failed' });

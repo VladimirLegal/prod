@@ -11,7 +11,7 @@ export default function RegisterPage() {
     setSending(true);
     setStatus('');
     try {
-      const res = await fetch('/api/auth/magic/request', {
+      const res = await fetch('/api/auth/register/magic/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

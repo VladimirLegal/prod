@@ -2029,6 +2029,165 @@
       width: 21%;
     }
 
+
+    .report-active-filters {
+      margin: 10px 0 14px;
+      padding: 10px 12px;
+      border: 1px solid #dbeafe;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1f2937;
+      font-size: 13px;
+    }
+
+    .report-active-filter-chip {
+      display: inline-block;
+      margin: 4px 4px 0 0;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      font-weight: 600;
+    }
+
+    select[data-multifilter-source],
+    .commercial-role-checks[data-multifilter-checkbox-group] {
+      display: none !important;
+    }
+
+    .report-filter-dropdown {
+      position: relative;
+      width: 100%;
+      min-width: 120px;
+      font-size: 12px;
+    }
+
+    .report-filter-dropdown__button {
+      width: 100%;
+      min-height: 34px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 7px 9px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #111827;
+      font: inherit;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .report-filter-dropdown__button:hover {
+      border-color: #93c5fd;
+      background: #f8fbff;
+    }
+
+    .report-filter-dropdown__button-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .report-filter-dropdown__chevron {
+      color: #6b7280;
+      flex: 0 0 auto;
+    }
+
+    .report-filter-dropdown__menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 1000;
+      width: max(240px, 100%);
+      max-width: 360px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
+      padding: 8px;
+    }
+
+    .report-filter-dropdown.is-open .report-filter-dropdown__menu {
+      display: block;
+    }
+
+    .report-filter-dropdown__search {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 9px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .report-filter-dropdown__options {
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .report-filter-dropdown__option {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      padding: 6px 7px;
+      border-radius: 7px;
+      color: #374151;
+      cursor: pointer;
+      line-height: 1.25;
+      user-select: none;
+      word-break: break-word;
+    }
+
+    .report-filter-dropdown__option:hover {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .report-filter-dropdown__option input[type="checkbox"] {
+      width: auto !important;
+      margin: 1px 0 0;
+      flex: 0 0 auto;
+    }
+
+    .report-filter-dropdown__empty {
+      display: none;
+      padding: 8px;
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    .report-filter-dropdown__actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+
+    .report-filter-dropdown__action {
+      border: none;
+      background: transparent;
+      color: #2563eb;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 2px;
+    }
+
+    .report-filter-dropdown__action:hover {
+      color: #1d4ed8;
+      text-decoration: underline;
+    }
+
     @media print {
       body {
         margin: 0;
@@ -2040,6 +2199,12 @@
 
       .commercial-table-page {
         margin-top: 10px;
+      }
+
+      .report-filter-dropdown__menu,
+      .report-filter-dropdown__actions,
+      .report-filter-dropdown__search {
+        display: none !important;
       }
     }
   </style>
@@ -2061,6 +2226,23 @@
       >
         Скачать PDF с маскировкой ПД
       </a>
+      {{#if reportQueryString}}
+        <a
+          href="{{reportFilterState.resetAllUrl}}"
+          style="
+            display: inline-block;
+            margin-left: 10px;
+            padding: 10px 14px;
+            background: #f3f4f6;
+            color: #1f2937;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+          "
+        >
+          Сбросить все фильтры отчёта
+        </a>
+      {{/if}}
     </div>
   <div class="meta">
     <div><strong>ФИО:</strong> {{subject.fullName}}</div>
@@ -2070,7 +2252,16 @@
     <div><strong>Дата проверки:</strong> {{createdAt}}</div>
   </div>
   
+  {{#if reportFilterState.activeFields.length}}
+    <div class="report-active-filters">
+      <strong>Применены фильтры:</strong>
+      {{#each reportFilterState.activeFields}}
+        <span class="report-active-filter-chip">{{label}}: {{value}}</span>
+      {{/each}}
+    </div>
+  {{/if}}
 
+  
   <div class="section">
     <h2>Источники</h2>
 
@@ -2158,7 +2349,7 @@
             </div>
           {{/each}}
         {{else}}
-          <p>Нет записей</p>
+          <p>По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -2279,7 +2470,7 @@
             </div>
           {{/each}}
         {{else}}
-          <p>Нет записей</p>
+          <p>По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -2382,6 +2573,9 @@
           <div class="fssp-table-page fssp-landscape">
             {{#if (eq reportMode 'html')}}
               <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.fsspApiCloud.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
             {{/if}}
 
             <div class="fssp-table-wrap">
@@ -2401,10 +2595,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="fsspApiStatus">Статус</label>
-                          <select id="fsspApiStatus" name="fsspApiStatus">
+                           <select id="fsspApiStatus" name="fsspApiStatus" data-multifilter-source size="3">
                             <option value="all" {{#if (eq reportFilters.fsspApiStatus 'all')}}selected{{/if}}>Все</option>
-                            <option value="active" {{#if (eq reportFilters.fsspApiStatus 'active')}}selected{{/if}}>Активно</option>
-                            <option value="closed" {{#if (eq reportFilters.fsspApiStatus 'closed')}}selected{{/if}}>Завершено / прекращено</option>
+                            <option value="active" {{#if (includes reportFilters.fsspApiStatuses 'active')}}selected{{/if}}>Активно</option>
+                            <option value="closed" {{#if (includes reportFilters.fsspApiStatuses 'closed')}}selected{{/if}}>Завершено / прекращено</option>
                           </select>
                         </div>
                       </th>
@@ -2438,10 +2632,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="fsspApiDepartment">ОСП</label>
-                          <select id="fsspApiDepartment" name="fsspApiDepartment">
+                          <select id="fsspApiDepartment" name="fsspApiDepartment" data-multifilter-source multiple size="4">
                             <option value="">Все</option>
                             {{#each sources.fssp.filterMeta.availableDepartments}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.fsspApiDepartment this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.fsspApiDepartments this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -2455,7 +2649,7 @@
                         <div class="fssp-filter-actions">
                           <button type="submit" class="fssp-filter-btn">Применить</button>
                           <a
-                            href="/api/counterparty/report/{{reportId}}/html"
+                            href="{{reportFilterState.groups.fsspApiCloud.resetThisGroupUrl}}"
                             class="fssp-filter-btn fssp-filter-btn-secondary"
                           >
                             Сбросить
@@ -2548,7 +2742,7 @@
                   {{else}}
                     <tr>
                       <td colspan="9" class="fssp-empty-row">
-                        По текущим фильтрам записи ФССП не найдены
+                        По выбранным фильтрам записей не найдено.
                       </td>
                     </tr>
                   {{/if}}
@@ -2561,7 +2755,7 @@
             {{/if}}
           </div>
         {{else}}
-          <p style="margin-top: 12px;">Нет записей</p>
+          <p style="margin-top: 12px;">По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -2823,7 +3017,7 @@
             {{/if}}
           {{/each}}
         {{else}}
-          <div class="empty">Нет записей</div>
+          <div class="empty">По источнику записей не найдено.</div>
         {{/if}}
       </section>
     {{/if}}
@@ -3039,7 +3233,7 @@
             {{/if}}
           {{/each}}
         {{else}}
-          <p>Нет записей</p>
+          <p>По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -3362,7 +3556,7 @@
         {{/if}}
 
         {{#unless sources.efrsb.summary.totalCount}}
-          <div class="empty" style="margin-top: 10px;">Нет записей</div>
+          <div class="empty" style="margin-top: 10px;">По источнику записей не найдено.</div>
         {{/unless}}
       </section>
     {{/if}}
@@ -3477,6 +3671,9 @@
           <div class="arb-table-page arb-landscape">
             {{#if (eq reportMode 'html')}}
               <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.arbitrationApiCloudCombined.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
             {{/if}}
 
             <div class="arb-table-wrap">
@@ -3496,10 +3693,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="arbRole">Роль проверяемого</label>
-                          <select id="arbRole" name="arbRole">
+                          <select id="arbRole" name="arbRole" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.arbitrationApiCloudCombined.filterMeta.availableRoles}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.arbRole this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.arbRoles this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -3513,10 +3710,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="arbOppositeRole">Вторая сторона</label>
-                          <select id="arbOppositeRole" name="arbOppositeRole">
+                          <select id="arbOppositeRole" name="arbOppositeRole" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.arbitrationApiCloudCombined.filterMeta.availableOppositeRoles}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.arbOppositeRole this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.arbOppositeRoles this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -3530,7 +3727,7 @@
                         <div class="fssp-filter-actions">
                           <button type="submit" class="fssp-filter-btn">Применить</button>
                           <a
-                            href="/api/counterparty/report/{{reportId}}/html"
+                            href="{{reportFilterState.groups.arbitrationApiCloudCombined.resetThisGroupUrl}}"
                             class="fssp-filter-btn fssp-filter-btn-secondary"
                           >
                             Сбросить
@@ -3662,7 +3859,7 @@
             {{/if}}
           </div>
         {{else}}
-          <div class="empty" style="margin-top: 10px;">Нет записей</div>
+          <div class="empty" style="margin-top: 10px;">По источнику записей не найдено.</div>
         {{/if}}
       </section>
     {{/if}}
@@ -3774,6 +3971,9 @@
           <div class="stopopers-table-page stopopers-landscape">
             {{#if (eq reportMode 'html')}}
               <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.stopOperRS.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
             {{/if}}
 
             <div class="stopopers-table-wrap">
@@ -3792,10 +3992,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="stopOperNumber">№ решения</label>
-                          <select id="stopOperNumber" name="stopOperNumber">
+                          <select id="stopOperNumber" name="stopOperNumber" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.stopOperRS.filterMeta.availableNumbers}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.stopOperNumber this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.stopOperNumbers this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -3806,10 +4006,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="stopOperCodeFns">Код ФНС</label>
-                          <select id="stopOperCodeFns" name="stopOperCodeFns">
+                          <select id="stopOperCodeFns" name="stopOperCodeFns" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.stopOperRS.filterMeta.availableCodeFns}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.stopOperCodeFns this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.stopOperCodeFnsList this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -3823,10 +4023,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="stopOperReasonCode">Основание</label>
-                          <select id="stopOperReasonCode" name="stopOperReasonCode">
+                          <select id="stopOperReasonCode" name="stopOperReasonCode" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.stopOperRS.filterMeta.availableReasons}}
-                              <option value="{{code}}" {{#if (eq ../reportFilters.stopOperReasonCode code)}}selected{{/if}}>
+                              <option value="{{code}}" {{#if (includes ../reportFilters.stopOperReasonCodes code)}}selected{{/if}}>
                                 {{display}}
                               </option>
                             {{/each}}
@@ -3837,10 +4037,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="stopOperBik">Банк / БИК</label>
-                          <select id="stopOperBik" name="stopOperBik">
+                          <select id="stopOperBik" name="stopOperBik" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.stopOperRS.filterMeta.availableBanks}}
-                              <option value="{{bik}}" {{#if (eq ../reportFilters.stopOperBik bik)}}selected{{/if}}>
+                              <option value="{{bik}}" {{#if (includes ../reportFilters.stopOperBiks bik)}}selected{{/if}}>
                                 {{displayName}}
                               </option>
                             {{/each}}
@@ -3852,7 +4052,7 @@
                         <div class="fssp-filter-actions">
                           <button type="submit" class="fssp-filter-btn">Применить</button>
                           <a
-                            href="/api/counterparty/report/{{reportId}}/html"
+                            href="{{reportFilterState.groups.stopOperRS.resetThisGroupUrl}}"
                             class="fssp-filter-btn fssp-filter-btn-secondary"
                           >
                             Сбросить
@@ -4002,7 +4202,7 @@
             </div>
           {{/each}}
         {{else}}
-          <p>Нет записей</p>
+          <p>По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -4066,7 +4266,7 @@
             </div>
           {{/each}}
         {{else}}
-          <p>Нет записей</p>
+          <p>По источнику записей не найдено.</p>
         {{/if}}
       </section>
     {{/if}}
@@ -4162,9 +4362,12 @@
           <div class="fssp-table-page fssp-landscape">
             
 
-            {{#if sources.fsspKontur.items.length}}
+            
               {{#if (eq reportMode 'html')}}
                 <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.fsspKontur.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
               {{/if}}
 
               <div class="fssp-table-wrap">
@@ -4184,10 +4387,10 @@
                         <th>
                           <div class="fssp-filter-field">
                             <label for="fsspStatus">Статус</label>
-                            <select id="fsspStatus" name="fsspStatus">
+                            <select id="fsspStatus" name="fsspStatus" multiple data-multifilter-source size="3" >
                               <option value="all" {{#if (eq reportFilters.fsspStatus 'all')}}selected{{/if}}>Все</option>
-                              <option value="active" {{#if (eq reportFilters.fsspStatus 'active')}}selected{{/if}}>Активно</option>
-                              <option value="closed" {{#if (eq reportFilters.fsspStatus 'closed')}}selected{{/if}}>Завершено / прекращено</option>
+                              <option value="active" {{#if (includes reportFilters.fsspStatuses 'active')}}selected{{/if}}>Активно</option>
+                              <option value="closed" {{#if (includes reportFilters.fsspStatuses 'closed')}}selected{{/if}}>Завершено / прекращено</option>
                             </select>
                           </div>
                         </th>
@@ -4215,14 +4418,13 @@
                             </div>
                           </div>
                         </th>
-
                         <th>
                           <div class="fssp-filter-field">
                             <label for="fsspRegion">Регион</label>
-                            <select id="fsspRegion" name="fsspRegion">
+                            <select id="fsspRegion" name="fsspRegion" multiple data-multifilter-source size="4">
                               <option value="">Все</option>
                               {{#each sources.fsspKontur.filterMeta.availableRegions}}
-                                <option value="{{this}}" {{#if (eq ../reportFilters.fsspRegion this)}}selected{{/if}}>
+                                <option value="{{this}}" {{#if (includes ../reportFilters.fsspRegions this)}}selected{{/if}}>
                                   {{this}}
                                 </option>
                               {{/each}}
@@ -4237,7 +4439,7 @@
                           <div class="fssp-filter-actions">
                             <button type="submit" class="fssp-filter-btn">Применить</button>
                             <a
-                              href="/api/counterparty/report/{{reportId}}/html"
+                              href="{{reportFilterState.groups.fsspKontur.resetThisGroupUrl}}"
                               class="fssp-filter-btn fssp-filter-btn-secondary"
                             >
                               Сбросить
@@ -4260,7 +4462,8 @@
                     </tr>
                   </thead>
                 <tbody>
-                  {{#each sources.fsspKontur.items}}
+                  {{#if sources.fsspKontur.items.length}}
+                    {{#each sources.fsspKontur.items}}
                     <tr>
                       <td>{{#if number}}{{number}}{{else}}—{{/if}}</td>
                       <td>{{#if startDate}}{{startDate}}{{else}}—{{/if}}</td>
@@ -4284,24 +4487,25 @@
                       <td>{{#if document}}{{document}}{{else}}—{{/if}}</td>
                       <td>{{#if endReason}}{{endReason}}{{else}}—{{/if}}</td>
                     </tr>
-                  {{/each}}
+                    {{/each}}
+                  {{else}}
+                    <tr>
+                      <td colspan="9" class="fssp-empty-row">
+                        По выбранным фильтрам записей не найдено.
+                      </td>
+                    </tr>
+                  {{/if}}
                 </tbody>
                       </table>
                     </div>
                     {{#if (eq reportMode 'html')}}
                       </form>
                     {{/if}}
-                  {{else}}
-                    {{#if sources.fsspKontur.filterMeta.hasFilters}}
-                      <p style="margin-top: 12px;">По текущим фильтрам записи ФССП не найдены.</p>
-                    {{else}}
-                      <p style="margin-top: 12px;">Нет записей</p>
-                    {{/if}}
-                  {{/if}}
+                  
                 </div>
               {{else}}
                 {{#if sources.fsspKontur.filterMeta.hasFilters}}
-                  <p style="margin-top: 12px;">По текущим фильтрам записи ФССП не найдены.</p>
+                  <p style="margin-top: 12px;">По выбранным фильтрам записей не найдено.</p>
                 {{/if}}
               {{/if}}
       </section>
@@ -4442,6 +4646,9 @@
           <div class="arb-table-page arb-landscape">
             {{#if (eq reportMode 'html')}}
               <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.arbitrationKontur.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
             {{/if}}
 
             <div class="arb-table-wrap">
@@ -4457,14 +4664,13 @@
                     <tr class="arb-filter-row">
                       <th class="arb-filter-empty"></th>
                       <th class="arb-filter-empty"></th>
-
                       <th>
                         <div class="fssp-filter-field">
                           <label for="arbKonturRole">Роль проверяемого</label>
-                          <select id="arbKonturRole" name="arbKonturRole">
+                          <select id="arbKonturRole" name="arbKonturRole" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.arbitrationKontur.filterMeta.availableRoles}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.arbKonturRole this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.arbKonturRoles this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4475,10 +4681,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="arbKonturMatch">Совпадение</label>
-                          <select id="arbKonturMatch" name="arbKonturMatch">
+                          <select id="arbKonturMatch" name="arbKonturMatch" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.arbitrationKontur.filterMeta.availableMatches}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.arbKonturMatch this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.arbKonturMatches this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4492,10 +4698,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="arbKonturOppositeRole">Вторая сторона</label>
-                          <select id="arbKonturOppositeRole" name="arbKonturOppositeRole">
+                          <select id="arbKonturOppositeRole" name="arbKonturOppositeRole" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.arbitrationKontur.filterMeta.availableOppositeRoles}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.arbKonturOppositeRole this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.arbKonturOppositeRoles this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4509,7 +4715,7 @@
                         <div class="fssp-filter-actions">
                           <button type="submit" class="fssp-filter-btn">Применить</button>
                           <a
-                            href="/api/counterparty/report/{{reportId}}/html"
+                            href="{{reportFilterState.groups.arbitrationKontur.resetThisGroupUrl}}"
                             class="fssp-filter-btn fssp-filter-btn-secondary"
                           >
                             Сбросить
@@ -4652,7 +4858,7 @@
             {{/if}}
           </div>
         {{else}}
-          <div class="empty" style="margin-top: 10px;">Нет записей</div>
+          <div class="empty" style="margin-top: 10px;">По источнику записей не найдено.</div>
         {{/if}}
       </section>
     {{/if}}
@@ -4765,6 +4971,9 @@
           <div class="courts-table-page courts-landscape">
             {{#if (eq reportMode 'html')}}
               <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                {{#each reportFilterState.groups.courtsCommon.hiddenFieldsExceptThisGroup}}
+                  <input type="hidden" name="{{name}}" value="{{value}}" />
+                {{/each}}
             {{/if}}
 
             <div class="courts-table-wrap">
@@ -4781,10 +4990,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtType">Тип производства</label>
-                          <select id="courtType" name="courtType">
+                          <select id="courtType" name="courtType" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableProceedingTypes}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtType this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtTypes this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4795,10 +5004,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtMatch">Совпадение</label>
-                          <select id="courtMatch" name="courtMatch">
+                          <select id="courtMatch" name="courtMatch" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableMatchTypes}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtMatch this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtMatches this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4809,10 +5018,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtRole">Роль</label>
-                          <select id="courtRole" name="courtRole">
+                          <select id="courtRole" name="courtRole" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableRoles}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtRole this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtRoles this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4823,10 +5032,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtRegion">Регион</label>
-                          <select id="courtRegion" name="courtRegion">
+                          <select id="courtRegion" name="courtRegion" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableRegions}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtRegion this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtRegions this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4837,10 +5046,10 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtName">Суд</label>
-                          <select id="courtName" name="courtName">
+                          <select id="courtName" name="courtName" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableCourts}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtName this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtNames this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4875,23 +5084,24 @@
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtArticle">Статья</label>
-                          <input
-                            id="courtArticle"
-                            name="courtArticle"
-                            type="text"
-                            value="{{reportFilters.courtArticle}}"
-                            placeholder="Например, 15.33.2"
-                          />
+                          <select id="courtArticle" name="courtArticle" multiple data-multifilter-source size="4">
+                            <option value="">Все</option>
+                            {{#each sources.courtsCommon.filterMeta.availableArticles}}
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtArticles this)}}selected{{/if}}>
+                                {{this}}
+                              </option>
+                            {{/each}}
+                          </select>
                         </div>
                       </th>
 
                       <th>
                         <div class="fssp-filter-field">
                           <label for="courtStatus">Статус</label>
-                          <select id="courtStatus" name="courtStatus">
+                          <select id="courtStatus" name="courtStatus" multiple data-multifilter-source size="4">
                             <option value="">Все</option>
                             {{#each sources.courtsCommon.filterMeta.availableStatuses}}
-                              <option value="{{this}}" {{#if (eq ../reportFilters.courtStatus this)}}selected{{/if}}>
+                              <option value="{{this}}" {{#if (includes ../reportFilters.courtStatuses this)}}selected{{/if}}>
                                 {{this}}
                               </option>
                             {{/each}}
@@ -4906,7 +5116,7 @@
                         <div class="fssp-filter-actions">
                           <button type="submit" class="fssp-filter-btn">Применить</button>
                           <a
-                            href="/api/counterparty/report/{{reportId}}/html"
+                            href="{{reportFilterState.groups.courtsCommon.resetThisGroupUrl}}"
                             class="fssp-filter-btn fssp-filter-btn-secondary"
                           >
                             Сбросить
@@ -4958,7 +5168,7 @@
                   {{else}}
                     <tr>
                       <td colspan="12" class="courts-empty-row">
-                        По текущим фильтрам дела не найдены
+                        По выбранным фильтрам записей не найдено.
                       </td>
                     </tr>
                   {{/if}}
@@ -5621,10 +5831,13 @@
               из {{sources.commercialActivityKontur.filterMeta.totalBeforeFilter}}
             </div>
           {{/if}}
-          {{#if sources.commercialActivityKontur.tableRows.length}}
+          {{#if sources.commercialActivityKontur.filterMeta.totalBeforeFilter}}
             <div class="commercial-table-page commercial-landscape">
               {{#if (eq reportMode 'html')}}
                 <form method="GET" action="/api/counterparty/report/{{reportId}}/html">
+                  {{#each reportFilterState.groups.commercialActivityKontur.hiddenFieldsExceptThisGroup}}
+                    <input type="hidden" name="{{name}}" value="{{value}}" />
+                  {{/each}}
               {{/if}}
               <div class="commercial-table-wrap">
                 <table class="commercial-wide-table">
@@ -5640,7 +5853,7 @@
                           <div class="fssp-filter-field">
                             <label>Роль в компании</label>
 
-                            <div class="commercial-role-checks">
+                            <div class="commercial-role-checks" data-multifilter-checkbox-group data-multifilter-label="Роль в компании">
                               {{#each sources.commercialActivityKontur.filterMeta.availableCompanyRoleOptions}}
                                 <label class="commercial-role-check">
                                   <input
@@ -5658,10 +5871,10 @@
                         <th>
                           <div class="fssp-filter-field">
                             <label for="commercialStatus">Статус</label>
-                            <select id="commercialStatus" name="commercialStatus">
+                            <select id="commercialStatus" name="commercialStatus" multiple data-multifilter-source size="4">
                               <option value="">Все</option>
                               {{#each sources.commercialActivityKontur.filterMeta.availableStatuses}}
-                                <option value="{{this}}" {{#if (eq ../reportFilters.commercialStatus this)}}selected{{/if}}>
+                                <option value="{{this}}" {{#if (includes ../reportFilters.commercialStatuses this)}}selected{{/if}}>
                                   {{this}}
                                 </option>
                               {{/each}}
@@ -5669,15 +5882,27 @@
                           </div>
                         </th>
 
-                        <th class="commercial-filter-empty"></th>
+                        <th>
+                          <div class="fssp-filter-field">
+                            <label for="commercialPersonalRisk">Персональный риск</label>
+                            <select id="commercialPersonalRisk" name="commercialPersonalRisk" multiple data-multifilter-source size="4">
+                              <option value="">Все</option>
+                              {{#each sources.commercialActivityKontur.filterMeta.availablePersonalRisks}}
+                                <option value="{{this}}" {{#if (includes ../reportFilters.commercialPersonalRisks this)}}selected{{/if}}>
+                                  {{this}}
+                                </option>
+                              {{/each}}
+                            </select>
+                          </div>
+                        </th>
 
                         <th>
                           <div class="fssp-filter-field">
                             <label for="commercialRole">Роль</label>
-                            <select id="commercialRole" name="commercialRole">
+                            <select id="commercialRole" name="commercialRole" multiple data-multifilter-source size="4">
                               <option value="">Все</option>
                               {{#each sources.commercialActivityKontur.filterMeta.availableRoles}}
-                                <option value="{{this}}" {{#if (eq ../reportFilters.commercialRole this)}}selected{{/if}}>
+                                <option value="{{this}}" {{#if (includes ../reportFilters.commercialRoles this)}}selected{{/if}}>
                                   {{this}}
                                 </option>
                               {{/each}}
@@ -5714,7 +5939,7 @@
                           <div class="fssp-filter-actions">
                             <button type="submit" class="fssp-filter-btn">Применить</button>
                             <a
-                              href="/api/counterparty/report/{{reportId}}/html"
+                              href="{{reportFilterState.groups.commercialActivityKontur.resetThisGroupUrl}}"
                               class="fssp-filter-btn fssp-filter-btn-secondary"
                             >
                               Сбросить
@@ -5734,6 +5959,7 @@
                     </tr>
                   </thead>
                   <tbody>
+                    {{#if sources.commercialActivityKontur.tableRenderRows.length}}
                     {{#each sources.commercialActivityKontur.tableRenderRows}}
                       <tr>
                         {{#if isFirstProceedingRow}}
@@ -5825,6 +6051,13 @@
                         {{/if}}
                       </tr>
                     {{/each}}
+                    {{else}}
+                      <tr>
+                        <td colspan="7" class="commercial-empty-row">
+                          По выбранным фильтрам записей не найдено.
+                        </td>
+                      </tr>
+                    {{/if}}
                   </tbody>
                 </table>
               </div>
@@ -5833,7 +6066,7 @@
               {{/if}}
             </div>
           {{else}}
-            <p>Нет записей</p>
+            <p>По источнику записей не найдено.</p>
           {{/if}}
         </section>
       {{/if}}
@@ -5982,5 +6215,208 @@
     <h2>Провайдеры</h2>
     <pre>{{{json providerSummary}}}</pre>
   </div>
+  
+  <script>
+    (function () {
+      function closeDropdown(dropdown) {
+        if (!dropdown) return;
+        dropdown.classList.remove('is-open');
+        const button = dropdown.querySelector('[data-multifilter-button]');
+        if (button) button.setAttribute('aria-expanded', 'false');
+      }
+
+      function closeAllDropdowns(except) {
+        document.querySelectorAll('[data-multifilter].is-open').forEach(function (dropdown) {
+          if (dropdown !== except) closeDropdown(dropdown);
+        });
+      }
+
+      function summarizeValues(values) {
+        if (!values.length) return 'Все';
+        if (values.length === 1) return values[0];
+        if (values.length === 2 && values.every(function (value) { return value.length <= 12; })) {
+          return values.join(', ');
+        }
+        return 'Выбрано ' + values.length;
+      }
+
+      function updateButton(dropdown) {
+        const buttonText = dropdown.querySelector('[data-multifilter-button-text]');
+        const checkedLabels = Array.from(dropdown.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(function (input) { return input.getAttribute('data-label') || input.value; });
+        if (buttonText) buttonText.textContent = summarizeValues(checkedLabels);
+      }
+
+      function buildDropdown(items, labelText) {
+        const dropdown = document.createElement('div');
+        dropdown.className = 'report-filter-dropdown';
+        dropdown.setAttribute('data-multifilter', '');
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'report-filter-dropdown__button';
+        button.setAttribute('data-multifilter-button', '');
+        button.setAttribute('aria-expanded', 'false');
+        button.innerHTML = '<span class="report-filter-dropdown__button-text" data-multifilter-button-text>Все</span><span class="report-filter-dropdown__chevron">▼</span>';
+
+        const menu = document.createElement('div');
+        menu.className = 'report-filter-dropdown__menu';
+        menu.setAttribute('data-multifilter-menu', '');
+
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.className = 'report-filter-dropdown__search';
+        search.setAttribute('data-multifilter-search', '');
+        search.placeholder = 'Поиск...';
+        search.setAttribute('aria-label', 'Поиск по фильтру ' + (labelText || ''));
+
+        const options = document.createElement('div');
+        options.className = 'report-filter-dropdown__options';
+        options.setAttribute('data-multifilter-options', '');
+
+        items.forEach(function (item) {
+          const option = document.createElement('label');
+          option.className = 'report-filter-dropdown__option';
+          option.setAttribute('data-multifilter-option', '');
+          option.setAttribute('data-filter-text', (item.label || item.value || '').toLowerCase());
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.name = item.name;
+          checkbox.value = item.value;
+          checkbox.checked = item.checked;
+          checkbox.setAttribute('data-label', item.label);
+
+          const text = document.createElement('span');
+          text.textContent = item.label;
+
+          option.appendChild(checkbox);
+          option.appendChild(text);
+          options.appendChild(option);
+        });
+
+        const empty = document.createElement('div');
+        empty.className = 'report-filter-dropdown__empty';
+        empty.setAttribute('data-multifilter-empty', '');
+        empty.textContent = 'Ничего не найдено';
+
+        const actions = document.createElement('div');
+        actions.className = 'report-filter-dropdown__actions';
+        actions.innerHTML = '<button type="button" class="report-filter-dropdown__action" data-multifilter-select-all>Выбрать все</button><button type="button" class="report-filter-dropdown__action" data-multifilter-clear>Очистить</button>';
+
+        menu.appendChild(search);
+        menu.appendChild(options);
+        menu.appendChild(empty);
+        menu.appendChild(actions);
+        dropdown.appendChild(button);
+        dropdown.appendChild(menu);
+
+        return dropdown;
+      }
+
+      function initDropdown(dropdown) {
+        const button = dropdown.querySelector('[data-multifilter-button]');
+        const search = dropdown.querySelector('[data-multifilter-search]');
+        const selectAll = dropdown.querySelector('[data-multifilter-select-all]');
+        const clear = dropdown.querySelector('[data-multifilter-clear]');
+        const empty = dropdown.querySelector('[data-multifilter-empty]');
+
+        updateButton(dropdown);
+
+        button.addEventListener('click', function () {
+          const shouldOpen = !dropdown.classList.contains('is-open');
+          closeAllDropdowns(dropdown);
+          dropdown.classList.toggle('is-open', shouldOpen);
+          button.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+          if (shouldOpen && search) search.focus();
+        });
+
+        dropdown.addEventListener('change', function (event) {
+          if (event.target.matches('input[type="checkbox"]')) updateButton(dropdown);
+        });
+
+        if (search) {
+          search.addEventListener('input', function () {
+            const needle = search.value.trim().toLowerCase();
+            let visibleCount = 0;
+            dropdown.querySelectorAll('[data-multifilter-option]').forEach(function (option) {
+              const visible = !needle || option.getAttribute('data-filter-text').includes(needle);
+              option.style.display = visible ? '' : 'none';
+              if (visible) visibleCount += 1;
+            });
+            if (empty) empty.style.display = visibleCount ? 'none' : 'block';
+          });
+        }
+
+        if (selectAll) {
+          selectAll.addEventListener('click', function () {
+            dropdown.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+              input.checked = true;
+            });
+            updateButton(dropdown);
+          });
+        }
+
+        if (clear) {
+          clear.addEventListener('click', function () {
+            dropdown.querySelectorAll('input[type="checkbox"]').forEach(function (input) {
+              input.checked = false;
+            });
+            updateButton(dropdown);
+          });
+        }
+      }
+
+      function transformSelect(select) {
+        const label = document.querySelector('label[for="' + select.id + '"]');
+        const items = Array.from(select.options)
+          .filter(function (option) { return option.value && option.value !== 'all'; })
+          .map(function (option) {
+            return {
+              name: select.name,
+              value: option.value,
+              label: option.textContent.trim(),
+              checked: option.selected,
+            };
+          });
+
+        const dropdown = buildDropdown(items, label ? label.textContent.trim() : '');
+        select.disabled = true;
+        select.after(dropdown);
+        initDropdown(dropdown);
+      }
+
+      function transformCheckboxGroup(group) {
+        const inputs = Array.from(group.querySelectorAll('input[type="checkbox"]'));
+        if (!inputs.length) return;
+        const items = inputs.map(function (input) {
+          const label = input.closest('label');
+          const text = label ? label.textContent.trim() : input.value;
+          input.disabled = true;
+          return {
+            name: input.name,
+            value: input.value,
+            label: text,
+            checked: input.checked,
+          };
+        });
+        const dropdown = buildDropdown(items, group.getAttribute('data-multifilter-label') || '');
+        group.after(dropdown);
+        initDropdown(dropdown);
+      }
+
+      document.querySelectorAll('select[data-multifilter-source]').forEach(transformSelect);
+      document.querySelectorAll('[data-multifilter-checkbox-group]').forEach(transformCheckboxGroup);
+
+      document.addEventListener('click', function (event) {
+        if (!event.target.closest('[data-multifilter]')) closeAllDropdowns();
+      });
+
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeAllDropdowns();
+      });
+    })();
+  </script>
+  
 </body>
 </html>

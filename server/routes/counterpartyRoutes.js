@@ -103,6 +103,7 @@ function buildCounterpartyConsentSnapshot(req, context = {}) {
 
 handlebars.registerHelper('json', (context) => JSON.stringify(context, null, 2));
 handlebars.registerHelper('eq', (a, b) => a === b);
+handlebars.registerHelper('includes', (list, value) => Array.isArray(list) && list.includes(value));
 handlebars.registerHelper('formatMoneyRu', (value) => {
   if (value === undefined || value === null || value === '') {
     return '—';
@@ -143,6 +144,190 @@ function normalizeRegionsInput(value) {
       .map(normalizeRegionCode)
       .filter(Boolean)
   )];
+}
+
+const REPORT_FILTER_GROUPS = {
+  fsspKontur: ['fsspStatus', 'fsspRegion', 'fsspMinSum', 'fsspMaxSum'],
+  fsspApiCloud: ['fsspApiStatus', 'fsspApiDepartment', 'fsspApiMinSum', 'fsspApiMaxSum'],
+  stopOperRS: ['stopOperNumber', 'stopOperCodeFns', 'stopOperReasonCode', 'stopOperBik'],
+  courtsCommon: [
+    'courtType',
+    'courtMatch',
+    'courtRole',
+    'courtRegion',
+    'courtName',
+    'courtDateFrom',
+    'courtDateTo',
+    'courtArticle',
+    'courtStatus',
+  ],
+  commercialActivityKontur: [
+    'commercialStatus',
+    'commercialRole',
+    'commercialMinSum',
+    'commercialMaxSum',
+    'commercialPersonalRisk',
+    'commercialCompanyRole',
+  ],
+  arbitrationApiCloudCombined: ['arbRole', 'arbOppositeRole'],
+  arbitrationKontur: ['arbKonturRole', 'arbKonturMatch', 'arbKonturOppositeRole'],
+};
+
+const REPORT_FILTER_KEYS = Object.values(REPORT_FILTER_GROUPS).flat();
+
+const REPORT_FILTER_LABELS = {
+  fsspStatus: 'ФССП Контур: статус',
+  fsspRegion: 'ФССП Контур: регион',
+  fsspMinSum: 'ФССП Контур: сумма от',
+  fsspMaxSum: 'ФССП Контур: сумма до',
+  fsspApiStatus: 'ФССП API-cloud: статус',
+  fsspApiDepartment: 'ФССП API-cloud: ОСП',
+  fsspApiMinSum: 'ФССП API-cloud: сумма от',
+  fsspApiMaxSum: 'ФССП API-cloud: сумма до',
+  stopOperNumber: 'Приостановления: № решения',
+  stopOperCodeFns: 'Приостановления: код ФНС',
+  stopOperReasonCode: 'Приостановления: основание',
+  stopOperBik: 'Приостановления: БИК',
+  courtType: 'Суды: тип',
+  courtMatch: 'Суды: совпадение',
+  courtRole: 'Суды: роль',
+  courtRegion: 'Суды: регион',
+  courtName: 'Суды: суд',
+  courtDateFrom: 'Суды: дата от',
+  courtDateTo: 'Суды: дата до',
+  courtArticle: 'Суды: статья',
+  courtStatus: 'Суды: статус',
+  commercialStatus: 'Коммерческая деятельность: статус',
+  commercialRole: 'Коммерческая деятельность: роль',
+  commercialMinSum: 'Коммерческая деятельность: сумма от',
+  commercialMaxSum: 'Коммерческая деятельность: сумма до',
+  commercialPersonalRisk: 'Коммерческая деятельность: персональный риск',
+  commercialCompanyRole: 'Коммерческая деятельность: роль в компании',
+  arbRole: 'Арбитраж API-cloud: роль',
+  arbOppositeRole: 'Арбитраж API-cloud: вторая сторона',
+  arbKonturRole: 'Арбитраж Контур: роль',
+  arbKonturMatch: 'Арбитраж Контур: совпадение',
+  arbKonturOppositeRole: 'Арбитраж Контур: вторая сторона',
+};
+
+
+const REPORT_MULTI_FILTER_KEYS = new Set([
+  'fsspStatus',
+  'fsspRegion',
+  'fsspApiStatus',
+  'fsspApiDepartment',
+  'stopOperNumber',
+  'stopOperCodeFns',
+  'stopOperReasonCode',
+  'stopOperBik',
+  'courtType',
+  'courtMatch',
+  'courtRole',
+  'courtRegion',
+  'courtName',
+  'courtArticle',
+  'courtStatus',
+  'commercialStatus',
+  'commercialRole',
+  'commercialPersonalRisk',
+  'commercialCompanyRole',
+  'arbRole',
+  'arbOppositeRole',
+  'arbKonturRole',
+  'arbKonturMatch',
+  'arbKonturOppositeRole',
+]);
+
+function getQueryValues(query = {}, key) {
+  const value = query?.[key];
+  const values = Array.isArray(value) ? value : [value];
+
+  return [...new Set(values
+    .map((item) => String(item ?? '').trim())
+    .filter((item) => item && item !== 'all' && item !== 'Все'))];
+}
+
+function getQueryValue(query = {}, key) {
+  return getQueryValues(query, key)[0] || '';
+}
+
+
+function normalizeReportFilterValues(query = {}, key) {
+  const values = getQueryValues(query, key).map((value) => {
+    if (key === 'fsspRegion') return normalizeRegionCode(value);
+    if (key === 'stopOperBik') return normalizeStopOperBik(value);
+    if (key === 'commercialCompanyRole') return normalizeCommercialCompanyRoleFilter(value);
+    return value;
+  }).flat().filter(Boolean);
+
+  return [...new Set(values)];
+}
+
+function buildReportFilterFields(query = {}, exceptGroupName = null) {
+  const excluded = new Set(exceptGroupName ? REPORT_FILTER_GROUPS[exceptGroupName] || [] : []);
+  const fields = [];
+
+  for (const key of REPORT_FILTER_KEYS) {
+    if (excluded.has(key)) continue;
+
+    for (const value of normalizeReportFilterValues(query, key)) {
+      fields.push({ name: key, label: REPORT_FILTER_LABELS[key] || key, value });
+    }
+  }
+
+  return fields;
+}
+
+function buildReportFilterState(reportId, query = {}) {
+  const groups = {};
+  const baseUrl = `/api/counterparty/report/${reportId}/html`;
+
+  for (const groupName of Object.keys(REPORT_FILTER_GROUPS)) {
+    const resetQueryString = buildReportQueryStringFromFields(
+      buildReportFilterFields(query, groupName)
+    );
+
+    groups[groupName] = {
+      hiddenFieldsExceptThisGroup: buildReportFilterFields(query, groupName),
+      resetThisGroupUrl: resetQueryString ? `${baseUrl}?${resetQueryString}` : baseUrl,
+    };
+  }
+
+  return {
+    allQueryString: buildReportQueryString(query),
+    activeFields: buildReportFilterFields(query),
+    resetAllUrl: baseUrl,
+    groups,
+  };
+}
+
+function buildReportQueryStringFromFields(fields = []) {
+  const params = new URLSearchParams();
+
+  for (const field of Array.isArray(fields) ? fields : []) {
+    const name = String(field?.name || '').trim();
+    const value = String(field?.value || '').trim();
+    if (!name || !value || value === 'all' || value === 'Все') continue;
+
+    if (REPORT_MULTI_FILTER_KEYS.has(name)) {
+      params.append(name, value);
+    } else {
+      params.set(name, value);
+    }
+  }
+
+  return params.toString();
+}
+
+function appendReportQueryParam(params, query, key) {
+  const values = normalizeReportFilterValues(query, key);
+  if (!values.length) return;
+
+  if (REPORT_MULTI_FILTER_KEYS.has(key)) {
+    values.forEach((value) => params.append(key, value));
+  } else {
+    params.set(key, values[0]);
+  }
 }
 
 const APICLOUD_SELECTIVE_SOURCES = [
@@ -389,8 +574,12 @@ function applyFsspKonturFilters(reportData = {}, query = {}) {
 
   const originalItems = Array.isArray(source.items) ? source.items : [];
 
-  const statusFilter = normalizeFsspStatusFilter(query.fsspStatus);
-  const regionFilter = normalizeRegionCode(query.fsspRegion || '');
+  const statusFilters = getQueryValues(query, 'fsspStatus')
+    .map(normalizeFsspStatusFilter)
+    .filter((value) => value !== 'all');
+  const regionFilters = getQueryValues(query, 'fsspRegion')
+    .map(normalizeRegionCode)
+    .filter(Boolean);
   const minSum = parseFsspMoneyFilter(query.fsspMinSum);
   const maxSum = parseFsspMoneyFilter(query.fsspMaxSum);
 
@@ -399,11 +588,11 @@ function applyFsspKonturFilters(reportData = {}, query = {}) {
     const region = normalizeRegionCode(item?.region || '');
     const sum = parseFsspProceedingSum(item?.sum);
 
-    if (statusFilter !== 'all' && status !== statusFilter) {
+    if (statusFilters.length && !statusFilters.includes(status)) {
       return false;
     }
 
-    if (regionFilter && region !== regionFilter) {
+    if (regionFilters.length && !regionFilters.includes(region)) {
       return false;
     }
 
@@ -418,12 +607,15 @@ function applyFsspKonturFilters(reportData = {}, query = {}) {
     return true;
   });
 
+  
   return {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      fsspStatus: statusFilter,
-      fsspRegion: regionFilter,
+      fsspStatus: statusFilters[0] || 'all',
+      fsspStatuses: statusFilters,
+      fsspRegion: regionFilters[0] || '',
+      fsspRegions: regionFilters,
       fsspMinSum: minSum,
       fsspMaxSum: maxSum,
     },
@@ -438,8 +630,8 @@ function applyFsspKonturFilters(reportData = {}, query = {}) {
           totalBeforeFilter: originalItems.length,
           totalAfterFilter: filteredItems.length,
           hasFilters:
-            statusFilter !== 'all' ||
-            !!regionFilter ||
+            statusFilters.length > 0 ||
+            regionFilters.length > 0 ||
             minSum !== null ||
             maxSum !== null,
         },
@@ -500,8 +692,10 @@ function applyFsspApiCloudFilters(reportData = {}, query = {}) {
 
   const originalItems = Array.isArray(source.items) ? source.items : [];
 
-  const statusFilter = normalizeFsspStatusFilter(query.fsspApiStatus);
-  const departmentFilter = String(query.fsspApiDepartment || '').trim();
+  const statusFilters = getQueryValues(query, 'fsspApiStatus')
+    .map(normalizeFsspStatusFilter)
+    .filter((value) => value !== 'all');
+  const departmentFilters = getQueryValues(query, 'fsspApiDepartment');
   const minSum = parseFsspMoneyFilter(query.fsspApiMinSum);
   const maxSum = parseFsspMoneyFilter(query.fsspApiMaxSum);
 
@@ -510,11 +704,11 @@ function applyFsspApiCloudFilters(reportData = {}, query = {}) {
     const departmentName = String(item?.departmentName || '').trim();
     const sum = parseFsspProceedingSum(item?.amount);
 
-    if (statusFilter !== 'all' && status !== statusFilter) {
+    if (statusFilters.length && !statusFilters.includes(status)) {
       return false;
     }
 
-    if (departmentFilter && departmentName !== departmentFilter) {
+    if (departmentFilters.length && !departmentFilters.includes(departmentName)) {
       return false;
     }
 
@@ -533,8 +727,10 @@ function applyFsspApiCloudFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      fsspApiStatus: statusFilter,
-      fsspApiDepartment: departmentFilter,
+      fsspApiStatus: statusFilters[0] || 'all',
+      fsspApiStatuses: statusFilters,
+      fsspApiDepartment: departmentFilters[0] || '',
+      fsspApiDepartments: departmentFilters,
       fsspApiMinSum: minSum,
       fsspApiMaxSum: maxSum,
     },
@@ -549,8 +745,8 @@ function applyFsspApiCloudFilters(reportData = {}, query = {}) {
           totalBeforeFilter: originalItems.length,
           totalAfterFilter: filteredItems.length,
           hasFilters:
-            statusFilter !== 'all' ||
-            !!departmentFilter ||
+            statusFilters.length > 0 ||
+            departmentFilters.length > 0 ||
             minSum !== null ||
             maxSum !== null,
         },
@@ -712,29 +908,29 @@ function applyStopOperRSFilters(reportData = {}, query = {}) {
   const originalRecords = getStopOperRecords(source);
   const originalRows = buildStopOperRSTableRows(originalRecords);
 
-  const numberFilter = String(query.stopOperNumber || '').trim();
-  const codeFnsFilter = String(query.stopOperCodeFns || '').trim();
-  const reasonCodeFilter = String(query.stopOperReasonCode || '').trim();
-  const bikFilter = normalizeStopOperBik(query.stopOperBik || '');
+  const numberFilters = getQueryValues(query, 'stopOperNumber');
+  const codeFnsFilters = getQueryValues(query, 'stopOperCodeFns');
+  const reasonCodeFilters = getQueryValues(query, 'stopOperReasonCode');
+  const bikFilters = getQueryValues(query, 'stopOperBik').map(normalizeStopOperBik).filter(Boolean);
 
   const filteredRows = originalRows.filter((row) => {
-    if (numberFilter && row.number !== numberFilter) {
+    if (numberFilters.length && !numberFilters.includes(row.number)) {
       return false;
     }
 
-    if (codeFnsFilter && row.codeFns !== codeFnsFilter) {
+    if (codeFnsFilters.length && !codeFnsFilters.includes(row.codeFns)) {
       return false;
     }
 
     if (
-      reasonCodeFilter &&
-      row.reasonCode !== reasonCodeFilter &&
-      row.reasonText !== reasonCodeFilter
+      reasonCodeFilters.length &&
+      !reasonCodeFilters.includes(row.reasonCode) &&
+      !reasonCodeFilters.includes(row.reasonText)
     ) {
       return false;
     }
 
-    if (bikFilter && row.bik !== bikFilter) {
+    if (bikFilters.length && !bikFilters.includes(row.bik)) {
       return false;
     }
 
@@ -745,10 +941,14 @@ function applyStopOperRSFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      stopOperNumber: numberFilter,
-      stopOperCodeFns: codeFnsFilter,
-      stopOperReasonCode: reasonCodeFilter,
-      stopOperBik: bikFilter,
+      stopOperNumber: numberFilters[0] || '',
+      stopOperNumbers: numberFilters,
+      stopOperCodeFns: codeFnsFilters[0] || '',
+      stopOperCodeFnsList: codeFnsFilters,
+      stopOperReasonCode: reasonCodeFilters[0] || '',
+      stopOperReasonCodes: reasonCodeFilters,
+      stopOperBik: bikFilters[0] || '',
+      stopOperBiks: bikFilters,
     },
     sources: {
       ...(reportData.sources || {}),
@@ -760,10 +960,10 @@ function applyStopOperRSFilters(reportData = {}, query = {}) {
           totalBeforeFilter: originalRows.length,
           totalAfterFilter: filteredRows.length,
           hasFilters:
-            !!numberFilter ||
-            !!codeFnsFilter ||
-            !!reasonCodeFilter ||
-            !!bikFilter,
+            numberFilters.length > 0 ||
+            codeFnsFilters.length > 0 ||
+            reasonCodeFilters.length > 0 ||
+            bikFilters.length > 0,
         },
       },
     },
@@ -779,165 +979,8 @@ function isUuid(value) {
 function buildReportQueryString(query = {}) {
   const params = new URLSearchParams();
 
-  const fsspStatus = String(query.fsspStatus || '').trim();
-  const fsspRegion = String(query.fsspRegion || '').trim();
-  const fsspMinSum = String(query.fsspMinSum || '').trim();
-  const fsspMaxSum = String(query.fsspMaxSum || '').trim();
-  const fsspApiStatus = String(query.fsspApiStatus || '').trim();
-  const fsspApiDepartment = String(query.fsspApiDepartment || '').trim();
-  const fsspApiMinSum = String(query.fsspApiMinSum || '').trim();
-  const fsspApiMaxSum = String(query.fsspApiMaxSum || '').trim();
-  const stopOperNumber = String(query.stopOperNumber || '').trim();
-  const stopOperCodeFns = String(query.stopOperCodeFns || '').trim();
-  const stopOperReasonCode = String(query.stopOperReasonCode || '').trim();
-  const stopOperBik = String(query.stopOperBik || '').trim();
-  const courtType = String(query.courtType || '').trim();
-  const courtMatch = String(query.courtMatch || '').trim();
-  const courtRole = String(query.courtRole || '').trim();
-  const courtRegion = String(query.courtRegion || '').trim();
-  const courtName = String(query.courtName || '').trim();
-  const courtDateFrom = String(query.courtDateFrom || '').trim();
-  const courtDateTo = String(query.courtDateTo || '').trim();
-  const courtArticle = String(query.courtArticle || '').trim();
-  const courtStatus = String(query.courtStatus || '').trim();
-  const commercialStatus = String(query.commercialStatus || '').trim();
-  const commercialRole = String(query.commercialRole || '').trim();
-  const commercialMinSum = String(query.commercialMinSum || '').trim();
-  const commercialMaxSum = String(query.commercialMaxSum || '').trim();
-  const commercialPersonalRisk = String(query.commercialPersonalRisk || '').trim();
-  const commercialCompanyRoles = normalizeCommercialCompanyRoleFilter(query.commercialCompanyRole);
-  const arbRole = String(query.arbRole || '').trim();
-  const arbOppositeRole = String(query.arbOppositeRole || '').trim();
-  const arbKonturRole = String(query.arbKonturRole || '').trim();
-  const arbKonturMatch = String(query.arbKonturMatch || '').trim();
-  const arbKonturOppositeRole = String(query.arbKonturOppositeRole || '').trim();
-
-  if (fsspStatus && fsspStatus !== 'all') {
-    params.set('fsspStatus', fsspStatus);
-  }
-
-  if (fsspRegion) {
-    params.set('fsspRegion', fsspRegion);
-  }
-
-  if (fsspMinSum) {
-    params.set('fsspMinSum', fsspMinSum);
-  }
-
-  if (fsspMaxSum) {
-    params.set('fsspMaxSum', fsspMaxSum);
-  }
-
-  if (stopOperNumber) {
-    params.set('stopOperNumber', stopOperNumber);
-  }
-
-  if (stopOperCodeFns) {
-    params.set('stopOperCodeFns', stopOperCodeFns);
-  }
-
-  if (stopOperReasonCode) {
-    params.set('stopOperReasonCode', stopOperReasonCode);
-  }
-
-  if (stopOperBik) {
-    params.set('stopOperBik', stopOperBik);
-  }
-
-  if (fsspApiStatus && fsspApiStatus !== 'all') {
-    params.set('fsspApiStatus', fsspApiStatus);
-  }
-
-  if (fsspApiDepartment) {
-    params.set('fsspApiDepartment', fsspApiDepartment);
-  }
-
-  if (fsspApiMinSum) {
-    params.set('fsspApiMinSum', fsspApiMinSum);
-  }
-
-  if (fsspApiMaxSum) {
-    params.set('fsspApiMaxSum', fsspApiMaxSum);
-  }
-
-  if (courtType) {
-    params.set('courtType', courtType);
-  }
-
-  if (courtMatch) {
-    params.set('courtMatch', courtMatch);
-  }
-
-  if (courtRole) {
-    params.set('courtRole', courtRole);
-  }
-
-  if (courtRegion) {
-    params.set('courtRegion', courtRegion);
-  }
-
-  if (courtName) {
-    params.set('courtName', courtName);
-  }
-
-  if (courtDateFrom) {
-    params.set('courtDateFrom', courtDateFrom);
-  }
-
-  if (courtDateTo) {
-    params.set('courtDateTo', courtDateTo);
-  }
-
-  if (courtArticle) {
-    params.set('courtArticle', courtArticle);
-  }
-
-  if (courtStatus) {
-    params.set('courtStatus', courtStatus);
-  }
-
-  if (commercialStatus) {
-    params.set('commercialStatus', commercialStatus);
-  }
-
-  if (commercialRole) {
-    params.set('commercialRole', commercialRole);
-  }
-
-  if (commercialMinSum) {
-    params.set('commercialMinSum', commercialMinSum);
-  }
-
-  if (commercialMaxSum) {
-    params.set('commercialMaxSum', commercialMaxSum);
-  }
-
-  if (commercialPersonalRisk) {
-    params.set('commercialPersonalRisk', commercialPersonalRisk);
-  }
-
-  for (const role of commercialCompanyRoles) {
-    params.append('commercialCompanyRole', role);
-  }
-
-  if (arbRole) {
-    params.set('arbRole', arbRole);
-  }
-
-  if (arbOppositeRole) {
-    params.set('arbOppositeRole', arbOppositeRole);
-  }
-
-  if (arbKonturRole) {
-    params.set('arbKonturRole', arbKonturRole);
-  }
-
-  if (arbKonturMatch) {
-    params.set('arbKonturMatch', arbKonturMatch);
-  }
-
-  if (arbKonturOppositeRole) {
-    params.set('arbKonturOppositeRole', arbKonturOppositeRole);
+  for (const key of REPORT_FILTER_KEYS) {
+    appendReportQueryParam(params, query, key);
   }
 
   return params.toString();
@@ -1116,30 +1159,30 @@ function applyCourtsCommonFilters(reportData = {}, query = {}) {
   const originalRows = buildCourtsCommonTableRows(originalItems);
   const rebuiltSummary = buildCourtsCommonSummary(originalRows);
 
-  const typeFilter = String(query.courtType || '').trim();
-  const matchFilter = String(query.courtMatch || '').trim();
-  const roleFilter = String(query.courtRole || '').trim();
-  const regionFilter = String(query.courtRegion || '').trim();
-  const courtFilter = String(query.courtName || '').trim();
-  const dateFromFilter = String(query.courtDateFrom || '').trim();
-  const dateToFilter = String(query.courtDateTo || '').trim();
-  const articleFilter = String(query.courtArticle || '').trim().toLowerCase();
-  const statusFilter = String(query.courtStatus || '').trim();
+  const typeFilters = getQueryValues(query, 'courtType');
+  const matchFilters = getQueryValues(query, 'courtMatch');
+  const roleFilters = getQueryValues(query, 'courtRole');
+  const regionFilters = getQueryValues(query, 'courtRegion');
+  const courtFilters = getQueryValues(query, 'courtName');
+  const dateFromFilter = getQueryValue(query, 'courtDateFrom');
+  const dateToFilter = getQueryValue(query, 'courtDateTo');
+  const articleFilters = getQueryValues(query, 'courtArticle').map((value) => value.toLowerCase());
+  const statusFilters = getQueryValues(query, 'courtStatus');
 
   const dateFromTs = toSortableDate(dateFromFilter);
   const dateToTs = toSortableDate(dateToFilter);
 
   const filteredRows = originalRows.filter((row) => {
-    if (typeFilter && row.tableProceedingType !== typeFilter) return false;
-    if (matchFilter && row.tableMatchType !== matchFilter) return false;
-    if (roleFilter && row.tableRole !== roleFilter) return false;
-    if (regionFilter && row.tableRegion !== regionFilter) return false;
-    if (courtFilter && row.tableCourt !== courtFilter) return false;
-    if (statusFilter && row.tableStatus !== statusFilter) return false;
+    if (typeFilters.length && !typeFilters.includes(row.tableProceedingType)) return false;
+    if (matchFilters.length && !matchFilters.includes(row.tableMatchType)) return false;
+    if (roleFilters.length && !roleFilters.includes(row.tableRole)) return false;
+    if (regionFilters.length && !regionFilters.includes(row.tableRegion)) return false;
+    if (courtFilters.length && !courtFilters.includes(row.tableCourt)) return false;
+    if (statusFilters.length && !statusFilters.includes(row.tableStatus)) return false;
 
-    if (articleFilter) {
+    if (articleFilters.length) {
       const articleValue = String(row.tableArticle || '').toLowerCase();
-      if (!articleValue.includes(articleFilter)) {
+      if (!articleFilters.some((articleFilter) => articleValue.includes(articleFilter))) {
         return false;
       }
     }
@@ -1163,15 +1206,22 @@ function applyCourtsCommonFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      courtType: typeFilter,
-      courtMatch: matchFilter,
-      courtRole: roleFilter,
-      courtRegion: regionFilter,
-      courtName: courtFilter,
+      courtType: typeFilters[0] || '',
+      courtTypes: typeFilters,
+      courtMatch: matchFilters[0] || '',
+      courtMatches: matchFilters,
+      courtRole: roleFilters[0] || '',
+      courtRoles: roleFilters,
+      courtRegion: regionFilters[0] || '',
+      courtRegions: regionFilters,
+      courtName: courtFilters[0] || '',
+      courtNames: courtFilters,
       courtDateFrom: dateFromFilter,
       courtDateTo: dateToFilter,
-      courtArticle: String(query.courtArticle || '').trim(),
-      courtStatus: statusFilter,
+      courtArticle: getQueryValues(query, 'courtArticle')[0] || '',
+      courtArticles: getQueryValues(query, 'courtArticle'),
+      courtStatus: statusFilters[0] || '',
+      courtStatuses: statusFilters,
     },
     sources: {
       ...(reportData.sources || {}),
@@ -1185,15 +1235,15 @@ function applyCourtsCommonFilters(reportData = {}, query = {}) {
           totalBeforeFilter: originalRows.length,
           totalAfterFilter: filteredRows.length,
           hasFilters:
-            !!typeFilter ||
-            !!matchFilter ||
-            !!roleFilter ||
-            !!regionFilter ||
-            !!courtFilter ||
+            typeFilters.length > 0 ||
+            matchFilters.length > 0 ||
+            roleFilters.length > 0 ||
+            regionFilters.length > 0 ||
+            courtFilters.length > 0 ||
             !!dateFromFilter ||
             !!dateToFilter ||
-            !!articleFilter ||
-            !!statusFilter,
+            articleFilters.length > 0 ||
+            statusFilters.length > 0,
         },
       },
     },
@@ -1383,17 +1433,17 @@ function applyArbitrationApiCloudCombinedFilters(reportData = {}, query = {}) {
   const originalCases = Array.isArray(source.cases) ? source.cases : [];
   const originalRows = buildArbitrationApiCloudTableRows(originalCases);
 
-  const roleFilter = normalizeArbFilterText(query.arbRole);
-  const oppositeRoleFilter = normalizeArbFilterText(query.arbOppositeRole);
+  const roleFilters = getQueryValues(query, 'arbRole').map(normalizeArbFilterText).filter(Boolean);
+  const oppositeRoleFilters = getQueryValues(query, 'arbOppositeRole').map(normalizeArbFilterText).filter(Boolean);
 
   const filteredRows = originalRows.filter((row) => {
-    if (roleFilter && row.subjectRoleText !== roleFilter) {
+    if (roleFilters.length && !roleFilters.includes(row.subjectRoleText)) {
       return false;
     }
 
     if (
-      oppositeRoleFilter &&
-      !row.oppositeRoleValues.includes(oppositeRoleFilter)
+      oppositeRoleFilters.length &&
+      !oppositeRoleFilters.some((role) => row.oppositeRoleValues.includes(role))
     ) {
       return false;
     }
@@ -1405,8 +1455,10 @@ function applyArbitrationApiCloudCombinedFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      arbRole: roleFilter,
-      arbOppositeRole: oppositeRoleFilter,
+      arbRole: roleFilters[0] || '',
+      arbRoles: roleFilters,
+      arbOppositeRole: oppositeRoleFilters[0] || '',
+      arbOppositeRoles: oppositeRoleFilters,
     },
     sources: {
       ...(reportData.sources || {}),
@@ -1417,7 +1469,7 @@ function applyArbitrationApiCloudCombinedFilters(reportData = {}, query = {}) {
           ...buildArbitrationApiCloudFilterMeta(originalRows),
           totalBeforeFilter: originalRows.length,
           totalAfterFilter: filteredRows.length,
-          hasFilters: !!roleFilter || !!oppositeRoleFilter,
+          hasFilters: roleFilters.length > 0 || oppositeRoleFilters.length > 0,
         },
       },
     },
@@ -1842,22 +1894,22 @@ function applyArbitrationKonturFilters(reportData = {}, query = {}) {
     reportData?.subject || {}
   );
 
-  const roleFilter = normalizeArbFilterText(query.arbKonturRole);
-  const matchFilter = normalizeArbFilterText(query.arbKonturMatch);
-  const oppositeRoleFilter = normalizeArbFilterText(query.arbKonturOppositeRole);
+  const roleFilters = getQueryValues(query, 'arbKonturRole').map(normalizeArbFilterText).filter(Boolean);
+  const matchFilters = getQueryValues(query, 'arbKonturMatch').map(normalizeArbFilterText).filter(Boolean);
+  const oppositeRoleFilters = getQueryValues(query, 'arbKonturOppositeRole').map(normalizeArbFilterText).filter(Boolean);
 
   const filteredRows = originalRows.filter((row) => {
-    if (roleFilter && row.subjectRoleText !== roleFilter) {
+    if (roleFilters.length && !roleFilters.includes(row.subjectRoleText)) {
       return false;
     }
 
-    if (matchFilter && row.matchFilterValue !== matchFilter) {
+    if (matchFilters.length && !matchFilters.includes(row.matchFilterValue)) {
       return false;
     }
 
     if (
-      oppositeRoleFilter &&
-      !row.oppositeRoleValues.includes(oppositeRoleFilter)
+      oppositeRoleFilters.length &&
+      !oppositeRoleFilters.some((role) => row.oppositeRoleValues.includes(role))
     ) {
       return false;
     }
@@ -1869,9 +1921,12 @@ function applyArbitrationKonturFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      arbKonturRole: roleFilter,
-      arbKonturMatch: matchFilter,
-      arbKonturOppositeRole: oppositeRoleFilter,
+      arbKonturRole: roleFilters[0] || '',
+      arbKonturRoles: roleFilters,
+      arbKonturMatch: matchFilters[0] || '',
+      arbKonturMatches: matchFilters,
+      arbKonturOppositeRole: oppositeRoleFilters[0] || '',
+      arbKonturOppositeRoles: oppositeRoleFilters,
     },
     sources: {
       ...(reportData.sources || {}),
@@ -1883,7 +1938,7 @@ function applyArbitrationKonturFilters(reportData = {}, query = {}) {
           ...buildArbitrationKonturFilterMeta(originalRows),
           totalBeforeFilter: originalRows.length,
           totalAfterFilter: filteredRows.length,
-          hasFilters: !!roleFilter || !!matchFilter || !!oppositeRoleFilter,
+          hasFilters: roleFilters.length > 0 || matchFilters.length > 0 || oppositeRoleFilters.length > 0,
         },
       },
     },
@@ -2903,6 +2958,7 @@ function buildCommercialFilterMeta(rows = [], selectedCompanyRoles = []) {
   return {
     availableStatuses: buildCommercialAvailableStatuses(safeRows),
     availableRoles: buildCommercialAvailableRoles(safeRows),
+    availablePersonalRisks: buildCommercialAvailablePersonalRisks(safeRows),
     availableCompanyRoles,
     availableCompanyRoleOptions: buildCommercialCompanyRoleOptions(
       safeRows,
@@ -3004,14 +3060,19 @@ function applyCommercialActivityKonturFilters(reportData = {}, query = {}) {
   const originalItems = Array.isArray(source.items) ? source.items : [];
   const originalTableRows = buildCommercialActivityKonturTableRows(originalItems);
 
-  const statusFilter = normalizeCommercialStatusFilter(query.commercialStatus);
-  const roleFilter = normalizeCommercialRoleFilter(query.commercialRole);
+  const statusFilters = getQueryValues(query, 'commercialStatus').map(normalizeCommercialStatusFilter).filter(Boolean);
+  const roleFilters = getQueryValues(query, 'commercialRole').map(normalizeCommercialRoleFilter).filter(Boolean);
+  const personalRiskFilters = getQueryValues(query, 'commercialPersonalRisk');
   const companyRoleFilters = normalizeCommercialCompanyRoleFilter(query.commercialCompanyRole);
   const minSum = parseCommercialSumFilter(query.commercialMinSum);
   const maxSum = parseCommercialSumFilter(query.commercialMaxSum);
 
   const filteredTableRows = originalTableRows.filter((row) => {
-    if (statusFilter && row.orgStatus !== statusFilter) {
+    if (statusFilters.length && !statusFilters.includes(row.orgStatus)) {
+      return false;
+    }
+
+    if (personalRiskFilters.length && !personalRiskFilters.includes(String(row.personalRisk || '').trim())) {
       return false;
     }
 
@@ -3029,9 +3090,9 @@ function applyCommercialActivityKonturFilters(reportData = {}, query = {}) {
 
     const proceedings = Array.isArray(row.proceedingRows) ? row.proceedingRows : [];
 
-    if (roleFilter) {
+    if (roleFilters.length) {
       const hasMatchingRole = proceedings.some(
-        (proceeding) => String(proceeding?.caseRoleText || '').trim() === roleFilter
+        (proceeding) => roleFilters.includes(String(proceeding?.caseRoleText || '').trim())
       );
 
       if (!hasMatchingRole) {
@@ -3077,8 +3138,12 @@ function applyCommercialActivityKonturFilters(reportData = {}, query = {}) {
     ...reportData,
     reportFilters: {
       ...(reportData.reportFilters || {}),
-      commercialStatus: statusFilter,
-      commercialRole: roleFilter,
+      commercialStatus: statusFilters[0] || '',
+      commercialStatuses: statusFilters,
+      commercialRole: roleFilters[0] || '',
+      commercialRoles: roleFilters,
+      commercialPersonalRisk: personalRiskFilters[0] || '',
+      commercialPersonalRisks: personalRiskFilters,
       commercialMinSum: minSum,
       commercialMaxSum: maxSum,
 
@@ -3102,9 +3167,10 @@ function applyCommercialActivityKonturFilters(reportData = {}, query = {}) {
           totalBeforeFilter: originalTableRows.length,
           totalAfterFilter: filteredTableRows.length,
           hasFilters:
-            !!statusFilter ||
+            statusFilters.length > 0 ||
             companyRoleFilters.length > 0 ||
-            !!roleFilter ||
+            roleFilters.length > 0 ||
+            personalRiskFilters.length > 0 ||
             minSum !== null ||
             maxSum !== null,
         },
@@ -3821,6 +3887,7 @@ router.get('/report/:id/html', async (req, res) => {
       reportId: entry.id,
       reportMode: 'html',
       reportQueryString: buildReportQueryString(req.query),
+      reportFilterState: buildReportFilterState(entry.id, req.query),
     },
     req.query
   );
@@ -3877,6 +3944,7 @@ router.get('/report/:id/pdf', async (req, res) => {
         reportId: entry.id,
         reportMode: 'pdf',
         reportQueryString: buildReportQueryString(req.query),
+        reportFilterState: buildReportFilterState(entry.id, req.query),
       },
       req.query
     );

@@ -157,7 +157,7 @@ export default function RegistrationWizard() {
        }
      }
       // 1) сохраним черновик профиля на бэке вместе с запросом magic-link
-      const res = await fetch('/api/auth/magic/request', {
+      const res = await fetch('/api/auth/register/magic/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

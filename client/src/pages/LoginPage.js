@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState('');
   const [loading, setLoading] = useState(false);
 
   // подхватываем редирект после логина из ?continue= или ?next=
@@ -21,6 +22,7 @@ export default function LoginPage() {
   async function handleSend(e) {
     e.preventDefault();
     setError('');
+    setErrorCode('');
     setLoading(true);
     try {
       // простая валидация
@@ -37,10 +39,13 @@ export default function LoginPage() {
 
       const j = await safeJson(res);
       if (!res.ok || !j.ok) {
-        throw new Error(j.error || 'send_failed');
+        const err = new Error(j.message || j.error || 'send_failed');
+        err.code = j.error;
+        throw err;
       }
       setSent(true);
     } catch (e) {
+      setErrorCode(e.code || '');
       setError(e.message || 'Не удалось отправить ссылку');
     } finally {
       setLoading(false);
@@ -70,7 +75,16 @@ export default function LoginPage() {
             />
           </label>
 
-          {error && <div className="text-red-600 text-sm">{error}</div>}
+          {error && (
+            <div className="text-red-600 text-sm space-y-2">
+              <div>{error}</div>
+              {errorCode === 'user_not_found' && (
+                <a href="/register" className="inline-flex text-blue-600 hover:underline">
+                  Зарегистрироваться
+                </a>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"
