@@ -95,3 +95,7 @@ code {
 .ProseMirror .app-table-wrap table.inventory-table thead tr th:nth-child(2),
 .ProseMirror .app-table-wrap table.inventory-table tbody tr td:nth-child(2) { min-width: 28%; }
 
+.notranslate {
+  translate: no;
+}
+
