@@ -48,20 +48,12 @@ const TenantSection = ({
   removeTenant,
   handleRegistrationTypeChange
 }) => {
-  const expandTwoDigitYear = (yy) => {
-    const short = parseInt(yy, 10);
-    if (Number.isNaN(short)) return yy;
-    return String(short > 30 ? 1900 + short : 2000 + short);
-  };
-
   const formatDateInput = (value) => {
     const digits = (value || '').replace(/\D/g, '').slice(0, 8);
     const dd = digits.slice(0, 2);
     const mm = digits.slice(2, 4);
-    let yyyy = digits.slice(4, 8);
-    if (yyyy.length === 2) {
-      yyyy = expandTwoDigitYear(yyyy);
-    }
+    const yyyy = digits.slice(4, 8);
+    
     return [dd, mm, yyyy].filter(Boolean).join('.');
   };
   // ---------- ЕДИНАЯ точка доступа к текущему арендатору ----------

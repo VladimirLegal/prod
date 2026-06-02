@@ -3,6 +3,9 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.entry';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
+const DEBUG_EGRN_PARSER = process.env.NODE_ENV === 'development' && process.env.REACT_APP_DEBUG_EGRN_PARSER === 'true';
+const debugLog = (...args) => { if (DEBUG_EGRN_PARSER) console.info(...args); };
+
 const getPdfText = async (file) => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -19,6 +22,302 @@ const getPdfText = async (file) => {
   return fullText;
 };
 
+
+const cleanEgrnValue = (value = '') =>
+  value
+    .toString()
+    .replace(/\s+/g, ' ')
+    .replace(/^(?:—|-|:)+\s*/, '')
+    .trim();
+
+const pickLineValue = (text, label, stopLabels = []) => {
+  const stops = stopLabels.length ? `|${stopLabels.join('|')}` : '';
+  const re = new RegExp(`${label}\\s*:?\\s*([\\s\\S]*?)(?=${stops}|\\n|$)`, 'i');
+  const match = text.match(re);
+  return match ? cleanEgrnValue(match[1]) : '';
+};
+
+const extractValueBeforeLabel = (text = '', label = '') => {
+  const m = text.match(new RegExp(`([А-Яа-яЁё0-9.,-]+)\\s+${label}`, 'i'));
+  return m ? cleanEgrnValue(m[1]) : '';
+};
+
+const extractObjectMetaFromText = (text) => ({
+  objectKindFromEgrn: pickLineValue(text, 'Вид объекта', [
+    'Назначение',
+    'Наименование',
+    'Вид жилого помещения',
+  ]) || extractValueBeforeLabel(text, 'Вид объекта'),
+  purpose: (text.match(/Назначение\s+([^\s]+)(?=\s+Наименование|\s+Вид\s+жилого\s+помещения|$)/i)||[])[1] || pickLineValue(text, 'Назначение', ['Наименование','Вид жилого помещения','Площадь']),
+  objectName: (text.match(/Наименование\s+([^\s]+)(?=\s+Вид\s+жилого\s+помещения|\s+Площадь|$)/i)||[])[1] || pickLineValue(text, 'Наименование', ['Вид жилого помещения','Площадь','Кадастровая стоимость']),
+  residentialKind: (text.match(/Вид\s+жилого\s+помещения\s+([^\s]+)(?=\s+Кадастровая\s+стоимость|\s+Площадь|$)/i)||[])[1] || pickLineValue(text, 'Вид жилого помещения', ['Кадастровая стоимость','Площадь','Вид объекта']),
+  cadastralValue: ((text.match(/Кадастровая\s+стоимость[^0-9]*([0-9]+(?:[.,][0-9]+)?)/i)||[])[1] || pickLineValue(text, 'Кадастровая стоимость', ['Статус записи','Дата внесения','Данные актуальны'])),
+  recordStatus: pickLineValue(text, 'Статус записи', [
+    'Данные актуальны',
+    'Дата актуальности',
+    'Особые отметки',
+  ]),
+  egrnActualDate: (
+    text.match(/Данные\s+актуальны\s+на\s+([0-3]?\d\.[01]?\d\.\d{4})/i) ||
+    text.match(/Дата\s+актуальности[^0-9]*([0-3]?\d\.[01]?\d\.\d{4})/i) ||
+    []
+  )[1] || '',
+});
+
+const DOCUMENT_START_PATTERN =
+  '(?:' +
+  [
+    'Кредитный\\s+договор',
+    'Договор',
+    'Передаточный\\s+акт',
+    'Акт\\s+при[её]ма-передачи(?:\\s+квартиры)?',
+    'Разрешение',
+    'Дополнительное\\s+соглашение',
+    'Распоряжение',
+    'Соглашение',
+    'Свидетельство',
+    'Справка',
+  ].join('|') +
+  ')';
+
+const splitEgrnDocumentItems = (section = '') => {
+  const source = cleanEgrnValue(section)
+    .replace(/№\s*/g, '№ ')
+    .replace(/\s*,\s*/g, ', ');
+
+  if (!source) return [];
+
+  const re = new RegExp(DOCUMENT_START_PATTERN, 'gi');
+  const starts = [];
+  let match;
+
+  while ((match = re.exec(source)) !== null) {
+    starts.push(match.index);
+  }
+
+  if (!starts.length) {
+    return [source].filter(Boolean);
+  }
+
+  return starts
+    .map((start, index) => {
+      const end = starts[index + 1] ?? source.length;
+      return cleanEgrnValue(source.slice(start, end));
+    })
+    .filter(Boolean);
+};
+
+const parseEgrnDocumentItem = (item = '') => {
+  const dateMatches = [...String(item).matchAll(/([0-3]?\d\.[01]?\d\.\d{4})/g)];
+
+  if (!dateMatches.length) return null;
+
+  const lastDateMatch = dateMatches[dateMatches.length - 1];
+  const docDate = lastDateMatch[1];
+
+  const title = cleanEgrnValue(item.slice(0, lastDateMatch.index))
+    .replace(/[,\s;]+$/g, '')
+    .replace(/\s+,\s+/g, ', ')
+    .replace(/№\s*/g, '№ ');
+
+  if (!title) return null;
+
+  return {
+    title,
+    number: '',
+    docDate,
+  };
+};
+
+const parseEgrnDocumentsFromSection = (section = '') => {
+  return splitEgrnDocumentItems(section)
+    .map(parseEgrnDocumentItem)
+    .filter(Boolean);
+};
+
+const extractEncumbranceFromText = (text = '') => {
+  const markerRe =
+    /Ограничение\s+прав\s+и\s+обременение\s+(?:всего\s+)?объекта\s+недвижимости\s*:?\s*/gi;
+
+  const blocks = [];
+  let markerMatch;
+
+  while ((markerMatch = markerRe.exec(text)) !== null) {
+    const tail = text.slice(markerRe.lastIndex);
+
+    const stopIndex = tail.search(
+      /(?=Сведения\s+из\s+Росреестра|Данные\s+актуальны\s+на|Сертификат:|ДОКУМЕНТ\s+ПОДПИСАН|Лист\s+\d+\s+из\s+\d+|$)/i
+    );
+
+    const rawBlock = stopIndex >= 0 ? tail.slice(0, stopIndex) : tail;
+
+    const block = cleanEgrnValue(rawBlock);
+
+    if (block) {
+      blocks.push(block);
+    }
+  }
+
+  if (!blocks.length) {
+    return {
+      type: 'unknown',
+      subtype: '',
+      description: '',
+      rawText: '',
+      mortgagee: '',
+      beneficiary: '',
+      registrationNumber: '',
+      registrationDate: '',
+      term: '',
+      basisDocuments: [],
+    };
+  }
+
+  const description =
+    blocks.find((block) => /ипотек|залог/i.test(block)) ||
+    blocks.find((block) => !/не\s+зарегистрировано|не\s+зарегистрированы/i.test(block)) ||
+    blocks[0];
+  const rawText = description;
+
+  if (/не\s+зарегистрировано|не\s+зарегистрированы|отсутств/i.test(description) && !/ипотек|залог/i.test(description)) {
+    return {
+      type: 'none',
+      subtype: '',
+      description: 'Не зарегистрировано',
+      rawText,
+      mortgagee: '',
+      beneficiary: '',
+      registrationNumber: '',
+      registrationDate: '',
+      term: '',
+      basisDocuments: [],
+    };
+  }
+
+  const isMortgage = /ипотек|залог/i.test(description);
+
+  const registrationMatch = description.match(
+    /(Ипотека\s+в\s+силу\s+закона|Ипотека|Залог)[^,]*,\s*([0-9:]{5,}-[0-9/:-]+),\s*([0-3]?\d\.[01]?\d\.\d{4})/i
+  );
+
+  const termMatch = description.match(
+    /Срок,\s*на\s*который[\s\S]*?обременение\s+объекта\s+недвижимости\s*([\s\S]*?)(?=Лицо,\s*в\s*пользу\s*которого|Основание\s+государственной\s+регистрации|$)/i
+  );
+
+  const beneficiaryMatch = description.match(
+    /Лицо,\s*в\s*пользу\s*которого[\s\S]*?обременение\s+объекта\s+недвижимости\s*([\s\S]*?)(?=Основание\s+государственной\s+регистрации|$)/i
+  );
+
+  const basisMatch = description.match(
+    /Основание\s+государственной\s+регистрации\s*([\s\S]*?)$/i
+  );
+
+  const basisDocuments = parseEgrnDocumentsFromSection(basisMatch?.[1] || '');
+
+  const beneficiary = cleanEgrnValue(beneficiaryMatch?.[1] || '').replace(/^"|"$/g, '');
+
+  if (isMortgage) {
+  const subtype = registrationMatch?.[1] || 'Ипотека';
+
+    debugLog('🏦 Ипотека / обременение:', {
+      subtype,
+      registrationNumber: registrationMatch?.[2] || '',
+      registrationDate: registrationMatch?.[3] || '',
+      beneficiary,
+      term: cleanEgrnValue(termMatch?.[1] || ''),
+      basisDocuments,
+      rawText,
+    });
+
+    return {
+      type: 'mortgage', // внутренний технический код
+      subtype, // человекочитаемый вид: "Ипотека в силу закона"
+      description: subtype, // короткое описание для UI
+      rawText, // полный сырой блок из ЕГРН сохраняем отдельно
+      mortgagee: beneficiary,
+      beneficiary,
+      registrationNumber: registrationMatch?.[2] || '',
+      registrationDate: registrationMatch?.[3] || '',
+      term: cleanEgrnValue(termMatch?.[1] || ''),
+      basisDocuments,
+    };
+  }
+
+  if (/арест/i.test(description)) {
+    return {
+      type: 'arrest',
+      subtype: 'Арест',
+      description,
+      rawText,
+      mortgagee: '',
+      beneficiary: '',
+      registrationNumber: registrationMatch?.[2] || '',
+      registrationDate: registrationMatch?.[3] || '',
+      term: cleanEgrnValue(termMatch?.[1] || ''),
+      basisDocuments,
+    };
+  }
+
+  if (/запрет|запрещ/i.test(description)) {
+    return {
+      type: 'registration_ban',
+      subtype: 'Запрет регистрационных действий',
+      description,
+      rawText,
+      mortgagee: '',
+      beneficiary: '',
+      registrationNumber: registrationMatch?.[2] || '',
+      registrationDate: registrationMatch?.[3] || '',
+      term: cleanEgrnValue(termMatch?.[1] || ''),
+      basisDocuments,
+    };
+  }
+
+  return {
+    type: 'other',
+    subtype: '',
+    description,
+    rawText,
+    mortgagee: beneficiary,
+    beneficiary,
+    registrationNumber: registrationMatch?.[2] || '',
+    registrationDate: registrationMatch?.[3] || '',
+    term: cleanEgrnValue(termMatch?.[1] || ''),
+    basisDocuments,
+  };
+};
+
+
+const extractRecipientName = (text = '') => {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  const match = cleaned.match(/Получатель выписки\s+([\s\S]*?)(?=Особые отметки|Данные актуальны|Сертификат|ДОКУМЕНТ ПОДПИСАН|Лист\s*№?|$)/i);
+  const raw = (match?.[1] || '').replace(/\s+/g, ' ').trim();
+  const fio = raw.match(/[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+/);
+  return fio ? fio[0] : raw;
+};
+
+const parseBasisDocuments = (block = '') => {
+  const startIndex = block.search(/Основание государственной регистрации/i);
+  if (startIndex < 0) return [];
+
+  const tail = block.slice(startIndex);
+
+  const stopMatch = tail.match(
+    /Дата,\s*номер\s*и\s*основание\s*государственной\s*регистрации\s*перехода|Право\s+на\s+недвижимость\s+действующее|Сведения\s+об\s+осуществлении\s+государственной\s+регистрации/i
+  );
+
+  const section = cleanEgrnValue(
+    (stopMatch ? tail.slice(0, stopMatch.index) : tail)
+      .replace(/^Основание\s+государственной\s+регистрации/i, '')
+  );
+
+  const docs = parseEgrnDocumentsFromSection(section);
+
+  debugLog(`📚 Основания (${docs.length} шт.):`, docs);
+
+  return docs;
+};
+
 const extractTermsFromText = (text) => {
   const terms = {};
 
@@ -31,10 +330,8 @@ const extractTermsFromText = (text) => {
   }
 
   // Получатель выписки (нужен для понимания, чьи паспортные данные показываются)
-  const recipientMatch = text.match(/Получатель выписки\s+([^\n]+)/i);
-  if (recipientMatch) {
-    terms.recipientName = recipientMatch[1].replace(/\s+/g, ' ').trim();
-  }
+  const recipientName = extractRecipientName(text);
+  if (recipientName) terms.recipientName = recipientName;
  
   const areaMatch = text.match(/Площадь, м\s*2\s+(\d+[.,]?\d*)/i);
   if (areaMatch) {
@@ -45,6 +342,10 @@ const extractTermsFromText = (text) => {
   if (floorMatch) {
     terms.floor = parseInt(floorMatch[1], 10);
   }
+
+  const objectMeta = extractObjectMetaFromText(text);
+  Object.assign(terms, objectMeta);
+  terms.encumbrance = extractEncumbranceFromText(text);
 
   return terms;
 };
@@ -229,7 +530,10 @@ function groupLandlords(list) {
 
     // каждая исходная запись становится отдельной записью права внутри владельца
     grouped[key].rights.push({
+      ownershipType: l.ownershipType || '',
       share: l.share || '',
+      regNum: (l.documents || [])[0]?.regNumber || '',
+      regDate: (l.documents || [])[0]?.regDate || '',
       documents: (l.documents || []).map((doc) => ({
         title: doc.title || '',
         number: doc.number || '',
@@ -247,8 +551,7 @@ const extractLandlordsFromText = (text) => {
   const landlords = [];
 
   // Получатель выписки — чтобы корректно интерпретировать паспорт в блоке "Общая совместная"
-  const recipientMatch = text.match(/Получатель выписки\s+([^\n]+)/i);
-  const recipientName = recipientMatch ? recipientMatch[1].replace(/\s+/g, ' ').trim() : '';
+  const recipientName = extractRecipientName(text);
    
   // 🔍 Шаг 1. Находим все вхождения " 1.1", " 1.2", ...
   const matches = [...text.matchAll(/\s1\.\d+\.?/g)];
@@ -339,28 +642,15 @@ const extractLandlordsFromText = (text) => {
     console.log(`➗ Доля: ${share || 'нет'}`);
 
     // 🔹 Документы-основания
-    const documents = [];
-    const docBlockMatch = block.match(/Основание государственной регистрации([\s\S]*?)Дата, номер и/i);
-    const docBlock = docBlockMatch?.[1]?.trim();
-    if (docBlock) {
-      const documentRegex = /([^,]+?)(?:,\s*номер\s*([^\s,]+))?,\s*(\d{2}\.\d{2}\.\d{4})/g;
-      let m;
-      while ((m = documentRegex.exec(docBlock)) !== null) {
-        documents.push({
-          title: m[1].trim(),
-          number: m[2]?.trim() || '',
-          docDate: m[3]
-        });
-      }
-      console.log(`📚 Основания (${documents.length} шт.):`, documents);
-    }
+    const documents = parseBasisDocuments(block);
+    if (documents.length) console.log(`📚 Основания (${documents.length} шт.):`, documents);
 
     // 🔹 Регистрация
     // 1) Пробуем найти прямо в строке "Вид, номер и дата государственной регистрации права ..."
     let regNumber = '';
     let regDate = '';
     const headingReg = block.match(
-  /Вид,\s*номер\s*и\s*дата\s*государственной\s*регистрации\s*права\s+[^\n,]+,\s*([0-9A-Za-z:\-\/]+),\s*([0-3]?\d\.[01]?\d\.\d{4})/i
+  /Вид,\s*номер\s*и\s*дата\s*государственной\s*регистрации\s*права\s+[^\n,]+,\s*([0-9A-Za-z:/-]+),\s*([0-3]?\d\.[01]?\d\.\d{4})/i
     );
     if (headingReg) {
       regNumber = headingReg[1];
@@ -452,6 +742,8 @@ export const extractEGRNDataFromPdf = async (file) => {
 
   return {
     terms,
+    recipientName: terms.recipientName || '',
+    encumbrance: terms.encumbrance,
     extractedLandlords,
     suggestions,
     warnings

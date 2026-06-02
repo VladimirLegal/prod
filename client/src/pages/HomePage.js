@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBars, faHouse, faFileContract, faHandshake } from '@fortawesome/free-solid-svg-icons';
+import { faHouse, faFileContract, faHandshake } from '@fortawesome/free-solid-svg-icons';
 
 // Используем серверный origin для страниц контента в DEV
 const PAGES_BASE =
@@ -17,8 +17,6 @@ const getAgreementUrl = (doc) =>
 
 
 const HomePage = () => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  
   return (
     <div className="min-h-screen bg-gray-50">
       
@@ -55,15 +53,16 @@ const HomePage = () => {
           </Link>
           
           {/* Кнопка: Прочие документы */}
-          <div 
-            className="bg-white p-8 rounded-xl shadow-md flex flex-col items-center opacity-75 cursor-not-allowed"
+          <Link
+            to="/other-documents"
+            className="bg-white p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col items-center"
           >
-            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-              <FontAwesomeIcon icon={faFileContract} className="text-gray-500 text-2xl" />
+            <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mb-4">
+              <FontAwesomeIcon icon={faFileContract} className="text-purple-600 text-2xl" />
             </div>
             <h2 className="text-xl font-semibold mb-2">Прочие документы</h2>
             <p className="text-gray-600">Доверенности, соглашения и другие документы</p>
-          </div>
+          </Link>
         </div>
       </div>
       {/* ===== Footer: статические страницы ===== */}

@@ -81,6 +81,90 @@ const parseRuDateToSortable = (ru) => {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 };
 
+const valueToString = (value) => {
+  if (value == null) return '';
+  if (typeof value === 'object') {
+    return (
+      value.value ??
+      value.name ??
+      value.full ??
+      value.readable_address ??
+      value.value_description ??
+      ''
+    ).toString();
+  }
+  return value.toString();
+};
+
+const findFirstDeepByKey = (node, keyVariants = []) => {
+  const keys = keyVariants.map(normalizeStr);
+  const stack = [node];
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object') continue;
+
+    for (const [key, value] of Object.entries(current)) {
+      if (keys.includes(normalizeStr(key))) {
+        const text = valueToString(value).trim();
+        if (text) return text;
+      }
+      if (value && typeof value === 'object') stack.push(value);
+    }
+  }
+  return '';
+};
+
+const extractObjectMetaFromXml = (root) => ({
+  objectKindFromEgrn:
+    get(root, 'room_record.object.common_data.type.value') ||
+    get(root, 'object.common_data.type.value') ||
+    findFirstDeepByKey(root, ['type', 'object_type']),
+  purpose:
+    get(root, 'room_record.params.purpose.value') ||
+    get(root, 'params.purpose.value') ||
+    findFirstDeepByKey(root, ['purpose']),
+  objectName:
+    get(root, 'room_record.params.name') ||
+    get(root, 'params.name') ||
+    findFirstDeepByKey(root, ['name', 'object_name']),
+  residentialKind:
+    get(root, 'room_record.params.type.value') ||
+    get(root, 'room_record.params.type') ||
+    get(root, 'params.type.value') ||
+    findFirstDeepByKey(root, ['room_type', 'residential_kind', 'type_room']),
+  cadastralValue:
+    valueToString(get(root, 'room_record.cost.value') || get(root, 'cost.value') || findFirstDeepByKey(root, ['cost', 'cad_cost'])),
+  recordStatus:
+    get(root, 'room_record.record_info.record_status.value') ||
+    get(root, 'record_info.record_status.value') ||
+    findFirstDeepByKey(root, ['record_status']),
+  egrnActualDate: isoToRu(
+    get(root, 'room_record.record_info.actual_date') ||
+    get(root, 'record_info.actual_date') ||
+    findFirstDeepByKey(root, ['actual_date'])
+  ),
+});
+
+const extractEncumbranceFromXml = (root) => {
+  const text = findFirstDeepByKey(root, [
+    'restrict_record',
+    'restrictions_encumbrances',
+    'restriction_encumbrance',
+    'encumbrance',
+  ]);
+  const description = text || '';
+  const normalized = normalizeStr(description);
+
+  if (!description) return { type: 'unknown', description: '', mortgagee: '' };
+  if (/не зарегистрировано|не зарегистрированы|отсутств/.test(normalized)) {
+    return { type: 'none', description: 'Не зарегистрировано', mortgagee: '' };
+  }
+  if (/ипотек|залог/.test(normalized)) return { type: 'mortgage', description, mortgagee: '' };
+  if (/арест/.test(normalized)) return { type: 'arrest', description, mortgagee: '' };
+  if (/запрет|запрещ/.test(normalized)) return { type: 'registration_ban', description, mortgagee: '' };
+  return { type: 'other', description, mortgagee: '' };
+};
+
 // =============== XML parsing ===============
 
 function parseEGRNXml(xmlText) {
@@ -120,6 +204,9 @@ function parseEGRNXml(xmlText) {
     get(root, 'location_in_build.level.floor');
   const floor =
     typeof floorRaw === 'object' ? (floorRaw?.value ?? '')?.toString() : (floorRaw ?? '')?.toString();
+  
+  const objectMeta = extractObjectMetaFromXml(root);
+  const encumbrance = extractEncumbranceFromXml(root);
 
   // --- собираем все right_record по дереву ---
   const collectRightRecords = (node) => {
@@ -404,6 +491,8 @@ function parseEGRNXml(xmlText) {
     address,
     area,
     floor,
+    ...objectMeta,
+    encumbrance,
     landlords,
     recipientName: get(root, 'recipient_statement') || '',
   };
@@ -419,6 +508,22 @@ function mergeXmlAndPdf(xmlData, pdfData, recipientName) {
   if (!pdfData) return { ...xmlData };
 
   const result = { ...xmlData };
+  const pdfTerms = pdfData?.terms || {};
+  [
+    'objectKindFromEgrn',
+    'purpose',
+    'objectName',
+    'residentialKind',
+    'cadastralValue',
+    'recordStatus',
+    'egrnActualDate',
+  ].forEach((key) => {
+    if (!result[key] && pdfTerms[key]) result[key] = pdfTerms[key];
+  });
+  if ((!result.encumbrance || result.encumbrance.type === 'unknown') && pdfTerms.encumbrance) {
+    result.encumbrance = pdfTerms.encumbrance;
+  }
+  if (!result.recipientName && pdfTerms.recipientName) result.recipientName = pdfTerms.recipientName;
 
   // сопоставление получателя по ФИО (дата рождения опционально)
   const byKey = new Map();
@@ -477,6 +582,15 @@ function toUiPayload(merged) {
     cadastralNumber: merged.cadastralNumber || '',
     area: merged.area || '',
     floor: merged.floor || '',
+    objectKindFromEgrn: merged.objectKindFromEgrn || merged.terms?.objectKindFromEgrn || '',
+    purpose: merged.purpose || merged.terms?.purpose || '',
+    objectName: merged.objectName || merged.terms?.objectName || '',
+    residentialKind: merged.residentialKind || merged.terms?.residentialKind || '',
+    cadastralValue: merged.cadastralValue || merged.terms?.cadastralValue || '',
+    recordStatus: merged.recordStatus || merged.terms?.recordStatus || '',
+    egrnActualDate: merged.egrnActualDate || merged.terms?.egrnActualDate || '',
+    recipientName: merged.recipientName || merged.terms?.recipientName || '',
+    encumbrance: merged.encumbrance || merged.terms?.encumbrance || { type: 'unknown', description: '', mortgagee: '' },
   };
 
   // передаём владельцев как есть (rights + плоские documents), shareTotal наружу не отдаём
@@ -497,6 +611,12 @@ function toUiPayload(merged) {
       issueDate: l.passport?.issueDate || '',
       deptCode: l.passport?.deptCode || '',
     },
+    rights: ensureArray(l.rights).map((r) => ({
+      regNum: String(r.regNum || ''),
+      regDate: r.regDate || '',
+      ownershipType: r.ownershipType || l.ownershipType || '',
+      share: r.share || '',
+    })),
     documents: ensureArray(l.documents).map((d) => ({
       ...(d.share !== undefined && d.share !== '' ? { share: d.share } : {}),
       doc: combineDocTitleAndNumber(d.doc, d.number),
@@ -590,6 +710,8 @@ export async function extractEGRNFromZip(zipInput) {
 
   const finalPayload = {
     terms: ui.terms,
+    recipientName: ui.terms?.recipientName || recipientName,
+    encumbrance: ui.terms?.encumbrance,
     extractedLandlords: ui.extractedLandlords,
     landlords: ui.extractedLandlords, // алиас
     debug: {

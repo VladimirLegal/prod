@@ -12,6 +12,12 @@ const { innLookup } = require('../services/counterparty/innLookup');
 const { rosreestrAddressLookup } = require('../services/counterparty/sources/rosreestrAddressLookup');
 const { rosreestrObjectLookup } = require('../services/counterparty/sources/rosreestrObjectLookup');
 const { query } = require('../db'); // добавь вверху
+const {
+  PRIVACY_FULL,
+  PRIVACY_MASKED,
+  resolvePrivacyMode,
+  sanitizeCounterpartyReport,
+} = require('../utils/counterpartyPrivacy');
 let bankDirectory = {};
 
 try {
@@ -278,17 +284,23 @@ function buildReportFilterFields(query = {}, exceptGroupName = null) {
   return fields;
 }
 
-function buildReportFilterState(reportId, query = {}) {
+function buildReportFilterState(reportId, query = {}, options = {}) {
   const groups = {};
   const baseUrl = `/api/counterparty/report/${reportId}/html`;
+  const extraHiddenFields = Array.isArray(options.extraHiddenFields) ? options.extraHiddenFields : [];
+  const resetAllUrl = extraHiddenFields.length
+    ? `${baseUrl}?${buildReportQueryStringFromFields(extraHiddenFields)}`
+    : baseUrl;
 
   for (const groupName of Object.keys(REPORT_FILTER_GROUPS)) {
-    const resetQueryString = buildReportQueryStringFromFields(
-      buildReportFilterFields(query, groupName)
-    );
+    const hiddenFields = [
+      ...buildReportFilterFields(query, groupName),
+      ...extraHiddenFields,
+    ];
+    const resetQueryString = buildReportQueryStringFromFields(hiddenFields);
 
     groups[groupName] = {
-      hiddenFieldsExceptThisGroup: buildReportFilterFields(query, groupName),
+      hiddenFieldsExceptThisGroup: hiddenFields,
       resetThisGroupUrl: resetQueryString ? `${baseUrl}?${resetQueryString}` : baseUrl,
     };
   }
@@ -296,7 +308,7 @@ function buildReportFilterState(reportId, query = {}) {
   return {
     allQueryString: buildReportQueryString(query),
     activeFields: buildReportFilterFields(query),
-    resetAllUrl: baseUrl,
+    resetAllUrl,
     groups,
   };
 }
@@ -382,70 +394,6 @@ function getTemplate(templateName = 'counterpartyReport.html') {
   const filePath = path.join(__dirname, '..', 'templates', templateName);
   const html = fs.readFileSync(filePath, 'utf8');
   return handlebars.compile(html);
-}
-
-function maskFullName(fullName) {
-  const parts = String(fullName || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '';
-  const lastName = parts[0] || '';
-  const firstInitial = parts[1] ? `${parts[1][0]}.` : '';
-  const middleInitial = parts[2] ? `${parts[2][0]}.` : '';
-  return [lastName, firstInitial, middleInitial].filter(Boolean).join(' ');
-}
-
-function maskInn(inn) {
-  const value = String(inn || '').replace(/\D/g, '');
-  if (value.length < 8) return inn || '';
-  return `${value.slice(0, 4)}****${value.slice(-4)}`;
-}
-
-function maskPassportSeries(series) {
-  const value = String(series || '').replace(/\D/g, '');
-  if (value.length < 2) return series || '';
-  return `${value.slice(0, 2)}**`;
-}
-
-function maskPassportNumber(number) {
-  const value = String(number || '').replace(/\D/g, '');
-  if (value.length < 2) return number || '';
-  return `${value.slice(0, 2)}****`;
-}
-
-function maskBirthDate(dateValue) {
-  const value = String(dateValue || '').trim();
-  if (!value) return '';
-
-  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) {
-    return `${iso[3]}.${iso[2]}.****`;
-  }
-
-  const ru = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-  if (ru) {
-    return `${ru[1]}.${ru[2]}.****`;
-  }
-
-  return value;
-}
-
-function maskPersonalData(reportData = {}) {
-  const subject = reportData.subject || {};
-  const passport = subject.passport || {};
-
-  return {
-    ...reportData,
-    subject: {
-      ...subject,
-      fullName: maskFullName(subject.fullName),
-      inn: maskInn(subject.inn),
-      birthDate: maskBirthDate(subject.birthDate),
-      passport: {
-        ...passport,
-        series: maskPassportSeries(passport.series),
-        number: maskPassportNumber(passport.number),
-      },
-    },
-  };
 }
 
 function formatReportDate(value) {
@@ -3856,6 +3804,106 @@ router.get('/history', async (req, res) => {
   }
 });
 
+
+function splitFilterAndViewQuery(query = {}) {
+  const { privacy, ...filterQuery } = query || {};
+  return {
+    privacyMode: resolvePrivacyMode(privacy),
+    filterQuery,
+  };
+}
+
+function appendQuery(url, query = {}) {
+  const params = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(query || {})) {
+    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+    for (const value of values) {
+      if (value === undefined || value === null || value === '') continue;
+      params.append(key, String(value));
+    }
+  }
+
+  const queryString = params.toString();
+  return queryString ? `${url}?${queryString}` : url;
+}
+
+function applyCounterpartyReportFilters(reportData, filterQuery = {}) {
+  const filteredKonturData = applyFsspKonturFilters(reportData, filterQuery);
+  const filteredFsspApiCloudData = applyFsspApiCloudFilters(filteredKonturData, filterQuery);
+  const filteredStopOperData = applyStopOperRSFilters(filteredFsspApiCloudData, filterQuery);
+  const filteredCourtsData = applyCourtsCommonFilters(filteredStopOperData, filterQuery);
+  const filteredArbitrationApiCloudData = applyArbitrationApiCloudCombinedFilters(
+    filteredCourtsData,
+    filterQuery
+  );
+  const filteredArbitrationKonturData = applyArbitrationKonturFilters(
+    filteredArbitrationApiCloudData,
+    filterQuery
+  );
+  const transformedCommercialData = applyCommercialActivityKonturTransforms(filteredArbitrationKonturData);
+  return applyCommercialActivityKonturFilters(transformedCommercialData, filterQuery);
+}
+
+function prepareCounterpartyReportViewModel({ entry, query = {}, output = 'html' }) {
+  const { filterQuery, privacyMode: rawPrivacyMode } = splitFilterAndViewQuery(query);
+  const privacyMode = output === 'pdf' ? PRIVACY_MASKED : rawPrivacyMode;
+  const isPdf = output === 'pdf';
+  const isMasked = privacyMode === PRIVACY_MASKED;
+  const extraHiddenFields = isMasked ? [{ name: 'privacy', value: PRIVACY_MASKED }] : [];
+
+  const reportQueryString = buildReportQueryString(filterQuery);
+  const reportFilterState = buildReportFilterState(entry.id, filterQuery, { extraHiddenFields });
+  const baseReportData = {
+    ...entry.data,
+    createdAt: formatReportDate(entry.createdAt),
+    reportDate: formatReportDate(entry.createdAt),
+    reportId: entry.id,
+    reportMode: output,
+    reportQueryString,
+    reportFilterState,
+    urls: {
+      fullHtml: appendQuery(`/api/counterparty/report/${entry.id}/html`, filterQuery),
+      maskedHtml: appendQuery(`/api/counterparty/report/${entry.id}/html`, {
+        ...filterQuery,
+        privacy: PRIVACY_MASKED,
+      }),
+      maskedPdf: appendQuery(`/api/counterparty/report/${entry.id}/pdf`, filterQuery),
+    },
+    privacyMode,
+    isPdf,
+    isMasked,
+    isFull: privacyMode === PRIVACY_FULL,
+    disableExternalLinks: isPdf,
+    printProtectionEnabled: !isPdf && privacyMode === PRIVACY_FULL,
+  };
+
+  const filteredReportData = applyCounterpartyReportFilters(baseReportData, filterQuery);
+
+  if (!isMasked) {
+    return filteredReportData;
+  }
+
+  const sanitizedReportData = sanitizeCounterpartyReport(filteredReportData, {
+    privacyMode,
+    isPdf,
+  });
+
+  return {
+    ...sanitizedReportData,
+    privacyMode,
+    isPdf,
+    isMasked,
+    isFull: false,
+    disableExternalLinks: isPdf,
+    printProtectionEnabled: false,
+    reportMode: output,
+    reportQueryString,
+    reportFilterState,
+    urls: baseReportData.urls,
+  };
+}
+
 router.get('/report/:id/html', async (req, res) => {
   const reportId = String(req.params.id || '').trim();
 
@@ -3879,38 +3927,16 @@ router.get('/report/:id/html', async (req, res) => {
   }
 
   const template = getTemplate('counterpartyReport.html');
+  const viewModel = prepareCounterpartyReportViewModel({
+    entry,
+    query: req.query,
+    output: 'html',
+  });
 
-  const filteredKonturData = applyFsspKonturFilters(
-    {
-      ...entry.data,
-      createdAt: entry.createdAt,
-      reportId: entry.id,
-      reportMode: 'html',
-      reportQueryString: buildReportQueryString(req.query),
-      reportFilterState: buildReportFilterState(entry.id, req.query),
-    },
-    req.query
-  );
-
-  const filteredFsspApiCloudData = applyFsspApiCloudFilters(filteredKonturData, req.query);
-  const filteredStopOperData = applyStopOperRSFilters(filteredFsspApiCloudData, req.query);
-  const filteredCourtsData = applyCourtsCommonFilters(filteredStopOperData, req.query);
-  const filteredArbitrationApiCloudData = applyArbitrationApiCloudCombinedFilters(
-    filteredCourtsData,
-    req.query
-  );
-  const filteredArbitrationKonturData = applyArbitrationKonturFilters(
-    filteredArbitrationApiCloudData,
-    req.query
-  );
-  const transformedCommercialData = applyCommercialActivityKonturTransforms(filteredArbitrationKonturData);
-  const filteredReportData = applyCommercialActivityKonturFilters(transformedCommercialData, req.query);
-
-
-  const html = template(filteredReportData);
+  const html = template(viewModel);
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(html);
+  return res.send(html);
 });
 
 router.get('/report/:id/pdf', async (req, res) => {
@@ -3936,35 +3962,13 @@ router.get('/report/:id/pdf', async (req, res) => {
     fileName = 'real-estate-report.pdf';
   } else {
     const template = getTemplate('counterpartyReport.html');
+    const viewModel = prepareCounterpartyReportViewModel({
+      entry,
+      query: req.query,
+      output: 'pdf',
+    });
 
-    const filteredKonturData = applyFsspKonturFilters(
-      {
-        ...entry.data,
-        createdAt: entry.createdAt,
-        reportId: entry.id,
-        reportMode: 'pdf',
-        reportQueryString: buildReportQueryString(req.query),
-        reportFilterState: buildReportFilterState(entry.id, req.query),
-      },
-      req.query
-    );
-
-    const filteredFsspApiCloudData = applyFsspApiCloudFilters(filteredKonturData, req.query);
-    const filteredStopOperData = applyStopOperRSFilters(filteredFsspApiCloudData, req.query);
-    const filteredCourtsData = applyCourtsCommonFilters(filteredStopOperData, req.query);
-    const filteredArbitrationApiCloudData = applyArbitrationApiCloudCombinedFilters(
-      filteredCourtsData,
-      req.query
-    );
-    const filteredArbitrationKonturData = applyArbitrationKonturFilters(
-      filteredArbitrationApiCloudData,
-      req.query
-    );
-    const transformedCommercialData = applyCommercialActivityKonturTransforms(filteredArbitrationKonturData);
-    const filteredReportData = applyCommercialActivityKonturFilters(transformedCommercialData, req.query);
-
-    const maskedData = maskPersonalData(filteredReportData);
-    html = template(maskedData);
+    html = template(viewModel);
   }
 
   try {
@@ -3972,10 +3976,10 @@ router.get('/report/:id/pdf', async (req, res) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
-    res.send(pdfBuffer);
+    return res.send(pdfBuffer);
   } catch (err) {
     console.error('[counterparty] pdf error', err);
-    res.status(500).send('pdf_failed');
+    return res.status(500).send('pdf_failed');
   }
 });
 

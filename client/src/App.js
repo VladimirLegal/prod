@@ -23,6 +23,8 @@ import DocumentDiffPage from './pages/DocumentDiffPage';
 import AdminApp from './pages/admin/AdminApp';
 import ReviewEditorPage from './pages/ReviewEditorPage';
 import CounterpartyCheckPage from './pages/CounterpartyCheckPage';
+import OtherDocumentsPage from './pages/OtherDocumentsPage';
+import MaternityCapitalSharesWizard from './pages/MaternityCapitalSharesWizard';
 
 
 function buildReconsentUrl(location, fallbackNext = null) {
@@ -113,6 +115,11 @@ function AppRoutes() {
       <Route path="/agreement" element={<AgreementPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/property-type/:transactionType" element={<PropertyTypePage />} />
+      <Route path="/other-documents" element={<OtherDocumentsPage />} />
+      <Route
+        path="/other-documents/maternity-capital-shares"
+        element={<MaternityCapitalSharesWizard />}
+      />
       <Route path="/rent/apartment" element={<RentApartmentWizard />} />
       <Route
         path="/cabinet"

@@ -49,22 +49,11 @@ const PILL = {
 /**
  * Полезные мелкие форматтеры для локального ввода
  */
-const expandTwoDigitYear = (yy) => {
-  const short = parseInt(yy, 10);
-  if (Number.isNaN(short)) return yy;
-  // 1931–1999 → > 30, иначе 2000–2030
-  return String(short > 30 ? 1900 + short : 2000 + short);
-};
 const formatDateInput = (v) => {
-  // превращаем любые цифры в ДД.ММ.ГГГГ (поддерживаем краткую запись ДД.ММ.ГГ)
   const digits = (v || '').replace(/\D/g, '').slice(0, 8);
   const dd = digits.slice(0, 2);
   const mm = digits.slice(2, 4);
-  let yyyy = digits.slice(4, 8);
-
-  if (yyyy.length === 2) {
-    yyyy = expandTwoDigitYear(yyyy);
-  }
+  const yyyy = digits.slice(4, 8);
 
   return [dd, mm, yyyy].filter(Boolean).join('.');
 };
