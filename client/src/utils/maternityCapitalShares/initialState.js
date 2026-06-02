@@ -1,19 +1,20 @@
-export const MATERNITY_CAPITAL_SHARES_STORAGE_KEY = 'maternityCapitalShares:formData';
+export const MATERNITY_CAPITAL_SHARES_STORAGE_KEY =
+  "maternityCapitalShares:formData";
 
 export const initialMaternityCapitalSharesForm = {
-  documentType: 'maternity_capital_shares_agreement',
+  documentType: "maternity_capital_shares_agreement",
 
   ui: {
     currentStep: 0,
-    sourceMode: '',
-    parseStatus: 'idle',
+     sourceMode: "",
+    parseStatus: "idle",
     parseWarnings: [],
     clearDraftRequested: false,
   },
 
   agreement: {
-    place: '',
-    date: '',
+    place: "",
+    date: "",
   },
 
   acquisition: {
@@ -26,34 +27,34 @@ export const initialMaternityCapitalSharesForm = {
   },
 
   object: {
-    address: '',
-    cadastralNumber: '',
-    area: '',
-    floor: '',
-    objectKindFromEgrn: '',
-    purpose: '',
-    objectName: '',
-    residentialKind: '',
-    cadastralValue: '',
-    recordStatus: '',
-    egrnActualDate: '',
-    region: '',
-    city: '',
-    purchasePrice: '',
-    purchasedShare: '',
-    legalShare: '',
-    roomNumber: '',
-    roomArea: '',
-    livingArea: '',
+    address: "",
+    cadastralNumber: "",
+    area: "",
+    floor: "",
+    objectKindFromEgrn: "",
+    purpose: "",
+    objectName: "",
+    residentialKind: "",
+    cadastralValue: "",
+    recordStatus: "",
+    egrnActualDate: "",
+    region: "",
+    city: "",
+    purchasePrice: "",
+    purchasedShare: "",
+    legalShare: "",
+    roomNumber: "",
+    roomArea: "",
+    livingArea: "",
   },
 
   rights: {
-    ownershipType: '',
-    existingShare: '',
-    existingShareSource: '',
-    existingShareDisplayText: '',
-    registrationNumber: '',
-    registrationDate: '',
+    ownershipType: "",
+    existingShare: "",
+    existingShareSource: "",
+    existingShareDisplayText: "",
+    registrationNumber: "",
+    registrationDate: "",
     owners: [],
     rights: [],
     documents: [],
@@ -64,61 +65,66 @@ export const initialMaternityCapitalSharesForm = {
     // Старое поле basisDocuments не удаляем, чтобы не ломать уже написанную логику.
     ownerBlocks: [],
 
-    shareTotal: '',
+    shareTotal: "",
     shareTotalIsFullObject: false,
     isWholeObjectOwnership: false,
     sharesMismatch: false,
   },
 
   encumbrance: {
-    type: 'unknown',
-    subtype: '',
-    description: '',
-    rawText: '',
-    mortgagee: '',
-    beneficiary: '',
-    registrationNumber: '',
-    registrationDate: '',
-    term: '',
+    type: "unknown",
+    subtype: "",
+    description: "",
+    rawText: "",
+    mortgagee: "",
+    beneficiary: "",
+    registrationNumber: "",
+    registrationDate: "",
+    term: "",
     basisDocuments: [],
   },
 
   recipientOwnerMatch: {
     matched: false,
     ambiguous: false,
-    matchType: 'none',
-    recipientName: '',
-    ownerFullName: '',
+   matchType: "none",
+    recipientName: "",
+    ownerFullName: "",
     ownerIndex: null,
-    ownershipType: '',
-    share: '',
+    ownershipType: "",
+    share: "",
     rights: [],
     documents: [],
   },
 
   distributionBase: {
-    type: '',
-    totalObjectArea: '',
-    baseArea: '',
-    purchasePriceForCalculation: '',
-    purchasedShare: '',
-    legalShare: '',
-    roomArea: '',
-    roomNumber: '',
-    livingArea: '',
-    calculationWarning: '',
-    source: '',
+    type: "",
+    totalObjectArea: "",
+    baseArea: "",
+    purchasePriceForCalculation: "",
+    purchasedShare: "",
+    legalShare: "",
+    roomArea: "",
+    roomNumber: "",
+    livingArea: "",
+    calculationWarning: "",
+    source: "",
   },
 
   egrn: {
     raw: null,
     parsed: null,
     applied: false,
-    source: '',
-    fileName: '',
-    fileType: '',
+    source: "",
+    fileName: "",
+    fileType: "",
   },
 
+  participantsStep: {
+    agreementDate: "",
+    certificateHolderParticipantId: null,
+    participants: [],
+  },
   participants: [],
   maternityCapital: {},
   family: {},
@@ -126,7 +132,7 @@ export const initialMaternityCapitalSharesForm = {
 };
 
 const mergeObjects = (base, patch) => {
-  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return base;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return base;
 
   return Object.keys(base).reduce((acc, key) => {
     const baseValue = base[key];
@@ -136,10 +142,10 @@ const mergeObjects = (base, patch) => {
       acc[key] = baseValue;
     } else if (
       baseValue &&
-      typeof baseValue === 'object' &&
+      typeof baseValue === "object" &&
       !Array.isArray(baseValue) &&
       patchValue &&
-      typeof patchValue === 'object' &&
+      typeof patchValue === "object" &&
       !Array.isArray(patchValue)
     ) {
       acc[key] = mergeObjects(baseValue, patchValue);
@@ -151,5 +157,22 @@ const mergeObjects = (base, patch) => {
   }, {});
 };
 
-export const hydrateMaternityCapitalSharesForm = (saved) =>
-  mergeObjects(initialMaternityCapitalSharesForm, saved || {});
+export const hydrateMaternityCapitalSharesForm = (saved) => {
+  const hydrated = mergeObjects(initialMaternityCapitalSharesForm, saved || {});
+  if (
+    (!hydrated.participantsStep.participants ||
+      !hydrated.participantsStep.participants.length) &&
+    Array.isArray(hydrated.participants)
+  ) {
+    hydrated.participantsStep = {
+      ...hydrated.participantsStep,
+      agreementDate:
+        hydrated.participantsStep.agreementDate ||
+        hydrated.agreement.date ||
+        "",
+      participants: hydrated.participants,
+    };
+  }
+  hydrated.participants = hydrated.participantsStep.participants;
+  return hydrated;
+};

@@ -1,32 +1,40 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft, faFileContract, faHome } from '@fortawesome/free-solid-svg-icons';
-import MaternityObjectRightsSection from '../components/maternityCapitalShares/MaternityObjectRightsSection';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faArrowLeft,
+  faFileContract,
+  faHome,
+} from "@fortawesome/free-solid-svg-icons";
+import MaternityObjectRightsSection from "../components/maternityCapitalShares/MaternityObjectRightsSection";
+import ParticipantsSection from "../components/maternityCapitalShares/ParticipantsSection";
 import {
   hydrateMaternityCapitalSharesForm,
   initialMaternityCapitalSharesForm,
   MATERNITY_CAPITAL_SHARES_STORAGE_KEY,
-} from '../utils/maternityCapitalShares/initialState';
+} from "../utils/maternityCapitalShares/initialState";
+import { validateParticipantsStep } from "../utils/maternityCapitalShares/participantsStep";
 
 const PILL = {
-  base: 'inline-flex items-center justify-center h-11 px-5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2',
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-400',
-  subtle: 'bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-300',
-  danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-400',
+  base: "inline-flex items-center justify-center h-11 px-5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2",
+  primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-400",
+  subtle: "bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-300",
+  danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-400",
 };
 
 const steps = [
-  'Объект, право собственности и ЕГРН',
-  'Участники',
-  'Материнский капитал',
-  'Доли',
+  "Объект, право собственности и ЕГРН",
+  "Участники",
+  "Материнский капитал",
+  "Доли",
 ];
 
 const loadDraft = () => {
   try {
     const raw = localStorage.getItem(MATERNITY_CAPITAL_SHARES_STORAGE_KEY);
-    return raw ? hydrateMaternityCapitalSharesForm(JSON.parse(raw)) : initialMaternityCapitalSharesForm;
+    return raw
+      ? hydrateMaternityCapitalSharesForm(JSON.parse(raw))
+      : initialMaternityCapitalSharesForm;
   } catch {
     return initialMaternityCapitalSharesForm;
   }
@@ -34,16 +42,23 @@ const loadDraft = () => {
 
 const isObjectStepReady = (formData) => {
   if (!formData.ui.sourceMode) return false;
-  if (formData.ui.sourceMode === 'egrn' && formData.ui.parseStatus === 'error' && !formData.egrn.applied) {
+  if (
+    formData.ui.sourceMode === "egrn" &&
+    formData.ui.parseStatus === "error" &&
+    !formData.egrn.applied
+  ) {
     return false;
   }
 
   const hasMinimumObject = !!(
     formData.object.address.trim() &&
     formData.object.cadastralNumber.trim() &&
-    String(formData.object.area || '').trim()
+    String(formData.object.area || "").trim()
   );
-  const unsupportedHouse = ['house_with_land', 'house_with_land_share'].includes(formData.acquisition.type);
+  const unsupportedHouse = [
+    "house_with_land",
+    "house_with_land_share",
+  ].includes(formData.acquisition.type);
 
   return hasMinimumObject && !unsupportedHouse;
 };
@@ -54,15 +69,23 @@ const MaternityCapitalSharesWizard = () => {
   const [accessDenied, setAccessDenied] = useState(false);
   const [formData, setFormData] = useState(loadDraft);
   const [parsedEgrn, setParsedEgrn] = useState(formData.egrn.parsed || null);
-  const [validationMessage, setValidationMessage] = useState('');
+  const [validationMessage, setValidationMessage] = useState("");
   const hydratedRef = useRef(false);
 
   const currentStep = formData.ui.currentStep || 0;
-  const canContinue = useMemo(() => isObjectStepReady(formData), [formData]);
+  const participantsValidation = useMemo(
+    () => validateParticipantsStep(formData.participantsStep),
+    [formData.participantsStep],
+  );
+  const canContinue = useMemo(() => {
+    if (currentStep === 0) return isObjectStepReady(formData);
+    if (currentStep === 1) return participantsValidation.isValid;
+    return true;
+  }, [currentStep, formData, participantsValidation.isValid]);
 
   useEffect(() => {
     let mounted = true;
-    fetch('/api/me', { credentials: 'include' })
+    fetch("/api/me", { credentials: "include" })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (!mounted) return;
@@ -78,10 +101,12 @@ const MaternityCapitalSharesWizard = () => {
 
   useEffect(() => {
     if (isAuthed === null) return;
-    if (isAuthed === false && !localStorage.getItem('consent_id')) {
+    if (isAuthed === false && !localStorage.getItem("consent_id")) {
       setAccessDenied(true);
-      window.alert('Чтобы продолжить, подтвердите согласие на обработку персональных данных.');
-      navigate('/other-documents');
+      window.alert(
+        "Чтобы продолжить, подтвердите согласие на обработку персональных данных.",
+      );
+      navigate("/other-documents");
     }
   }, [isAuthed, navigate]);
 
@@ -93,7 +118,10 @@ const MaternityCapitalSharesWizard = () => {
 
     const timer = window.setTimeout(() => {
       try {
-        localStorage.setItem(MATERNITY_CAPITAL_SHARES_STORAGE_KEY, JSON.stringify(formData));
+        localStorage.setItem(
+          MATERNITY_CAPITAL_SHARES_STORAGE_KEY,
+          JSON.stringify(formData),
+        );
       } catch {
         // localStorage может быть недоступен в приватном режиме.
       }
@@ -106,7 +134,7 @@ const MaternityCapitalSharesWizard = () => {
     if (!parsedEgrn) return;
     setFormData((prev) => ({
       ...prev,
-      ui: { ...prev.ui, parseStatus: 'applied' },
+      ui: { ...prev.ui, parseStatus: "applied" },
       object: {
         ...prev.object,
         ...parsedEgrn.object,
@@ -123,7 +151,10 @@ const MaternityCapitalSharesWizard = () => {
         confidence: parsedEgrn.suggestion.confidence,
         reason: parsedEgrn.suggestion.reason,
         alternatives: parsedEgrn.suggestion.alternatives,
-        type: parsedEgrn.suggestion.confidence === 'high' ? parsedEgrn.suggestion.suggestedType : prev.acquisition.type,
+        type:
+          parsedEgrn.suggestion.confidence === "high"
+            ? parsedEgrn.suggestion.suggestedType
+            : prev.acquisition.type,
         confirmedByUser: false,
       },
       rights: parsedEgrn.rights,
@@ -138,7 +169,12 @@ const MaternityCapitalSharesWizard = () => {
     setParsedEgrn(null);
     setFormData((prev) => ({
       ...prev,
-      ui: { ...prev.ui, sourceMode: 'manual', parseStatus: 'idle', parseWarnings: [] },
+      ui: {
+        ...prev.ui,
+        sourceMode: "manual",
+        parseStatus: "idle",
+        parseWarnings: [],
+      },
       egrn: { ...initialMaternityCapitalSharesForm.egrn },
     }));
   };
@@ -151,25 +187,52 @@ const MaternityCapitalSharesWizard = () => {
     }
     setParsedEgrn(null);
     setFormData(initialMaternityCapitalSharesForm);
-    setValidationMessage('Черновик очищен.');
+    setValidationMessage("Черновик очищен.");
   };
 
   const goNext = () => {
     if (!canContinue) {
+      if (currentStep === 0) {
+        setValidationMessage(
+          "Заполните источник данных, адрес, кадастровый номер и площадь. Дом с участком пока недоступен в этом мастере.",
+        );
+        return;
+      }
       setValidationMessage(
-        'Заполните источник данных, адрес, кадастровый номер и площадь. Дом с участком пока недоступен в этом мастере.',
+        "Исправьте блокирующие ошибки пакета 3 перед переходом к материнскому капиталу.",
       );
       return;
     }
-    setValidationMessage('Следующие шаги мастера будут добавлены на следующих этапах.');
+    if (currentStep === 0) {
+      setFormData((prev) => ({
+        ...prev,
+        participantsStep: {
+          ...prev.participantsStep,
+          agreementDate:
+            prev.participantsStep.agreementDate ||
+            prev.agreement.date ||
+            new Date().toISOString().slice(0, 10),
+        },
+        ui: { ...prev.ui, currentStep: 1 },
+      }));
+      setValidationMessage("");
+      return;
+    }
+
+    setValidationMessage(
+      "Пакет 4 будет добавлен следующим этапом. Данные участников уже готовы для расчёта долей.",
+    );
   };
 
   const goBack = () => {
     if (currentStep === 0) {
-      navigate('/other-documents');
+      navigate("/other-documents");
       return;
     }
-    setFormData((prev) => ({ ...prev, ui: { ...prev.ui, currentStep: currentStep - 1 } }));
+    setFormData((prev) => ({
+      ...prev,
+      ui: { ...prev.ui, currentStep: currentStep - 1 },
+    }));
   };
 
   if (isAuthed === null) {
@@ -180,7 +243,8 @@ const MaternityCapitalSharesWizard = () => {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="bg-yellow-50 text-yellow-800 rounded-xl p-6">
-          Для продолжения нужно подтвердить согласие на обработку персональных данных.
+          Для продолжения нужно подтвердить согласие на обработку персональных
+          данных.
         </div>
       </div>
     );
@@ -190,7 +254,10 @@ const MaternityCapitalSharesWizard = () => {
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
-          <Link to="/other-documents" className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors mb-4">
+          <Link
+            to="/other-documents"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800 transition-colors mb-4"
+          >
             <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
             Назад к прочим документам
           </Link>
@@ -209,11 +276,22 @@ const MaternityCapitalSharesWizard = () => {
           <button
             key={stepName}
             type="button"
-            onClick={() => index === 0 && setFormData((prev) => ({ ...prev, ui: { ...prev.ui, currentStep: 0 } }))}
+            onClick={() => {
+              if (index <= 1 && (index === 0 || isObjectStepReady(formData))) {
+                setFormData((prev) => ({
+                  ...prev,
+                  ui: { ...prev.ui, currentStep: index },
+                }));
+              }
+            }}
             className={`pb-2 px-4 whitespace-nowrap relative ${
-              currentStep === index ? 'text-blue-600 font-medium border-b-2 border-blue-600' : 'text-gray-600'
-            } ${index > 0 ? 'cursor-not-allowed opacity-60' : ''}`}
-            disabled={index > 0}
+              currentStep === index
+                ? "text-blue-600 font-medium border-b-2 border-blue-600"
+                : "text-gray-600"
+            } ${index > 1 || (index === 1 && !isObjectStepReady(formData)) ? "cursor-not-allowed opacity-60" : ""}`}
+            disabled={
+              index > 1 || (index === 1 && !isObjectStepReady(formData))
+            }
           >
             <FontAwesomeIcon icon={faFileContract} className="mr-2" />
             {stepName}
@@ -232,20 +310,38 @@ const MaternityCapitalSharesWizard = () => {
         />
       )}
 
+      {currentStep === 1 && (
+        <ParticipantsSection formData={formData} setFormData={setFormData} />
+      )}
+
       {validationMessage && (
-        <div className="mt-6 rounded-lg bg-yellow-50 text-yellow-800 p-4">{validationMessage}</div>
+        <div className="mt-6 rounded-lg bg-yellow-50 text-yellow-800 p-4">
+          {validationMessage}
+        </div>
       )}
 
       <div className="mt-8 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-        <button type="button" onClick={goBack} className={`${PILL.base} ${PILL.subtle}`}>
+        <button
+          type="button"
+          onClick={goBack}
+          className={`${PILL.base} ${PILL.subtle}`}
+        >
           <i className="mr-2">‹</i>
           Назад
         </button>
         <div className="flex flex-col sm:flex-row gap-3">
-          <button type="button" onClick={clearDraft} className={`${PILL.base} ${PILL.danger}`}>
+          <button
+            type="button"
+            onClick={clearDraft}
+            className={`${PILL.base} ${PILL.danger}`}
+          >
             Очистить черновик
           </button>
-          <button type="button" onClick={goNext} className={`${PILL.base} ${PILL.primary}`}>
+          <button
+            type="button"
+            onClick={goNext}
+            className={`${PILL.base} ${PILL.primary}`}
+          >
             Далее
             <i className="ml-2">›</i>
           </button>
