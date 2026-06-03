@@ -13,7 +13,10 @@ import {
   initialMaternityCapitalSharesForm,
   MATERNITY_CAPITAL_SHARES_STORAGE_KEY,
 } from "../utils/maternityCapitalShares/initialState";
-import { validateParticipantsStep } from "../utils/maternityCapitalShares/participantsStep";
+import {
+  toDisplayDate,
+  validateParticipantsStep,
+} from "../utils/maternityCapitalShares/participantsStep";
 
 const PILL = {
   base: "inline-flex items-center justify-center h-11 px-5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2",
@@ -203,6 +206,7 @@ const MaternityCapitalSharesWizard = () => {
       );
       return;
     }
+    
     if (currentStep === 0) {
       setFormData((prev) => ({
         ...prev,

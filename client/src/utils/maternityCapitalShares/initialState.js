@@ -128,7 +128,34 @@ export const initialMaternityCapitalSharesForm = {
   },
   participants: [],
   maternityCapital: {},
-  family: {},
+  family: {
+    maritalStatusMode: "",
+    certificateHolderParticipantId: "",
+    spouseParticipantId: "",
+    marriage: {
+      date: "",
+      certificateSeries: "",
+      certificateNumber: "",
+      issuedBy: "",
+      issueDate: "",
+      actRecordNumber: "",
+      actRecordDate: "",
+    },
+    divorce: {
+      date: "",
+      certificateSeries: "",
+      certificateNumber: "",
+      issuedBy: "",
+      issueDate: "",
+      actRecordNumber: "",
+      actRecordDate: "",
+    },
+    marriageContract: {
+      status: "not_concluded",
+      description: "",
+    },
+    warnings: [],
+  },
   shares: {},
 };
 

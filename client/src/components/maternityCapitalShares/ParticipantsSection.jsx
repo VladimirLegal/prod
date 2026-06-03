@@ -16,6 +16,7 @@ import {
   getFullName,
   getLegalRepresentativeOptions,
   getParticipantRoleLabel,
+  parseMarriageCertificateText,
   splitFullName,
   splitPassport,
   validateParticipantsStep,
@@ -184,8 +185,8 @@ const ParticipantsSection = ({ formData, setFormData }) => {
     (participant) => participant.role !== "attorneyRepresentative",
   );
   const validation = useMemo(
-    () => validateParticipantsStep({ ...step, participants }),
-    [step, participants],
+    () => validateParticipantsStep({ ...step, participants }, formData.family),
+    [formData.family, step, participants],
   );
   const importCandidates = useMemo(
     () =>
@@ -209,6 +210,14 @@ const ParticipantsSection = ({ formData, setFormData }) => {
         participantsStep: next,
         participants: next.participants,
       };
+    });
+  };
+
+  const updateFamily = (updater) => {
+    setFormData((prev) => {
+      const nextFamily =
+        typeof updater === "function" ? updater(prev.family || {}) : updater;
+      return { ...prev, family: nextFamily };
     });
   };
 
@@ -307,6 +316,24 @@ const ParticipantsSection = ({ formData, setFormData }) => {
 
   const applyTextImport = (rawText) => {
     if (!textImport) return;
+    if (textImport.kind === "marriage") {
+      const parsedMarriage = parseMarriageCertificateText(rawText || "");
+      updateFamily((current) => ({
+        ...current,
+        marriage: {
+          ...(current.marriage || {}),
+          ...parsedMarriage,
+          actRecordDate:
+            parsedMarriage.actRecordDate ||
+            parsedMarriage.date ||
+            current.marriage?.actRecordDate ||
+            "",
+        },
+      }));
+      setTextImport(null);
+      return;
+    }
+
     const parsed =
       textImport.kind === "birth"
         ? parseBirthCertificateText(rawText || "")
@@ -390,7 +417,9 @@ const ParticipantsSection = ({ formData, setFormData }) => {
         title={
           textImport?.kind === "birth"
             ? "Вставьте свидетельство о рождении текстом"
-            : "Вставьте паспортные данные текстом"
+            : textImport?.kind === "marriage"
+              ? "Вставьте свидетельство о браке текстом"
+              : "Вставьте паспортные данные текстом"
         }
         onClose={() => setTextImport(null)}
         onApply={applyTextImport}
@@ -422,6 +451,13 @@ const ParticipantsSection = ({ formData, setFormData }) => {
           />
         ))}
       </section>
+
+      <MarriageInfoSection
+        family={formData.family || {}}
+        participants={participants}
+        onChange={updateFamily}
+        onTextImport={() => setTextImport({ kind: "marriage" })}
+      />
 
       <ValidationPanel validation={validation} />
     </div>
@@ -1084,6 +1120,273 @@ const RepresentativeFields = ({
     </div>
   </div>
 );
+
+const MarriageInfoSection = ({
+  family,
+  participants,
+  onChange,
+  onTextImport,
+}) => {
+  const hasMarriageParticipant = participants.some((participant) =>
+    ["spouse", "formerSpouse"].includes(participant.role),
+  );
+  const certificateHolders = participants.filter(
+    (participant) => participant.role === "certificateHolder",
+  );
+  const spouseOptions = participants.filter((participant) =>
+    ["spouse", "formerSpouse"].includes(participant.role),
+  );
+  const marriage = family.marriage || {};
+  const divorce = family.divorce || {};
+  const marriageContract = family.marriageContract || {
+    status: "not_concluded",
+    description: "",
+  };
+
+  const patchFamily = (patch) => onChange({ ...family, ...patch });
+  const patchMarriage = (patch) => {
+    const nextMarriage = { ...marriage, ...patch };
+    if (patch.date && !nextMarriage.actRecordDate)
+      nextMarriage.actRecordDate = patch.date;
+    onChange({ ...family, marriage: nextMarriage });
+  };
+  const patchDivorce = (patch) =>
+    onChange({ ...family, divorce: { ...divorce, ...patch } });
+  const patchContract = (patch) =>
+    onChange({
+      ...family,
+      marriageContract: { ...marriageContract, ...patch },
+    });
+
+  if (!hasMarriageParticipant) {
+    return (
+      <section className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-5 text-sm text-gray-600">
+        Если второй родитель является супругом или бывшим супругом владельца
+        сертификата, добавьте его как “Супруг/супруга” или “Бывший супруг/бывшая
+        супруга”.
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Сведения о браке
+          </h3>
+          <p className="mt-1 text-sm text-gray-600">
+            Укажите семейную ситуацию владельца сертификата, реквизиты
+            свидетельства о заключении брака и статус брачного договора.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onTextImport}
+          className="rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+        >
+          Вставить свидетельство о браке текстом
+        </button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Field label="Тип семейной ситуации">
+          <SelectInput
+            value={family.maritalStatusMode}
+            onChange={(maritalStatusMode) => patchFamily({ maritalStatusMode })}
+          >
+            <option value="">Выберите</option>
+            <option value="current_marriage">
+              Брак действует на дату соглашения
+            </option>
+            <option value="former_marriage">
+              Брак был заключён, но расторгнут
+            </option>
+            <option value="no_marriage">
+              Брак между участниками не заключался / не указывается
+            </option>
+            <option value="manual">Заполнить вручную</option>
+          </SelectInput>
+        </Field>
+        <Field label="Владелец сертификата">
+          <SelectInput
+            value={family.certificateHolderParticipantId}
+            onChange={(certificateHolderParticipantId) =>
+              patchFamily({ certificateHolderParticipantId })
+            }
+          >
+            <option value="">Выберите владельца сертификата</option>
+            {certificateHolders.map((participant) => (
+              <option key={participant.id} value={participant.id}>
+                {getFullName(participant) ||
+                  getParticipantRoleLabel(participant.role)}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="Супруг/супруга">
+          <SelectInput
+            value={family.spouseParticipantId}
+            onChange={(spouseParticipantId) =>
+              patchFamily({ spouseParticipantId })
+            }
+          >
+            <option value="">Выберите супруга/бывшего супруга</option>
+            {spouseOptions.map((participant) => (
+              <option key={participant.id} value={participant.id}>
+                {getFullName(participant) ||
+                  getParticipantRoleLabel(participant.role)}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+      </div>
+
+      {family.maritalStatusMode !== "no_marriage" && (
+        <div className="mt-5 rounded-xl border border-gray-200 p-4">
+          <h4 className="font-medium text-gray-900">
+            Свидетельство о заключении брака
+          </h4>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Field label="Дата заключения брака">
+              <DateInput
+                value={marriage.date}
+                onChange={(date) => patchMarriage({ date })}
+              />
+            </Field>
+            <Field label="Серия свидетельства">
+              <TextInput
+                value={marriage.certificateSeries}
+                onChange={(certificateSeries) =>
+                  patchMarriage({ certificateSeries })
+                }
+              />
+            </Field>
+            <Field label="Номер свидетельства">
+              <TextInput
+                value={marriage.certificateNumber}
+                onChange={(certificateNumber) =>
+                  patchMarriage({ certificateNumber })
+                }
+              />
+            </Field>
+            <Field label="Кем выдано свидетельство">
+              <TextInput
+                value={marriage.issuedBy}
+                onChange={(issuedBy) => patchMarriage({ issuedBy })}
+              />
+            </Field>
+            <Field label="Дата выдачи свидетельства">
+              <DateInput
+                value={marriage.issueDate}
+                onChange={(issueDate) => patchMarriage({ issueDate })}
+              />
+            </Field>
+            <Field label="Номер актовой записи">
+              <TextInput
+                value={marriage.actRecordNumber}
+                onChange={(actRecordNumber) =>
+                  patchMarriage({ actRecordNumber })
+                }
+              />
+            </Field>
+            <Field label="Дата актовой записи">
+              <DateInput
+                value={marriage.actRecordDate}
+                onChange={(actRecordDate) => patchMarriage({ actRecordDate })}
+              />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      {family.maritalStatusMode === "former_marriage" && (
+        <div className="mt-5 rounded-xl border border-orange-100 bg-orange-50 p-4">
+          <h4 className="font-medium text-orange-900">Расторжение брака</h4>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Field label="Дата расторжения брака">
+              <DateInput
+                value={divorce.date}
+                onChange={(date) => patchDivorce({ date })}
+              />
+            </Field>
+            <Field label="Серия свидетельства">
+              <TextInput
+                value={divorce.certificateSeries}
+                onChange={(certificateSeries) =>
+                  patchDivorce({ certificateSeries })
+                }
+              />
+            </Field>
+            <Field label="Номер свидетельства">
+              <TextInput
+                value={divorce.certificateNumber}
+                onChange={(certificateNumber) =>
+                  patchDivorce({ certificateNumber })
+                }
+              />
+            </Field>
+            <Field label="Кем выдано">
+              <TextInput
+                value={divorce.issuedBy}
+                onChange={(issuedBy) => patchDivorce({ issuedBy })}
+              />
+            </Field>
+            <Field label="Дата выдачи">
+              <DateInput
+                value={divorce.issueDate}
+                onChange={(issueDate) => patchDivorce({ issueDate })}
+              />
+            </Field>
+            <Field label="Номер актовой записи">
+              <TextInput
+                value={divorce.actRecordNumber}
+                onChange={(actRecordNumber) =>
+                  patchDivorce({ actRecordNumber })
+                }
+              />
+            </Field>
+            <Field label="Дата актовой записи">
+              <DateInput
+                value={divorce.actRecordDate}
+                onChange={(actRecordDate) => patchDivorce({ actRecordDate })}
+              />
+            </Field>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-5 rounded-xl border border-gray-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Брачный договор">
+            <SelectInput
+              value={marriageContract.status || "not_concluded"}
+              onChange={(status) => patchContract({ status })}
+            >
+              <option value="not_concluded">Не заключался</option>
+              <option value="concluded">Заключался</option>
+              <option value="unknown">Неизвестно</option>
+            </SelectInput>
+          </Field>
+          {marriageContract.status === "concluded" && (
+            <Field label="Описание условий брачного договора">
+              <TextArea
+                value={marriageContract.description}
+                onChange={(description) => patchContract({ description })}
+              />
+            </Field>
+          )}
+        </div>
+        {marriageContract.status === "concluded" && (
+          <div className="mt-3 rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
+            Если брачный договор изменяет режим собственности в отношении
+            объекта, соглашение требует дополнительной проверки.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
 
 const ValidationPanel = ({ validation }) => (
   <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

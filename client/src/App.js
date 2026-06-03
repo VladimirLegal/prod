@@ -25,6 +25,7 @@ import ReviewEditorPage from './pages/ReviewEditorPage';
 import CounterpartyCheckPage from './pages/CounterpartyCheckPage';
 import OtherDocumentsPage from './pages/OtherDocumentsPage';
 import MaternityCapitalSharesWizard from './pages/MaternityCapitalSharesWizard';
+import ShareSaleNoticeWizard from './pages/ShareSaleNoticeWizard';
 
 
 function buildReconsentUrl(location, fallbackNext = null) {
@@ -119,6 +120,10 @@ function AppRoutes() {
       <Route
         path="/other-documents/maternity-capital-shares"
         element={<MaternityCapitalSharesWizard />}
+      />
+      <Route
+        path="/other-documents/share-sale-notice"
+        element={<ShareSaleNoticeWizard />}
       />
       <Route path="/rent/apartment" element={<RentApartmentWizard />} />
       <Route

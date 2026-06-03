@@ -78,6 +78,66 @@ export const toDisplayDate = (value = "") => {
   return formatDateInput(text);
 };
 
+const RU_MONTHS = {
+  января: "01",
+  февраля: "02",
+  марта: "03",
+  апреля: "04",
+  мая: "05",
+  июня: "06",
+  июля: "07",
+  августа: "08",
+  сентября: "09",
+  октября: "10",
+  ноября: "11",
+  декабря: "12",
+};
+
+const normalizeRussianDate = (value = "") => {
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
+  const numeric = toDisplayDate(text);
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(numeric)) return numeric;
+  const match = text.match(/([0-3]?\d)\s+([а-яё]+)\s+(\d{4})/i);
+  if (!match) return "";
+  const month = RU_MONTHS[match[2]] || RU_MONTHS[match[2].replace(/я$/, "я")];
+  if (!month) return "";
+  return `${match[1].padStart(2, "0")}.${month}.${match[3]}`;
+};
+
+const normalizeText = (value = "") =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export const parseMarriageCertificateText = (raw = "") => {
+  const text = normalizeText(raw);
+  const certificateMatch = text.match(
+    /свидетельство\s+о\s+заключении\s+брака\s+([A-ZА-ЯЁIХVXLCDM0-9-]+)\s*№?\s*([0-9]+)/i,
+  );
+  const issueMatch = text.match(
+    /выдано\s+(.+?)(?:\s+от\s+|\s+)([0-3]?\d[./-][01]?\d[./-]\d{2,4}|[0-3]?\d\s+[а-яё]+\s+\d{4})(?:\s*года|\s*г\.)?/i,
+  );
+  const actMatch = text.match(
+    /запис[ьи]\s+акта\s+о\s+заключении\s+брака\s*№?\s*([0-9А-Яа-яA-Za-z/-]+)(?:\s+от\s+([0-3]?\d[./-][01]?\d[./-]\d{2,4}|[0-3]?\d\s+[а-яё]+\s+\d{4}))?/i,
+  );
+  const issueDate = normalizeRussianDate(issueMatch?.[2] || "");
+  const actRecordDate = normalizeRussianDate(actMatch?.[2] || "") || issueDate;
+
+  return {
+    date: actRecordDate || issueDate,
+    certificateSeries: certificateMatch?.[1] || "",
+    certificateNumber: certificateMatch?.[2] || "",
+    issuedBy: issueMatch?.[1]
+      ? normalizeText(issueMatch[1]).replace(/[,.\s]+$/g, "")
+      : "",
+    issueDate,
+    actRecordNumber: actMatch?.[1] || "",
+    actRecordDate,
+  };
+};
+
 const parseDateParts = (value = "") => {
   const text = String(value || "").trim();
   let match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
@@ -482,7 +542,19 @@ const validateAdultPerson = ({
   }
 };
 
-export const validateParticipantsStep = (state = {}) => {
+const requiredMarriageFields = [
+  "date",
+  "certificateSeries",
+  "certificateNumber",
+  "issuedBy",
+  "issueDate",
+  "actRecordNumber",
+];
+
+const hasMissingFields = (target = {}, fields = []) =>
+  fields.some((field) => isBlank(target[field]));
+
+export const validateParticipantsStep = (state = {}, family = {}) => {
   const participants = Array.isArray(state.participants)
     ? state.participants
     : [];
@@ -651,6 +723,98 @@ export const validateParticipantsStep = (state = {}) => {
       });
     }
   });
+
+  const hasSpouse = shareParticipants.some(
+    (participant) => participant.role === "spouse",
+  );
+  const hasFormerSpouse = shareParticipants.some(
+    (participant) => participant.role === "formerSpouse",
+  );
+  const hasMarriageParticipant = hasSpouse || hasFormerSpouse;
+  const familyState = family || {};
+  const marriage = familyState.marriage || {};
+  const divorce = familyState.divorce || {};
+  const contract = familyState.marriageContract || {};
+
+  if (hasMarriageParticipant) {
+    if (isBlank(familyState.maritalStatusMode)) {
+      errors.push({
+        code: "P3.M1",
+        message: "Заполните тип семейной ситуации в сведениях о браке.",
+      });
+    }
+    if (isBlank(familyState.spouseParticipantId)) {
+      errors.push({
+        code: "P3.M2",
+        message: "Выберите супруга/бывшего супруга в сведениях о браке.",
+      });
+    }
+  }
+
+  if (hasSpouse && familyState.maritalStatusMode === "no_marriage") {
+    errors.push({
+      code: "P3.M3",
+      message:
+        "Участник указан как супруг/супруга, но в сведениях о браке выбрано «брак не указывается».",
+    });
+  }
+
+  if (hasFormerSpouse && familyState.maritalStatusMode !== "former_marriage") {
+    errors.push({
+      code: "P3.M4",
+      message:
+        "Для бывшего супруга выберите режим «Брак был заключён, но расторгнут».",
+    });
+  }
+
+  if (familyState.maritalStatusMode === "current_marriage") {
+    if (
+      isBlank(familyState.spouseParticipantId) ||
+      hasMissingFields(marriage, requiredMarriageFields)
+    ) {
+      errors.push({
+        code: "P3.M5",
+        message:
+          "Для действующего брака заполните супруга и реквизиты свидетельства о заключении брака.",
+      });
+    }
+  }
+
+  if (familyState.maritalStatusMode === "former_marriage") {
+    if (isBlank(familyState.spouseParticipantId) || isBlank(marriage.date)) {
+      errors.push({
+        code: "P3.M6",
+        message:
+          "Для бывшего супруга укажите участника и дату заключения брака.",
+      });
+    }
+    if (hasMissingFields(marriage, requiredMarriageFields)) {
+      errors.push({
+        code: "P3.M7",
+        message:
+          "Для бывшего супруга заполните реквизиты свидетельства о заключении брака.",
+      });
+    }
+    if (
+      isBlank(divorce.date) ||
+      isBlank(divorce.certificateSeries) ||
+      isBlank(divorce.certificateNumber)
+    ) {
+      warnings.push({
+        code: "P3.MW1",
+        message:
+          "Указан бывший супруг. Проверьте, нужно ли указать реквизиты расторжения брака.",
+      });
+    }
+  }
+
+  if (contract.status === "concluded") {
+    warnings.push({
+      code: "P3.MW2",
+      message:
+        "Если брачный договор изменяет режим собственности в отношении объекта, соглашение требует дополнительной проверки.",
+    });
+  }
 
   return { errors, warnings, isValid: errors.length === 0 };
 };
