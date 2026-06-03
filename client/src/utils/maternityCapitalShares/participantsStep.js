@@ -63,16 +63,74 @@ const emptyDocument = (type = "") => ({
 const makeId = (prefix = "p") =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-export const emptyPowerOfAttorney = ({
-  principalParticipantId = "",
-  representativeParticipantId = "",
-} = {}) => ({
-  principalParticipantId,
-  representativeParticipantId,
+export const formatDateInput = (value = "") => {
+  const digits = String(value).replace(/\D/g, "").slice(0, 8);
+  const dd = digits.slice(0, 2);
+  const mm = digits.slice(2, 4);
+  const yyyy = digits.slice(4, 8);
+  return [dd, mm, yyyy].filter(Boolean).join(".");
+};
+
+export const toDisplayDate = (value = "") => {
+  const text = String(value || "").trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`;
+  return formatDateInput(text);
+};
+
+const parseDateParts = (value = "") => {
+  const text = String(value || "").trim();
+  let match = text.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (match)
+    return {
+      day: Number(match[1]),
+      month: Number(match[2]),
+      year: Number(match[3]),
+    };
+  match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match)
+    return {
+      day: Number(match[3]),
+      month: Number(match[2]),
+      year: Number(match[1]),
+    };
+  return null;
+};
+
+const toDate = (value = "") => {
+  const parts = parseDateParts(value);
+  if (!parts) return null;
+  const date = new Date(parts.year, parts.month - 1, parts.day);
+  if (
+    date.getFullYear() !== parts.year ||
+    date.getMonth() + 1 !== parts.month ||
+    date.getDate() !== parts.day
+  ) {
+    return null;
+  }
+  return date;
+};
+
+export const emptyAttorneyRepresentative = () => ({
+  lastName: "",
+  firstName: "",
+  middleName: "",
+  fullNameRaw: "",
+  gender: "",
+  birthDate: "",
+  birthPlace: "",
+  registrationAddress: "",
+  registrationType: "",
+  snils: "",
+  document: emptyDocument("passport_rf"),
+});
+
+export const emptyPowerOfAttorney = () => ({
   issueDate: "",
   registryNumber: "",
   certifiedBy: "",
   certificationType: "notary",
+  // Legacy fields may exist in old drafts; package 3 no longer displays or validates them.
   powersSummary: "",
   allowsAgreementSigning: true,
   allowsStateRegistration: true,
@@ -103,12 +161,18 @@ export const splitFullName = (fullName = "") => {
   };
 };
 
+export const splitPassport = (passport = "") => {
+  const digits = String(passport).replace(/\D/g, "");
+  return {
+    series: digits.slice(0, 4),
+    number: digits.slice(4, 10),
+  };
+};
+
 export const calculateAgeOnDate = (birthDate, agreementDate) => {
-  if (!birthDate || !agreementDate) return null;
-  const birth = new Date(`${birthDate}T00:00:00`);
-  const date = new Date(`${agreementDate}T00:00:00`);
-  if (Number.isNaN(birth.getTime()) || Number.isNaN(date.getTime()))
-    return null;
+  const birth = toDate(birthDate);
+  const date = toDate(agreementDate);
+  if (!birth || !date) return null;
   let age = date.getFullYear() - birth.getFullYear();
   const monthDelta = date.getMonth() - birth.getMonth();
   if (monthDelta < 0 || (monthDelta === 0 && date.getDate() < birth.getDate()))
@@ -130,74 +194,103 @@ export const getPersonTypeByAge = ({
   return "minor_under_14";
 };
 
+const withDisplayDates = (participant = {}) => ({
+  ...participant,
+  birthDate: toDisplayDate(participant.birthDate),
+  document: {
+    ...participant.document,
+    issueDate: toDisplayDate(participant.document?.issueDate),
+    actRecordDate: toDisplayDate(participant.document?.actRecordDate),
+  },
+  powerOfAttorney: participant.powerOfAttorney
+    ? {
+        ...participant.powerOfAttorney,
+        issueDate: toDisplayDate(participant.powerOfAttorney.issueDate),
+      }
+    : participant.powerOfAttorney,
+  attorneyRepresentative: participant.attorneyRepresentative
+    ? {
+        ...participant.attorneyRepresentative,
+        birthDate: toDisplayDate(participant.attorneyRepresentative.birthDate),
+        document: {
+          ...participant.attorneyRepresentative.document,
+          issueDate: toDisplayDate(
+            participant.attorneyRepresentative.document?.issueDate,
+          ),
+        },
+      }
+    : participant.attorneyRepresentative,
+});
+
 export const applyParticipantAgeRules = (participant, agreementDate) => {
+  const normalized = withDisplayDates(participant);
   const nextPersonType = getPersonTypeByAge({
-    role: participant.role,
-    birthDate: participant.birthDate,
+    role: normalized.role,
+    birthDate: normalized.birthDate,
     agreementDate,
-    legalCapacityStatus: participant.legalCapacityStatus,
+    legalCapacityStatus: normalized.legalCapacityStatus,
   });
 
-  if (participant.role === "attorneyRepresentative") {
+  if (normalized.role === "attorneyRepresentative") {
     return {
-      ...participant,
+      ...normalized,
       personType: "adult",
       receivesShare: false,
       signingMode: "as_attorney",
       legalCapacityStatus: "full",
-      document: { ...participant.document, type: "passport_rf" },
+      document: { ...normalized.document, type: "passport_rf" },
     };
   }
 
-  if (participant.role !== "child") {
+  if (normalized.role !== "child") {
     return {
-      ...participant,
+      ...normalized,
       personType: "adult",
       signingMode:
-        participant.signingMode === "as_attorney"
+        normalized.signingMode === "as_attorney"
           ? "self"
-          : participant.signingMode,
-      legalCapacityStatus: participant.legalCapacityStatus || "full",
-      document: { ...participant.document, type: "passport_rf" },
+          : normalized.signingMode,
+      legalCapacityStatus: normalized.legalCapacityStatus || "full",
+      document: { ...normalized.document, type: "passport_rf" },
     };
   }
 
   if (nextPersonType === "minor_under_14") {
     return {
-      ...participant,
+      ...normalized,
       personType: nextPersonType,
       signingMode: "by_legal_representative",
       legalCapacityStatus: "limited",
       consentProviderParticipantId: null,
-      document: { ...participant.document, type: "birth_certificate_rf" },
+      document: { ...normalized.document, type: "birth_certificate_rf" },
     };
   }
 
   if (nextPersonType === "minor_14_18") {
     return {
-      ...participant,
+      ...normalized,
       personType: nextPersonType,
       signingMode: "self_with_legal_representative_consent",
       legalCapacityStatus:
-        participant.legalCapacityStatus === "full_before_18"
+        normalized.legalCapacityStatus === "full_before_18"
           ? "full_before_18"
           : "limited",
       legalRepresentativeParticipantId: null,
-      document: { ...participant.document, type: "passport_rf" },
+      document: { ...normalized.document, type: "passport_rf" },
     };
   }
 
   return {
-    ...participant,
+    ...normalized,
     personType: "adult",
     signingMode: "self",
     legalCapacityStatus:
-      participant.legalCapacityStatus === "full_before_18"
+      normalized.legalCapacityStatus === "full_before_18"
         ? "full_before_18"
         : "full",
     legalRepresentativeParticipantId: null,
     consentProviderParticipantId: null,
-    document: { ...participant.document, type: "passport_rf" },
+    document: { ...normalized.document, type: "passport_rf" },
   };
 };
 
@@ -221,12 +314,7 @@ export const createParticipant = (
       "formerSpouse",
       "otherParticipant",
     ].includes(role),
-    guardianshipAuthorityAct: {
-      title: "",
-      number: "",
-      date: "",
-      issuedBy: "",
-    },
+    guardianshipAuthorityAct: { title: "", number: "", date: "", issuedBy: "" },
     lastName: "",
     firstName: "",
     middleName: "",
@@ -235,20 +323,17 @@ export const createParticipant = (
     birthDate: "",
     birthPlace: "",
     registrationAddress: "",
+    registrationType: "",
     snils: "",
     document: emptyDocument(defaults.documentType),
     legalRepresentativeParticipantId: null,
     legalRepresentativeBasis: null,
     consentProviderParticipantId: null,
     actsThroughPowerOfAttorney: false,
+    attorneyRepresentative: null,
     attorneyRepresentativeParticipantId: null,
     powerOfAttorney: null,
-    source: {
-      origin: "manual",
-      needsReview: false,
-      egrnOwnerIndex: null,
-    },
-    notes: "",
+    source: { origin: "manual", needsReview: false, egrnOwnerIndex: null },
     ...overrides,
   };
 
@@ -259,6 +344,17 @@ export const createParticipant = (
         ...emptyDocument(defaults.documentType),
         ...(overrides.document || {}),
       },
+      attorneyRepresentative: overrides.attorneyRepresentative
+        ? {
+            ...emptyAttorneyRepresentative(),
+            ...overrides.attorneyRepresentative,
+            document: {
+              ...emptyDocument("passport_rf"),
+              ...(overrides.attorneyRepresentative.document || {}),
+              type: "passport_rf",
+            },
+          }
+        : participant.attorneyRepresentative,
       source: { ...participant.source, ...(overrides.source || {}) },
     },
     agreementDate,
@@ -271,7 +367,7 @@ export const createAttorneyRepresentative = (
 ) => createParticipant("attorneyRepresentative", overrides, agreementDate);
 
 export const createParticipantsStepState = (patch = {}) => ({
-  agreementDate: patch.agreementDate || "",
+  agreementDate: toDisplayDate(patch.agreementDate || ""),
   certificateHolderParticipantId: patch.certificateHolderParticipantId || null,
   participants: Array.isArray(patch.participants) ? patch.participants : [],
 });
@@ -280,7 +376,9 @@ export const normalizeParticipantsStepState = (
   state = {},
   fallbackAgreementDate = "",
 ) => {
-  const agreementDate = state.agreementDate || fallbackAgreementDate || "";
+  const agreementDate = toDisplayDate(
+    state.agreementDate || fallbackAgreementDate || "",
+  );
   const participants = (
     Array.isArray(state.participants) ? state.participants : []
   ).map((participant) =>
@@ -296,6 +394,17 @@ export const normalizeParticipantsStepState = (
           ...emptyDocument(participant.document?.type || ""),
           ...(participant.document || {}),
         },
+        attorneyRepresentative: participant.attorneyRepresentative
+          ? {
+              ...emptyAttorneyRepresentative(),
+              ...participant.attorneyRepresentative,
+              document: {
+                ...emptyDocument("passport_rf"),
+                ...(participant.attorneyRepresentative.document || {}),
+                type: "passport_rf",
+              },
+            }
+          : null,
         source: {
           origin: "manual",
           needsReview: false,
@@ -306,7 +415,6 @@ export const normalizeParticipantsStepState = (
       agreementDate,
     ),
   );
-
   const holderId =
     state.certificateHolderParticipantId ||
     participants.find((item) => item.role === "certificateHolder")?.id ||
@@ -319,9 +427,9 @@ export const normalizeParticipantsStepState = (
 };
 
 const isBlank = (value) => !String(value || "").trim();
-const hasPassport = (participant) =>
-  ["series", "number", "issuedBy", "issueDate"].every(
-    (key) => !isBlank(participant.document?.[key]),
+const hasPassport = (person) =>
+  ["series", "number", "issuedBy", "issueDate", "departmentCode"].every(
+    (key) => !isBlank(person.document?.[key]),
   );
 const hasBirthCertificate = (participant) =>
   [
@@ -345,37 +453,70 @@ export const getLegalRepresentativeOptions = (
       participant.canBeLegalRepresentative,
   );
 
+const validateAdultPerson = ({
+  person,
+  label,
+  code = "P3.5",
+  errors,
+  requireBirthPlace = true,
+  requireRegistration = true,
+}) => {
+  if (requireBirthPlace && isBlank(person.birthPlace)) {
+    errors.push({ code, message: `${label}: заполните место рождения.` });
+  }
+  if (!hasPassport(person)) {
+    errors.push({
+      code,
+      message: `${label}: заполните паспорт, кем выдан, дату выдачи и код подразделения.`,
+    });
+  }
+  if (
+    requireRegistration &&
+    person.registrationType !== "none" &&
+    isBlank(person.registrationAddress)
+  ) {
+    errors.push({
+      code,
+      message: `${label}: заполните адрес регистрации или выберите «Без регистрации».`,
+    });
+  }
+};
+
 export const validateParticipantsStep = (state = {}) => {
   const participants = Array.isArray(state.participants)
     ? state.participants
     : [];
+  const shareParticipants = participants.filter(
+    (participant) => participant.role !== "attorneyRepresentative",
+  );
   const errors = [];
   const warnings = [];
 
-  if (!participants.length)
+  if (!shareParticipants.length)
     errors.push({
       code: "P3.1",
       message: "Добавьте хотя бы одного участника.",
     });
 
-  const holderCount = participants.filter(
+  const holderCount = shareParticipants.filter(
     (participant) => participant.id === state.certificateHolderParticipantId,
   ).length;
-  if (holderCount !== 1) {
+  if (holderCount !== 1)
     errors.push({
       code: "P3.2",
       message: "Выберите ровно одного владельца сертификата.",
     });
-  }
 
-  if (!participants.some((participant) => participant.receivesShare === true)) {
+  if (
+    !shareParticipants.some((participant) => participant.receivesShare === true)
+  ) {
     errors.push({
       code: "P3.3",
       message: "Укажите хотя бы одного получателя доли.",
     });
   }
 
-  participants.forEach((participant, index) => {
+  shareParticipants.forEach((participant, index) => {
     const label =
       getFullName(participant) ||
       `${getParticipantRoleLabel(participant.role)} #${index + 1}`;
@@ -393,16 +534,6 @@ export const validateParticipantsStep = (state = {}) => {
       });
     }
 
-    if (
-      participant.role === "attorneyRepresentative" &&
-      participant.receivesShare
-    ) {
-      errors.push({
-        code: "P3.11",
-        message: `${label}: представитель по доверенности не может получать долю.`,
-      });
-    }
-
     if (participant.source?.needsReview) {
       errors.push({
         code: "P3.12",
@@ -410,19 +541,8 @@ export const validateParticipantsStep = (state = {}) => {
       });
     }
 
-    const signsOrReceives =
-      participant.receivesShare ||
-      participant.signingMode !== "by_legal_representative";
-    if (
-      (participant.personType === "adult" ||
-        participant.personType === "minor_14_18") &&
-      signsOrReceives &&
-      !hasPassport(participant)
-    ) {
-      errors.push({
-        code: participant.personType === "minor_14_18" ? "P3.8" : "P3.5",
-        message: `${label}: заполните паспортные реквизиты.`,
-      });
+    if (participant.personType === "adult") {
+      validateAdultPerson({ person: participant, label, code: "P3.5", errors });
     }
 
     if (participant.personType === "minor_under_14") {
@@ -447,50 +567,65 @@ export const validateParticipantsStep = (state = {}) => {
       }
     }
 
-    if (
-      participant.personType === "minor_14_18" &&
-      participant.legalCapacityStatus !== "full_before_18"
-    ) {
-      const representatives = getLegalRepresentativeOptions(
-        participants,
-        participant.id,
-      ).map((item) => item.id);
-      if (
-        !participant.consentProviderParticipantId ||
-        !representatives.includes(participant.consentProviderParticipantId)
-      ) {
-        errors.push({
-          code: "P3.9",
-          message: `${label}: выберите лицо, дающее согласие.`,
-        });
+    if (participant.personType === "minor_14_18") {
+      validateAdultPerson({
+        person: participant,
+        label,
+        code: "P3.8",
+        errors,
+        requireBirthPlace: false,
+        requireRegistration: false,
+      });
+      if (participant.legalCapacityStatus !== "full_before_18") {
+        const representatives = getLegalRepresentativeOptions(
+          participants,
+          participant.id,
+        ).map((item) => item.id);
+        if (
+          !participant.consentProviderParticipantId ||
+          !representatives.includes(participant.consentProviderParticipantId)
+        ) {
+          errors.push({
+            code: "P3.9",
+            message: `${label}: выберите лицо, дающее согласие.`,
+          });
+        }
       }
     }
 
     if (participant.actsThroughPowerOfAttorney) {
-      const representative = participants.find(
-        (item) => item.id === participant.attorneyRepresentativeParticipantId,
-      );
-      const power = participant.powerOfAttorney || {};
-      const hasPower = [
-        "issueDate",
-        "certifiedBy",
-        "registryNumber",
-        "powersSummary",
-      ].every((key) => !isBlank(power[key]));
+      const representative = participant.attorneyRepresentative || {};
+      const representativeLabel = `${label}: представитель по доверенности`;
       if (
-        !representative ||
-        representative.role !== "attorneyRepresentative" ||
-        !hasPower
+        [
+          representative.lastName,
+          representative.firstName,
+          representative.gender,
+          representative.birthDate,
+        ].some(isBlank)
       ) {
         errors.push({
           code: "P3.10",
-          message: `${label}: выберите поверенного и заполните реквизиты доверенности.`,
+          message: `${representativeLabel}: заполните ФИО, пол и дату рождения.`,
         });
       }
-      if (representative && representative.id === participant.id) {
+      validateAdultPerson({
+        person: representative,
+        label: representativeLabel,
+        code: "P3.10",
+        errors,
+        requireBirthPlace: false,
+        requireRegistration: false,
+      });
+      const power = participant.powerOfAttorney || {};
+      if (
+        ["issueDate", "registryNumber", "certifiedBy"].some((key) =>
+          isBlank(power[key]),
+        )
+      ) {
         errors.push({
           code: "P3.10",
-          message: `${label}: представитель не может действовать от имени самого себя.`,
+          message: `${label}: заполните дату, номер и удостоверившее лицо доверенности.`,
         });
       }
     }
@@ -509,10 +644,10 @@ export const validateParticipantsStep = (state = {}) => {
         message: `${label}: супруг/супруга не получает долю — проверьте основание.`,
       });
     }
-    if (participant.role === "formerSpouse" && !participant.notes) {
+    if (participant.role === "formerSpouse") {
       warnings.push({
         code: "P3.W4",
-        message: `${label}: добавьте пояснение по бывшему супругу в примечании.`,
+        message: `${label}: бывший супруг добавлен вручную — проверьте основание участия.`,
       });
     }
   });
@@ -542,7 +677,7 @@ export const buildEgrnParticipantCandidates = (
           {
             ...name,
             fullNameRaw: owner.fullName,
-            birthDate: owner.birthDate || "",
+            birthDate: toDisplayDate(owner.birthDate || ""),
             birthPlace: owner.birthPlace || "",
             snils: owner.snils || "",
             document: {
@@ -550,7 +685,7 @@ export const buildEgrnParticipantCandidates = (
               series: owner.passport?.series || "",
               number: owner.passport?.number || "",
               issuedBy: owner.passport?.issuedBy || "",
-              issueDate: owner.passport?.issueDate || "",
+              issueDate: toDisplayDate(owner.passport?.issueDate || ""),
               departmentCode:
                 owner.passport?.departmentCode ||
                 owner.passport?.deptCode ||
@@ -572,12 +707,20 @@ export const buildEgrnParticipantCandidates = (
 
 const formatParticipantName = (participant = {}) =>
   getFullName(participant) || participant.fullNameRaw || "[ФИО]";
-const genderWord = (participant, maleWord, femaleWord) =>
-  participant.gender === "female" ? femaleWord : maleWord;
+const genderText = (gender = "") =>
+  gender === "male" ? "мужской" : gender === "female" ? "женский" : "[пол]";
 const snilsText = (participant = {}) =>
   participant.snils ? `, СНИЛС: ${participant.snils}` : "";
-const passportText = (participant = {}) => {
-  const doc = participant.document || {};
+const registrationText = (person = {}) => {
+  if (person.registrationType === "none") return "без регистрации";
+  if (person.registrationType === "previous")
+    return `ранее зарегистрирован по адресу: ${person.registrationAddress || "[адрес]"}`;
+  if (person.registrationType === "temporary")
+    return `временно зарегистрирован по адресу: ${person.registrationAddress || "[адрес]"}`;
+  return `зарегистрирован по адресу: ${person.registrationAddress || "[адрес]"}`;
+};
+const passportText = (person = {}) => {
+  const doc = person.document || {};
   return `паспорт: ${doc.series || "[серия]"} ${doc.number || "[номер]"}, выдан: ${doc.issuedBy || "[кем выдан]"}, ${doc.issueDate || "[дата выдачи]"}, код подразделения: ${doc.departmentCode || "[код]"}`;
 };
 
@@ -585,12 +728,13 @@ export const buildParticipantSignatureText = (
   participant = {},
   participants = [],
 ) => {
-  const representative = participants.find(
-    (item) => item.id === participant.attorneyRepresentativeParticipantId,
-  );
-  if (participant.actsThroughPowerOfAttorney && representative) {
+  if (
+    participant.actsThroughPowerOfAttorney &&
+    participant.attorneyRepresentative
+  ) {
+    const representative = participant.attorneyRepresentative;
     const power = participant.powerOfAttorney || {};
-    return `от имени гр. РФ ${formatParticipantName(participant)}, пол: ${participant.gender || "[пол]"}, ${participant.birthDate || "[дата рождения]"} года рождения, место рождения: ${participant.birthPlace || "[место рождения]"}, ${passportText(participant)}, зарегистрирован(а) по адресу: ${participant.registrationAddress || "[адрес]"}, действует гр. РФ ${formatParticipantName(representative)}, ${passportText(representative)}, на основании доверенности от ${power.issueDate || "[дата]"}, удостоверенной ${power.certifiedBy || "[кем удостоверена]"}, реестровый № ${power.registryNumber || "[номер]"}`;
+    return `${formatParticipantName(participant)}, ${participant.birthDate || "[дата рождения]"} года рождения, ${passportText(participant)}, в лице представителя ${formatParticipantName(representative)}, ${passportText(representative)}, действующего на основании доверенности от ${power.issueDate || "[дата]"}, реестровый № ${power.registryNumber || "[номер]"}, удостоверенной ${power.certifiedBy || "[кем удостоверена]"}`;
   }
 
   if (participant.personType === "minor_under_14") {
@@ -599,7 +743,7 @@ export const buildParticipantSignatureText = (
         (item) => item.id === participant.legalRepresentativeParticipantId,
       ) || {};
     const doc = participant.document || {};
-    return `гр. РФ ${formatParticipantName(legalRepresentative)}, пол: ${legalRepresentative.gender || "[пол]"}, ${legalRepresentative.birthDate || "[дата рождения]"} года рождения, место рождения: ${legalRepresentative.birthPlace || "[место рождения]"}, ${passportText(legalRepresentative)}, зарегистрирован(а) по адресу: ${legalRepresentative.registrationAddress || "[адрес]"}, действующий(ая) за себя и как законный представитель своего несовершеннолетнего ${genderWord(participant, "сына", "дочери")} ${formatParticipantName(participant)}, пол: ${participant.gender || "[пол]"}, ${participant.birthDate || "[дата рождения]"} года рождения, зарегистрированного(ой) по адресу: ${participant.registrationAddress || "[адрес ребёнка]"} (свидетельство о рождении ${doc.series || "[серия]"} № ${doc.number || "[номер]"}, выдано ${doc.issuedBy || "[кем]"}, ${doc.issueDate || "[дата]"}, актовая запись № ${doc.actRecordNumber || "[номер]"} от ${doc.actRecordDate || "[дата]"})`;
+    return `за несовершеннолетнего ${formatParticipantName(participant)}, ${participant.birthDate || "[дата рождения]"} года рождения, свидетельство о рождении ${doc.series || "[серия]"} № ${doc.number || "[номер]"}, выдано ${doc.issuedBy || "[кем]"}, ${doc.issueDate || "[дата]"}, актовая запись № ${doc.actRecordNumber || "[номер]"} от ${doc.actRecordDate || "[дата]"}, действует его законный представитель ${formatParticipantName(legalRepresentative)}`;
   }
 
   if (participant.personType === "minor_14_18") {
@@ -607,8 +751,8 @@ export const buildParticipantSignatureText = (
       participants.find(
         (item) => item.id === participant.consentProviderParticipantId,
       ) || {};
-    return `гр. РФ ${formatParticipantName(participant)}, пол: ${participant.gender || "[пол]"}, ${participant.birthDate || "[дата рождения]"} года рождения, место рождения: ${participant.birthPlace || "[место рождения]"}, ${passportText(participant)}, зарегистрирован(а) по адресу: ${participant.registrationAddress || "[адрес]"}${snilsText(participant)}, действующий(ая) с согласия своего законного представителя ${formatParticipantName(consentProvider)}`;
+    return `${formatParticipantName(participant)}, ${participant.birthDate || "[дата рождения]"} года рождения, ${passportText(participant)}, действующий(ая) с согласия своего законного представителя ${formatParticipantName(consentProvider)}${snilsText(participant)}`;
   }
 
-  return `гр. РФ ${formatParticipantName(participant)}, пол: ${participant.gender || "[пол]"}, ${participant.birthDate || "[дата рождения]"} года рождения, место рождения: ${participant.birthPlace || "[место рождения]"}, ${passportText(participant)}, зарегистрирован(а) по адресу: ${participant.registrationAddress || "[адрес]"}${snilsText(participant)}`;
+  return `гр. РФ ${formatParticipantName(participant)}, пол: ${genderText(participant.gender)}, ${participant.birthDate || "[дата рождения]"} года рождения, место рождения: ${participant.birthPlace || "[место рождения]"}, ${passportText(participant)}, ${registrationText(participant)}${snilsText(participant)}`;
 };

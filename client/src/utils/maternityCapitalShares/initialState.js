@@ -1,3 +1,4 @@
+import { normalizeParticipantsStepState } from "./participantsStep";
 export const MATERNITY_CAPITAL_SHARES_STORAGE_KEY =
   "maternityCapitalShares:formData";
 
@@ -6,7 +7,7 @@ export const initialMaternityCapitalSharesForm = {
 
   ui: {
     currentStep: 0,
-     sourceMode: "",
+    sourceMode: "",
     parseStatus: "idle",
     parseWarnings: [],
     clearDraftRequested: false,
@@ -18,10 +19,10 @@ export const initialMaternityCapitalSharesForm = {
   },
 
   acquisition: {
-    type: '',
-    suggestedType: '',
-    confidence: '',
-    reason: '',
+    type: "",
+    suggestedType: "",
+    confidence: "",
+    reason: "",
     alternatives: [],
     confirmedByUser: false,
   },
@@ -173,6 +174,11 @@ export const hydrateMaternityCapitalSharesForm = (saved) => {
       participants: hydrated.participants,
     };
   }
+
+  hydrated.participantsStep = normalizeParticipantsStepState(
+    hydrated.participantsStep,
+    hydrated.agreement.date,
+  );
   hydrated.participants = hydrated.participantsStep.participants;
   return hydrated;
 };

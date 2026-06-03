@@ -1,20 +1,28 @@
 import React, { useMemo, useState } from "react";
+import FreeTextImportModal from "../common/FreeTextImportModal";
+import {
+  parseBirthCertificateText,
+  parseFreeTextPerson,
+  normalizeSnils,
+} from "../../utils/freeTextParser";
 import {
   applyParticipantAgeRules,
   buildEgrnParticipantCandidates,
   buildParticipantSignatureText,
-  createAttorneyRepresentative,
   createParticipant,
+  emptyAttorneyRepresentative,
   emptyPowerOfAttorney,
+  formatDateInput,
   getFullName,
   getLegalRepresentativeOptions,
   getParticipantRoleLabel,
+  splitFullName,
+  splitPassport,
   validateParticipantsStep,
 } from "../../utils/maternityCapitalShares/participantsStep";
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500";
-const smallInputClass = `${inputClass} py-1.5`;
 const labelClass = "block text-sm font-medium text-gray-700 mb-1";
 
 const ROLE_BUTTONS = [
@@ -58,13 +66,21 @@ const Field = ({ label, children }) => (
   </label>
 );
 
-const TextInput = ({ value, onChange, placeholder = "", type = "text" }) => (
+const TextInput = ({ value, onChange, placeholder = "" }) => (
   <input
-    type={type}
+    type="text"
     value={value || ""}
     onChange={(event) => onChange(event.target.value)}
     placeholder={placeholder}
     className={inputClass}
+  />
+);
+
+const DateInput = ({ value, onChange }) => (
+  <TextInput
+    value={value}
+    onChange={(next) => onChange(formatDateInput(next))}
+    placeholder="ДД.ММ.ГГГГ"
   />
 );
 
@@ -88,6 +104,66 @@ const TextArea = ({ value, onChange, placeholder = "" }) => (
   />
 );
 
+const formatPassportInput = (value = "") => {
+  const digits = String(value).replace(/\D/g, "").slice(0, 10);
+  return digits.length <= 4
+    ? digits
+    : `${digits.slice(0, 4)} ${digits.slice(4)}`;
+};
+
+const formatDepartmentCodeInput = (value = "") => {
+  const digits = String(value).replace(/\D/g, "").slice(0, 6);
+  return digits.length <= 3
+    ? digits
+    : `${digits.slice(0, 3)}-${digits.slice(3)}`;
+};
+
+const applyParsedPassport = (target, parsed) => {
+  const name = splitFullName(parsed.fullName || "");
+  const passport = splitPassport(parsed.passport || "");
+  return {
+    ...target,
+    ...Object.fromEntries(Object.entries(name).filter(([, value]) => value)),
+    fullNameRaw: parsed.fullName || target.fullNameRaw || "",
+    gender: parsed.gender || target.gender || "",
+    birthDate: parsed.birthDate || target.birthDate || "",
+    birthPlace: parsed.birthPlace || target.birthPlace || "",
+    registrationAddress:
+      parsed.registration || target.registrationAddress || "",
+    snils: parsed.snils || target.snils || "",
+    document: {
+      ...(target.document || {}),
+      type: "passport_rf",
+      series: passport.series || target.document?.series || "",
+      number: passport.number || target.document?.number || "",
+      issuedBy: parsed.passportIssued || target.document?.issuedBy || "",
+      issueDate: parsed.issueDate || target.document?.issueDate || "",
+      departmentCode:
+        parsed.departmentCode || target.document?.departmentCode || "",
+    },
+  };
+};
+
+const applyParsedBirthCertificate = (target, parsed) => {
+  const name = splitFullName(parsed.fullName || "");
+  return {
+    ...target,
+    ...Object.fromEntries(Object.entries(name).filter(([, value]) => value)),
+    fullNameRaw: parsed.fullName || target.fullNameRaw || "",
+    gender: parsed.gender || target.gender || "",
+    birthDate: parsed.birthDate || target.birthDate || "",
+    birthPlace: parsed.birthPlace || target.birthPlace || "",
+    registrationAddress:
+      parsed.registration || target.registrationAddress || "",
+    snils: parsed.snils || target.snils || "",
+    document: {
+      ...(target.document || {}),
+      ...(parsed.document || {}),
+      type: "birth_certificate_rf",
+    },
+  };
+};
+
 const getAgeBadge = (participant) => {
   if (participant.role !== "child") return "Взрослый режим";
   if (participant.personType === "minor_under_14") return "До 14 лет";
@@ -102,9 +178,15 @@ const getDocumentBadge = (participant) =>
 
 const ParticipantsSection = ({ formData, setFormData }) => {
   const [showImport, setShowImport] = useState(false);
+  const [textImport, setTextImport] = useState(null);
   const step = formData.participantsStep;
-  const participants = step.participants || [];
-  const validation = useMemo(() => validateParticipantsStep(step), [step]);
+  const participants = (step.participants || []).filter(
+    (participant) => participant.role !== "attorneyRepresentative",
+  );
+  const validation = useMemo(
+    () => validateParticipantsStep({ ...step, participants }),
+    [step, participants],
+  );
   const importCandidates = useMemo(
     () =>
       buildEgrnParticipantCandidates(
@@ -116,7 +198,7 @@ const ParticipantsSection = ({ formData, setFormData }) => {
 
   const updateStep = (updater) => {
     setFormData((prev) => {
-      const current = prev.participantsStep;
+      const current = { ...prev.participantsStep, participants };
       const next = typeof updater === "function" ? updater(current) : updater;
       return {
         ...prev,
@@ -143,7 +225,6 @@ const ParticipantsSection = ({ formData, setFormData }) => {
   const addParticipant = (role) => {
     updateStep((current) => {
       const participant = createParticipant(role, {}, current.agreementDate);
-      const nextParticipants = [...current.participants, participant];
       return {
         ...current,
         certificateHolderParticipantId:
@@ -151,7 +232,7 @@ const ParticipantsSection = ({ formData, setFormData }) => {
           !current.certificateHolderParticipantId
             ? participant.id
             : current.certificateHolderParticipantId,
-        participants: nextParticipants,
+        participants: [...current.participants, participant],
       };
     });
   };
@@ -195,56 +276,25 @@ const ParticipantsSection = ({ formData, setFormData }) => {
             participant.consentProviderParticipantId === id
               ? null
               : participant.consentProviderParticipantId,
-          attorneyRepresentativeParticipantId:
-            participant.attorneyRepresentativeParticipantId === id
-              ? null
-              : participant.attorneyRepresentativeParticipantId,
         })),
     }));
   };
 
   const togglePowerOfAttorney = (participant) => {
-    updateStep((current) => {
-      if (participant.actsThroughPowerOfAttorney) {
-        return {
-          ...current,
-          participants: current.participants.map((item) =>
-            item.id === participant.id
-              ? {
-                  ...item,
-                  actsThroughPowerOfAttorney: false,
-                  attorneyRepresentativeParticipantId: null,
-                  powerOfAttorney: null,
-                }
-              : item,
-          ),
-        };
-      }
-
-      const representative = createAttorneyRepresentative(
-        {},
-        current.agreementDate,
-      );
-      return {
-        ...current,
-        participants: [
-          ...current.participants.map((item) =>
-            item.id === participant.id
-              ? {
-                  ...item,
-                  actsThroughPowerOfAttorney: true,
-                  attorneyRepresentativeParticipantId: representative.id,
-                  powerOfAttorney: emptyPowerOfAttorney({
-                    principalParticipantId: item.id,
-                    representativeParticipantId: representative.id,
-                  }),
-                }
-              : item,
-          ),
-          representative,
-        ],
-      };
-    });
+    updateParticipant(
+      participant.id,
+      participant.actsThroughPowerOfAttorney
+        ? {
+            actsThroughPowerOfAttorney: false,
+            attorneyRepresentative: null,
+            powerOfAttorney: null,
+          }
+        : {
+            actsThroughPowerOfAttorney: true,
+            attorneyRepresentative: emptyAttorneyRepresentative(),
+            powerOfAttorney: emptyPowerOfAttorney(),
+          },
+    );
   };
 
   const importFromEgrn = (selectedCandidates) => {
@@ -253,6 +303,34 @@ const ParticipantsSection = ({ formData, setFormData }) => {
       participants: [...current.participants, ...selectedCandidates],
     }));
     setShowImport(false);
+  };
+
+  const applyTextImport = (rawText) => {
+    if (!textImport) return;
+    const parsed =
+      textImport.kind === "birth"
+        ? parseBirthCertificateText(rawText || "")
+        : parseFreeTextPerson(rawText || "");
+    updateParticipant(textImport.participantId, {
+      source: {
+        origin:
+          textImport.kind === "birth"
+            ? "birth_certificate_text_parser"
+            : "passport_text_parser",
+        needsReview: true,
+      },
+      ...(textImport.scope === "representative"
+        ? {
+            attorneyRepresentative: applyParsedPassport(
+              textImport.currentRepresentative || emptyAttorneyRepresentative(),
+              parsed,
+            ),
+          }
+        : textImport.kind === "birth"
+          ? applyParsedBirthCertificate(textImport.currentParticipant, parsed)
+          : applyParsedPassport(textImport.currentParticipant, parsed)),
+    });
+    setTextImport(null);
   };
 
   return (
@@ -264,15 +342,13 @@ const ParticipantsSection = ({ formData, setFormData }) => {
               Пакет 3. Участники и подписи
             </h2>
             <p className="mt-2 text-sm text-gray-600">
-              Заполните юридически размеченный список лиц: кто получает долю,
-              кто подписывает сам, кто действует за ребёнка и кто подписывает по
-              доверенности.
+              Заполните участников соглашения, получателей долей, законных
+              представителей и представителей по доверенности.
             </p>
           </div>
           <div className="min-w-[220px]">
             <Field label="Дата соглашения для расчёта возраста">
-              <TextInput
-                type="date"
+              <DateInput
                 value={step.agreementDate}
                 onChange={updateAgreementDate}
               />
@@ -309,11 +385,21 @@ const ParticipantsSection = ({ formData, setFormData }) => {
         />
       )}
 
+      <FreeTextImportModal
+        open={!!textImport}
+        title={
+          textImport?.kind === "birth"
+            ? "Вставьте свидетельство о рождении текстом"
+            : "Вставьте паспортные данные текстом"
+        }
+        onClose={() => setTextImport(null)}
+        onApply={applyTextImport}
+      />
+
       <section className="grid gap-4">
         {participants.length === 0 && (
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-gray-600">
-            Участники ещё не добавлены. Начните с владельца сертификата или
-            импортируйте кандидатов из ЕГРН.
+            Участники ещё не добавлены.
           </div>
         )}
         {participants.map((participant, index) => (
@@ -326,6 +412,13 @@ const ParticipantsSection = ({ formData, setFormData }) => {
             onUpdate={(patch) => updateParticipant(participant.id, patch)}
             onRemove={() => removeParticipant(participant.id)}
             onTogglePowerOfAttorney={() => togglePowerOfAttorney(participant)}
+            onTextImport={(payload) =>
+              setTextImport({
+                participantId: participant.id,
+                currentParticipant: participant,
+                ...payload,
+              })
+            }
           />
         ))}
       </section>
@@ -340,14 +433,12 @@ const EgrnImportModal = ({ candidates, onClose, onImport }) => {
     candidates.map((candidate) => candidate.id),
   );
   const [drafts, setDrafts] = useState(candidates);
-
-  const updateDraft = (id, patch) => {
+  const updateDraft = (id, patch) =>
     setDrafts((current) =>
       current.map((candidate) =>
         candidate.id === id ? { ...candidate, ...patch } : candidate,
       ),
     );
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -376,7 +467,6 @@ const EgrnImportModal = ({ candidates, onClose, onImport }) => {
             В ownerBlocks не найдено физических лиц для импорта.
           </div>
         )}
-
         <div className="space-y-3">
           {drafts.map((candidate) => (
             <div
@@ -437,7 +527,6 @@ const EgrnImportModal = ({ candidates, onClose, onImport }) => {
             </div>
           ))}
         </div>
-
         <div className="mt-6 flex justify-end gap-3">
           <button
             type="button"
@@ -473,29 +562,39 @@ const ParticipantCard = ({
   onUpdate,
   onRemove,
   onTogglePowerOfAttorney,
+  onTextImport,
 }) => {
   const legalOptions = getLegalRepresentativeOptions(
     participants,
     participant.id,
   );
-  const attorneyOptions = participants.filter(
-    (item) =>
-      item.role === "attorneyRepresentative" && item.id !== participant.id,
-  );
   const signaturePreview = buildParticipantSignatureText(
     participant,
     participants,
   );
-
+  const isCertificateHolder = participant.id === certificateHolderParticipantId;
   const updateDocument = (patch) => onUpdate({ document: patch });
+  const updateRepresentative = (patch) =>
+    onUpdate({
+      attorneyRepresentative: {
+        ...(participant.attorneyRepresentative ||
+          emptyAttorneyRepresentative()),
+        ...patch,
+        document: {
+          ...(participant.attorneyRepresentative?.document ||
+            emptyAttorneyRepresentative().document),
+          ...(patch.document || {}),
+          type: "passport_rf",
+        },
+      },
+    });
   const updatePower = (patch) =>
     onUpdate({
-      powerOfAttorney: { ...(participant.powerOfAttorney || {}), ...patch },
+      powerOfAttorney: {
+        ...(participant.powerOfAttorney || emptyPowerOfAttorney()),
+        ...patch,
+      },
     });
-
-  const roleLocked = participant.role === "attorneyRepresentative";
-  const shareLocked = participant.role === "attorneyRepresentative";
-  const isCertificateHolder = participant.id === certificateHolderParticipantId;
 
   return (
     <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -521,7 +620,7 @@ const ParticipantCard = ({
             )}
             {isCertificateHolder && (
               <span className="rounded-full bg-green-100 px-3 py-1 text-xs text-green-700">
-                Выбран владелец сертификата
+                Владелец сертификата
               </span>
             )}
           </div>
@@ -556,19 +655,10 @@ const ParticipantCard = ({
             onChange={(role) => onUpdate({ role })}
           >
             {ROLE_OPTIONS.map(([value, label]) => (
-              <option
-                key={value}
-                value={value}
-                disabled={roleLocked && value !== participant.role}
-              >
+              <option key={value} value={value}>
                 {label}
               </option>
             ))}
-            {roleLocked && (
-              <option value="attorneyRepresentative">
-                Представитель по доверенности
-              </option>
-            )}
           </SelectInput>
         </Field>
         <Field label="Владелец сертификата">
@@ -577,19 +667,15 @@ const ParticipantCard = ({
               type="radio"
               checked={isCertificateHolder}
               onChange={() => onUpdate({ role: "certificateHolder" })}
-              disabled={participant.role === "attorneyRepresentative"}
             />
             Это владелец сертификата
           </label>
         </Field>
         <Field label="Получает долю">
-          <label
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${shareLocked ? "border-gray-200 bg-gray-50 text-gray-400" : "border-gray-200 text-gray-700"}`}
-          >
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
             <input
               type="checkbox"
               checked={participant.receivesShare === true}
-              disabled={shareLocked}
               onChange={(event) =>
                 onUpdate({ receivesShare: event.target.checked })
               }
@@ -599,95 +685,11 @@ const ParticipantCard = ({
         </Field>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Field label="Фамилия">
-          <TextInput
-            value={participant.lastName}
-            onChange={(lastName) => onUpdate({ lastName })}
-          />
-        </Field>
-        <Field label="Имя">
-          <TextInput
-            value={participant.firstName}
-            onChange={(firstName) => onUpdate({ firstName })}
-          />
-        </Field>
-        <Field label="Отчество">
-          <TextInput
-            value={participant.middleName}
-            onChange={(middleName) => onUpdate({ middleName })}
-          />
-        </Field>
-        <Field label="Пол">
-          <SelectInput
-            value={participant.gender}
-            onChange={(gender) => onUpdate({ gender })}
-          >
-            <option value="">Выберите</option>
-            <option value="male">Мужской</option>
-            <option value="female">Женский</option>
-          </SelectInput>
-        </Field>
-        <Field label="Дата рождения">
-          <TextInput
-            type="date"
-            value={participant.birthDate}
-            onChange={(birthDate) => onUpdate({ birthDate })}
-          />
-        </Field>
-        <Field label="Место рождения">
-          <TextInput
-            value={participant.birthPlace}
-            onChange={(birthPlace) => onUpdate({ birthPlace })}
-          />
-        </Field>
-        <Field label="Адрес регистрации">
-          <TextArea
-            value={participant.registrationAddress}
-            onChange={(registrationAddress) =>
-              onUpdate({ registrationAddress })
-            }
-          />
-        </Field>
-        <Field label="СНИЛС (необязательно)">
-          <TextInput
-            value={participant.snils}
-            onChange={(snils) => onUpdate({ snils })}
-          />
-        </Field>
-        <Field label="Может быть законным представителем">
-          <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={participant.canBeLegalRepresentative === true}
-              disabled={participant.role === "attorneyRepresentative"}
-              onChange={(event) =>
-                onUpdate({ canBeLegalRepresentative: event.target.checked })
-              }
-            />
-            Родитель / опекун / попечитель
-          </label>
-        </Field>
-      </div>
-
-      {participant.legalCapacityStatus === "full_before_18" && (
-        <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50 p-4">
-          <Field label="Основание полной дееспособности до 18 лет">
-            <SelectInput
-              value={participant.legalCapacityBasis}
-              onChange={(legalCapacityBasis) =>
-                onUpdate({ legalCapacityBasis })
-              }
-            >
-              <option value="">Выберите основание</option>
-              <option value="marriage_before_18">
-                Вступление в брак до 18 лет
-              </option>
-              <option value="emancipation">Эмансипация</option>
-            </SelectInput>
-          </Field>
-        </div>
-      )}
+      <PersonFields
+        person={participant}
+        onChange={onUpdate}
+        includeRegistration
+      />
 
       {participant.role === "child" &&
         participant.personType === "minor_14_18" && (
@@ -710,6 +712,7 @@ const ParticipantCard = ({
       <DocumentFields
         participant={participant}
         updateDocument={updateDocument}
+        onTextImport={onTextImport}
       />
 
       {participant.role === "child" &&
@@ -746,217 +749,73 @@ const ParticipantCard = ({
           />
         )}
 
-      {participant.role !== "attorneyRepresentative" && (
-        <div className="mt-5 rounded-xl border border-gray-200 p-4">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
-            <input
-              type="checkbox"
-              checked={participant.actsThroughPowerOfAttorney === true}
-              onChange={onTogglePowerOfAttorney}
+      <div className="mt-5 rounded-xl border border-gray-200 p-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-800">
+          <input
+            type="checkbox"
+            checked={participant.actsThroughPowerOfAttorney === true}
+            onChange={onTogglePowerOfAttorney}
+          />
+          Подписывает через представителя по доверенности
+        </label>
+        {participant.actsThroughPowerOfAttorney && (
+          <div className="mt-4 space-y-4">
+            <h4 className="font-medium text-gray-900">
+              Данные представителя по доверенности
+            </h4>
+            <button
+              type="button"
+              onClick={() =>
+                onTextImport({
+                  kind: "passport",
+                  scope: "representative",
+                  currentRepresentative:
+                    participant.attorneyRepresentative ||
+                    emptyAttorneyRepresentative(),
+                })
+              }
+              className="rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              Вставить паспортные данные текстом
+            </button>
+            <PersonFields
+              person={
+                participant.attorneyRepresentative ||
+                emptyAttorneyRepresentative()
+              }
+              onChange={updateRepresentative}
+              includeRegistration
             />
-            Подписывает через представителя по доверенности
-          </label>
-          {participant.actsThroughPowerOfAttorney && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Поверенный">
-                <SelectInput
-                  value={participant.attorneyRepresentativeParticipantId}
-                  onChange={(attorneyRepresentativeParticipantId) =>
-                    onUpdate({
-                      attorneyRepresentativeParticipantId,
-                      powerOfAttorney: {
-                        ...(participant.powerOfAttorney || {}),
-                        principalParticipantId: participant.id,
-                        representativeParticipantId:
-                          attorneyRepresentativeParticipantId,
-                      },
-                    })
-                  }
-                >
-                  <option value="">Выберите поверенного</option>
-                  {attorneyOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {getFullName(option) ||
-                        getParticipantRoleLabel(option.role)}
-                    </option>
-                  ))}
-                </SelectInput>
-              </Field>
+            <PassportFields
+              document={
+                participant.attorneyRepresentative?.document ||
+                emptyAttorneyRepresentative().document
+              }
+              onChange={(document) => updateRepresentative({ document })}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Дата доверенности">
-                <TextInput
-                  type="date"
+                <DateInput
                   value={participant.powerOfAttorney?.issueDate}
                   onChange={(issueDate) => updatePower({ issueDate })}
                 />
               </Field>
-              <Field label="Реестровый номер">
+              <Field label="Номер / реестровый номер доверенности">
                 <TextInput
                   value={participant.powerOfAttorney?.registryNumber}
                   onChange={(registryNumber) => updatePower({ registryNumber })}
                 />
               </Field>
-              <Field label="Кем удостоверена">
+              <Field label="Кем удостоверена доверенность">
                 <TextInput
                   value={participant.powerOfAttorney?.certifiedBy}
                   onChange={(certifiedBy) => updatePower({ certifiedBy })}
                 />
               </Field>
-              <Field label="Тип удостоверения">
-                <SelectInput
-                  value={
-                    participant.powerOfAttorney?.certificationType || "notary"
-                  }
-                  onChange={(certificationType) =>
-                    updatePower({ certificationType })
-                  }
-                >
-                  <option value="notary">Нотариальная</option>
-                  <option value="equated_under_185_1">
-                    Приравнена к нотариальной по ст. 185.1 ГК РФ
-                  </option>
-                </SelectInput>
-              </Field>
-              <Field label="Полномочия">
-                <TextArea
-                  value={participant.powerOfAttorney?.powersSummary}
-                  onChange={(powersSummary) => updatePower({ powersSummary })}
-                />
-              </Field>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={
-                    participant.powerOfAttorney?.allowsAgreementSigning !==
-                    false
-                  }
-                  onChange={(event) =>
-                    updatePower({
-                      allowsAgreementSigning: event.target.checked,
-                    })
-                  }
-                />{" "}
-                Подписание соглашения
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={
-                    participant.powerOfAttorney?.allowsStateRegistration !==
-                    false
-                  }
-                  onChange={(event) =>
-                    updatePower({
-                      allowsStateRegistration: event.target.checked,
-                    })
-                  }
-                />{" "}
-                Госрегистрация прав
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={
-                    participant.powerOfAttorney?.allowsRosreestrSubmission !==
-                    false
-                  }
-                  onChange={(event) =>
-                    updatePower({
-                      allowsRosreestrSubmission: event.target.checked,
-                    })
-                  }
-                />{" "}
-                Подача в Росреестр
-              </label>
-              <label className="flex items-center gap-2 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={
-                    participant.powerOfAttorney?.isSubdelegation === true
-                  }
-                  onChange={(event) =>
-                    updatePower({ isSubdelegation: event.target.checked })
-                  }
-                />{" "}
-                Передоверие
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-
-      {participant.canBeLegalRepresentative &&
-        [
-          "guardian",
-          "custodian",
-          "appointed_representative_by_guardianship_authority",
-        ].includes(participant.legalRepresentativeBasis) && (
-          <div className="mt-5 rounded-xl border border-orange-100 bg-orange-50 p-4">
-            <h4 className="font-medium text-orange-900">
-              Основание представительства органа опеки
-            </h4>
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                className={smallInputClass}
-                placeholder="Наименование акта"
-                value={participant.guardianshipAuthorityAct?.title || ""}
-                onChange={(event) =>
-                  onUpdate({
-                    guardianshipAuthorityAct: {
-                      ...(participant.guardianshipAuthorityAct || {}),
-                      title: event.target.value,
-                    },
-                  })
-                }
-              />
-              <input
-                className={smallInputClass}
-                placeholder="Номер"
-                value={participant.guardianshipAuthorityAct?.number || ""}
-                onChange={(event) =>
-                  onUpdate({
-                    guardianshipAuthorityAct: {
-                      ...(participant.guardianshipAuthorityAct || {}),
-                      number: event.target.value,
-                    },
-                  })
-                }
-              />
-              <input
-                className={smallInputClass}
-                type="date"
-                value={participant.guardianshipAuthorityAct?.date || ""}
-                onChange={(event) =>
-                  onUpdate({
-                    guardianshipAuthorityAct: {
-                      ...(participant.guardianshipAuthorityAct || {}),
-                      date: event.target.value,
-                    },
-                  })
-                }
-              />
-              <input
-                className={smallInputClass}
-                placeholder="Кем выдан"
-                value={participant.guardianshipAuthorityAct?.issuedBy || ""}
-                onChange={(event) =>
-                  onUpdate({
-                    guardianshipAuthorityAct: {
-                      ...(participant.guardianshipAuthorityAct || {}),
-                      issuedBy: event.target.value,
-                    },
-                  })
-                }
-              />
             </div>
           </div>
         )}
-
-      <Field label="Примечание">
-        <TextArea
-          value={participant.notes}
-          onChange={(notes) => onUpdate({ notes })}
-        />
-      </Field>
+      </div>
 
       <details className="mt-5 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
         <summary className="cursor-pointer font-medium text-gray-900">
@@ -968,71 +827,222 @@ const ParticipantCard = ({
   );
 };
 
-const DocumentFields = ({ participant, updateDocument }) => {
+const PersonFields = ({ person, onChange, includeRegistration = false }) => (
+  <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <Field label="Фамилия">
+      <TextInput
+        value={person.lastName}
+        onChange={(lastName) => onChange({ lastName })}
+      />
+    </Field>
+    <Field label="Имя">
+      <TextInput
+        value={person.firstName}
+        onChange={(firstName) => onChange({ firstName })}
+      />
+    </Field>
+    <Field label="Отчество">
+      <TextInput
+        value={person.middleName}
+        onChange={(middleName) => onChange({ middleName })}
+      />
+    </Field>
+    <Field label="Пол">
+      <SelectInput
+        value={person.gender}
+        onChange={(gender) => onChange({ gender })}
+      >
+        <option value="">Выберите</option>
+        <option value="male">Мужской</option>
+        <option value="female">Женский</option>
+      </SelectInput>
+    </Field>
+    <Field label="Дата рождения">
+      <DateInput
+        value={person.birthDate}
+        onChange={(birthDate) => onChange({ birthDate })}
+      />
+    </Field>
+    <Field label="Место рождения">
+      <TextInput
+        value={person.birthPlace}
+        onChange={(birthPlace) => onChange({ birthPlace })}
+      />
+    </Field>
+    {includeRegistration && (
+      <RegistrationFields person={person} onChange={onChange} />
+    )}
+    <Field label="СНИЛС (необязательно)">
+      <TextInput
+        value={person.snils}
+        onChange={(snils) =>
+          onChange({ snils: normalizeSnils(snils) || snils })
+        }
+      />
+    </Field>
+    <Field label="Может быть законным представителем">
+      <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={person.canBeLegalRepresentative === true}
+          onChange={(event) =>
+            onChange({ canBeLegalRepresentative: event.target.checked })
+          }
+        />
+        Родитель / опекун / попечитель
+      </label>
+    </Field>
+  </div>
+);
+
+const RegistrationFields = ({ person, onChange }) => (
+  <>
+    {person.registrationType !== "none" && (
+      <Field label="Адрес регистрации">
+        <TextArea
+          value={person.registrationAddress}
+          onChange={(registrationAddress) => onChange({ registrationAddress })}
+        />
+      </Field>
+    )}
+    <Field label="Тип регистрации">
+      <div className="grid grid-cols-1 gap-2 text-sm text-gray-700">
+        {[
+          ["previous", "Ранее"],
+          ["temporary", "Временная"],
+          ["none", "Без регистрации"],
+        ].map(([value, label]) => (
+          <label key={value} className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={person.registrationType === value}
+              onChange={() =>
+                onChange({
+                  registrationType:
+                    person.registrationType === value ? "" : value,
+                })
+              }
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </Field>
+  </>
+);
+
+const DocumentFields = ({ participant, updateDocument, onTextImport }) => {
   const isBirthCertificate =
     participant.document?.type === "birth_certificate_rf";
   return (
     <div className="mt-5 rounded-xl border border-gray-200 p-4">
-      <h4 className="font-medium text-gray-900">
-        {isBirthCertificate ? "Свидетельство о рождении" : "Паспорт РФ"}
-      </h4>
-      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Field label="Серия">
-          <TextInput
-            value={participant.document?.series}
-            onChange={(series) => updateDocument({ series })}
-          />
-        </Field>
-        <Field label="Номер">
-          <TextInput
-            value={participant.document?.number}
-            onChange={(number) => updateDocument({ number })}
-          />
-        </Field>
-        <Field label="Кем выдан">
-          <TextInput
-            value={participant.document?.issuedBy}
-            onChange={(issuedBy) => updateDocument({ issuedBy })}
-          />
-        </Field>
-        <Field label="Дата выдачи">
-          <TextInput
-            type="date"
-            value={participant.document?.issueDate}
-            onChange={(issueDate) => updateDocument({ issueDate })}
-          />
-        </Field>
-        {!isBirthCertificate && (
-          <Field label="Код подразделения">
-            <TextInput
-              value={participant.document?.departmentCode}
-              onChange={(departmentCode) => updateDocument({ departmentCode })}
-            />
-          </Field>
-        )}
-        {isBirthCertificate && (
-          <Field label="Номер актовой записи">
-            <TextInput
-              value={participant.document?.actRecordNumber}
-              onChange={(actRecordNumber) =>
-                updateDocument({ actRecordNumber })
-              }
-            />
-          </Field>
-        )}
-        {isBirthCertificate && (
-          <Field label="Дата актовой записи">
-            <TextInput
-              type="date"
-              value={participant.document?.actRecordDate}
-              onChange={(actRecordDate) => updateDocument({ actRecordDate })}
-            />
-          </Field>
-        )}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h4 className="font-medium text-gray-900">
+          {isBirthCertificate ? "Свидетельство о рождении" : "Паспорт РФ"}
+        </h4>
+        <button
+          type="button"
+          onClick={() =>
+            onTextImport({ kind: isBirthCertificate ? "birth" : "passport" })
+          }
+          className="rounded-full bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+        >
+          {isBirthCertificate
+            ? "Вставить свидетельство о рождении текстом"
+            : "Вставить паспортные данные текстом"}
+        </button>
       </div>
+      {isBirthCertificate ? (
+        <BirthCertificateFields
+          document={participant.document}
+          onChange={updateDocument}
+        />
+      ) : (
+        <PassportFields
+          document={participant.document}
+          onChange={updateDocument}
+        />
+      )}
     </div>
   );
 };
+
+const PassportFields = ({ document, onChange }) => (
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <Field label="Паспорт: серия и номер">
+      <TextInput
+        value={[document?.series, document?.number].filter(Boolean).join(" ")}
+        onChange={(value) => {
+          const passport = splitPassport(formatPassportInput(value));
+          onChange({ series: passport.series, number: passport.number });
+        }}
+      />
+    </Field>
+    <Field label="Кем выдан">
+      <TextInput
+        value={document?.issuedBy}
+        onChange={(issuedBy) => onChange({ issuedBy })}
+      />
+    </Field>
+    <Field label="Дата выдачи">
+      <DateInput
+        value={document?.issueDate}
+        onChange={(issueDate) => onChange({ issueDate })}
+      />
+    </Field>
+    <Field label="Код подразделения">
+      <TextInput
+        value={document?.departmentCode}
+        onChange={(departmentCode) =>
+          onChange({
+            departmentCode: formatDepartmentCodeInput(departmentCode),
+          })
+        }
+      />
+    </Field>
+  </div>
+);
+
+const BirthCertificateFields = ({ document, onChange }) => (
+  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <Field label="Серия">
+      <TextInput
+        value={document?.series}
+        onChange={(series) => onChange({ series })}
+      />
+    </Field>
+    <Field label="Номер">
+      <TextInput
+        value={document?.number}
+        onChange={(number) => onChange({ number })}
+      />
+    </Field>
+    <Field label="Кем выдано">
+      <TextInput
+        value={document?.issuedBy}
+        onChange={(issuedBy) => onChange({ issuedBy })}
+      />
+    </Field>
+    <Field label="Дата выдачи">
+      <DateInput
+        value={document?.issueDate}
+        onChange={(issueDate) => onChange({ issueDate })}
+      />
+    </Field>
+    <Field label="Номер актовой записи">
+      <TextInput
+        value={document?.actRecordNumber}
+        onChange={(actRecordNumber) => onChange({ actRecordNumber })}
+      />
+    </Field>
+    <Field label="Дата актовой записи">
+      <DateInput
+        value={document?.actRecordDate}
+        onChange={(actRecordDate) => onChange({ actRecordDate })}
+      />
+    </Field>
+  </div>
+);
 
 const RepresentativeFields = ({
   title,
