@@ -8,15 +8,14 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import MaternityObjectRightsSection from "../components/maternityCapitalShares/MaternityObjectRightsSection";
 import ParticipantsSection from "../components/maternityCapitalShares/ParticipantsSection";
+import MaternityCapitalAndSharesSection from "../components/maternityCapitalShares/MaternityCapitalAndSharesSection";
 import {
   hydrateMaternityCapitalSharesForm,
   initialMaternityCapitalSharesForm,
   MATERNITY_CAPITAL_SHARES_STORAGE_KEY,
 } from "../utils/maternityCapitalShares/initialState";
-import {
-  toDisplayDate,
-  validateParticipantsStep,
-} from "../utils/maternityCapitalShares/participantsStep";
+import { validateParticipantsStep } from "../utils/maternityCapitalShares/participantsStep";
+import { validateMaternityCapitalAndSharesStep } from "../utils/maternityCapitalShares/maternityCapitalAndSharesStep";
 
 const PILL = {
   base: "inline-flex items-center justify-center h-11 px-5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2",
@@ -28,8 +27,7 @@ const PILL = {
 const steps = [
   "Объект, право собственности и ЕГРН",
   "Участники",
-  "Материнский капитал",
-  "Доли",
+  "Материнский капитал и расчёт долей",
 ];
 
 const loadDraft = () => {
@@ -80,11 +78,21 @@ const MaternityCapitalSharesWizard = () => {
     () => validateParticipantsStep(formData.participantsStep),
     [formData.participantsStep],
   );
+  const maternitySharesValidation = useMemo(
+    () => validateMaternityCapitalAndSharesStep(formData),
+    [formData],
+  );
   const canContinue = useMemo(() => {
     if (currentStep === 0) return isObjectStepReady(formData);
     if (currentStep === 1) return participantsValidation.isValid;
+    if (currentStep === 2) return maternitySharesValidation.isValid;
     return true;
-  }, [currentStep, formData, participantsValidation.isValid]);
+  }, [
+    currentStep,
+    formData,
+    participantsValidation.isValid,
+    maternitySharesValidation.isValid,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -201,12 +209,16 @@ const MaternityCapitalSharesWizard = () => {
         );
         return;
       }
-      setValidationMessage(
-        "Исправьте блокирующие ошибки пакета 3 перед переходом к материнскому капиталу.",
-      );
+      if (currentStep === 1) {
+        setValidationMessage(
+          "Исправьте блокирующие ошибки пакета 3 перед переходом к материнскому капиталу.",
+        );
+        return;
+      }
+      setValidationMessage(maternitySharesValidation.errors.join(" "));
       return;
     }
-    
+
     if (currentStep === 0) {
       setFormData((prev) => ({
         ...prev,
@@ -223,9 +235,22 @@ const MaternityCapitalSharesWizard = () => {
       return;
     }
 
-    setValidationMessage(
-      "Пакет 4 будет добавлен следующим этапом. Данные участников уже готовы для расчёта долей.",
-    );
+    if (currentStep === 1) {
+      setFormData((prev) => ({
+        ...prev,
+        ui: { ...prev.ui, currentStep: 2 },
+      }));
+      setValidationMessage("");
+      return;
+    }
+
+    if (currentStep === 2) {
+      setValidationMessage(
+        maternitySharesValidation.isValid
+          ? "Пакет 4 заполнен. Генерация итогового документа будет подключена следующим этапом."
+          : maternitySharesValidation.errors.join(" "),
+      );
+    }
   };
 
   const goBack = () => {
@@ -281,7 +306,13 @@ const MaternityCapitalSharesWizard = () => {
             key={stepName}
             type="button"
             onClick={() => {
-              if (index <= 1 && (index === 0 || isObjectStepReady(formData))) {
+              if (
+                index === 0 ||
+                (index === 1 && isObjectStepReady(formData)) ||
+                (index === 2 &&
+                  isObjectStepReady(formData) &&
+                  participantsValidation.isValid)
+              ) {
                 setFormData((prev) => ({
                   ...prev,
                   ui: { ...prev.ui, currentStep: index },
@@ -292,9 +323,12 @@ const MaternityCapitalSharesWizard = () => {
               currentStep === index
                 ? "text-blue-600 font-medium border-b-2 border-blue-600"
                 : "text-gray-600"
-            } ${index > 1 || (index === 1 && !isObjectStepReady(formData)) ? "cursor-not-allowed opacity-60" : ""}`}
+            } ${(index === 1 && !isObjectStepReady(formData)) || (index === 2 && (!isObjectStepReady(formData) || !participantsValidation.isValid)) ? "cursor-not-allowed opacity-60" : ""}`}
             disabled={
-              index > 1 || (index === 1 && !isObjectStepReady(formData))
+              (index === 1 && !isObjectStepReady(formData)) ||
+              (index === 2 &&
+                (!isObjectStepReady(formData) ||
+                  !participantsValidation.isValid))
             }
           >
             <FontAwesomeIcon icon={faFileContract} className="mr-2" />
@@ -316,6 +350,13 @@ const MaternityCapitalSharesWizard = () => {
 
       {currentStep === 1 && (
         <ParticipantsSection formData={formData} setFormData={setFormData} />
+      )}
+
+      {currentStep === 2 && (
+        <MaternityCapitalAndSharesSection
+          formData={formData}
+          setFormData={setFormData}
+        />
       )}
 
       {validationMessage && (
