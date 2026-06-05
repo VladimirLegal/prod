@@ -6,18 +6,25 @@ import {
   parseMaternityCapitalStatementText,
 } from "../../utils/maternityCapitalShares/extractMaternityCapitalStatement";
 import {
+  ceilFractionToReadableFraction,
+  ceilPercent,
+  ceilSquareMeters,
   compareFractions,
   decimalToFraction,
   divideFractionByNumber,
   formatFraction,
+  formatMoneyInput,
+  fractionToDecimal,
   multiplyFractions,
   parseFraction,
   parseMoney,
+  subtractFractions,
   sumFractions,
 } from "../../utils/maternityCapitalShares/shareCalculations";
 import {
   getFullName,
   getParticipantRoleLabel,
+  validateParticipantsStep,
 } from "../../utils/maternityCapitalShares/participantsStep";
 import { validateMaternityCapitalAndSharesStep } from "../../utils/maternityCapitalShares/maternityCapitalAndSharesStep";
 
@@ -40,9 +47,22 @@ const USE_PURPOSES = [
 ];
 
 const CALCULATION_MODES = [
-  ["minimum_by_maternity_capital", "Минимальные доли по материнскому капиталу"],
-  ["equal_between_recipients", "Равные доли между всеми получателями"],
-  ["manual", "Ручной расчёт"],
+  ["cost_equal_rounded_fraction", "2.3 — Рекомендуемый расчёт по стоимости"],
+  ["manual", "Ручное распределение долей"],
+  [
+    "area_equal_min_round",
+    "1.1 — Точный расчёт по площади с минимальным округлением",
+  ],
+  [
+    "area_children_increased",
+    "1.2 — Детям по понятной площади, родителям остаток",
+  ],
+  ["area_total_rounded_meter", "1.3 — Понятный расчёт по площади"],
+  ["cost_total_percent", "2.1 — Простой расчёт в процентах"],
+  [
+    "cost_children_increased",
+    "2.2 — Детям по понятному проценту, родителям остаток",
+  ],
 ];
 
 const BASE_LABELS = {
@@ -58,6 +78,29 @@ const normalizeName = (value = "") =>
     .replace(/\s+/g, " ")
     .trim()
     .toUpperCase();
+
+const asPercent = (fraction) => {
+  const decimal = fractionToDecimal(fraction);
+  return decimal
+    ? `${(decimal * 100).toLocaleString("ru-RU", { maximumFractionDigits: 4 })}%`
+    : "—";
+};
+
+const formatArea = (value) =>
+  Number(value || 0).toLocaleString("ru-RU", {
+    maximumFractionDigits: 2,
+  });
+
+const normalizeCalculationMode = (mode = "") => {
+  if (
+    ["minimum_by_maternity_capital", "equal_between_recipients", ""].includes(
+      mode,
+    )
+  ) {
+    return "cost_equal_rounded_fraction";
+  }
+  return mode;
+};
 
 const findHolderMatches = (participants = [], parsed = {}) => {
   const parsedName = normalizeName(parsed.certificateHolderFullName);
@@ -92,31 +135,110 @@ const getBaseFraction = (base = {}) => {
   return { n: 1, d: 1 };
 };
 
-const buildRows = ({ participants, existingRows, recommendedShare, mode }) =>
-  participants
-    .filter((participant) => participant.receivesShare === true)
-    .map((participant) => {
-      const existing =
-        existingRows.find((row) => row.participantId === participant.id) || {};
-      const share =
-        mode === "manual" ? existing.recommendedShare || "" : recommendedShare;
-      const finalShare = existing.manuallyEdited ? existing.finalShare : share;
-      return {
-        participantId: participant.id,
-        fullName: getFullName(participant),
-        role: participant.role,
-        personType: participant.personType,
-        receivesShare: true,
-        recommendedShare: share,
-        finalShare: finalShare || "",
-        source: existing.source || "auto",
-        manuallyEdited: existing.manuallyEdited || false,
-        warning:
-          share && finalShare && compareFractions(finalShare, share) === -1
-            ? "Итоговая доля меньше рекомендуемой."
-            : "",
-      };
-    });
+const getChildren = (recipients = []) =>
+  recipients.filter((participant) => participant.role === "child");
+
+const getParents = (recipients = []) =>
+  recipients.filter((participant) =>
+    ["certificateHolder", "spouse"].includes(participant.role),
+  );
+
+const getRemainderLegalMode = (family = {}) => {
+  if (
+    family.maritalStatusMode === "married" &&
+    (!family.marriageContract ||
+      family.marriageContract.status === "not_concluded")
+  ) {
+    return "joint_spouses";
+  }
+  return "needs_review";
+};
+
+const getRemainderLegalText = (mode) =>
+  mode === "joint_spouses"
+    ? "Оставшаяся часть объекта сохраняется в общей совместной собственности супругов."
+    : "Правовой режим остатка требует проверки. Укажите сведения о браке и брачном договоре на вкладке “Участники”.";
+
+const buildObjectReadiness = (formData = {}) => {
+  const object = formData.object || {};
+  const rights = formData.rights || {};
+  const encumbrance = formData.encumbrance || {};
+  const errors = [];
+  const warnings = [];
+
+  if (!formData.ui?.sourceMode) errors.push("Не выбран источник данных.");
+  if (!String(object.address || "").trim())
+    errors.push("Не заполнен адрес объекта.");
+  if (!String(object.cadastralNumber || "").trim())
+    errors.push("Не заполнен кадастровый номер.");
+  if (!String(object.area || "").trim())
+    errors.push("Не заполнена площадь объекта.");
+  if (!formData.acquisition?.type) errors.push("Не выбран тип приобретения.");
+  if (
+    ["house_with_land", "house_with_land_share"].includes(
+      formData.acquisition?.type,
+    )
+  ) {
+    errors.push(
+      "Выбран дом с участком / доля в доме с участком — сценарий пока не поддержан.",
+    );
+  }
+  if (!rights.ownershipType && !(rights.ownerBlocks || []).length) {
+    errors.push("Не заполнены данные права собственности.");
+  }
+  if (
+    !(rights.basisDocuments || []).length &&
+    !(rights.documents || []).length
+  ) {
+    errors.push("Не заполнены документы-основания.");
+  }
+  if (encumbrance.type && !["none", "unknown"].includes(encumbrance.type)) {
+    warnings.push(
+      `Есть обременение: ${encumbrance.subtype || encumbrance.description || encumbrance.type}.`,
+    );
+  }
+
+  return { errors, warnings };
+};
+
+const toRow = ({
+  participant,
+  existing,
+  exactShare,
+  recommendedShare,
+  objectArea,
+}) => {
+  const finalShare = existing?.manuallyEdited
+    ? existing.finalShare
+    : recommendedShare;
+  const finalFraction = parseFraction(finalShare);
+  return {
+    participantId: participant.id,
+    fullName: getFullName(participant),
+    role: participant.role,
+    personType: participant.personType,
+    receivesShare: true,
+    exactMskShare: formatFraction(exactShare),
+    recommendedShare,
+    finalShare: finalShare || "",
+    finalShareArea:
+      finalFraction && objectArea
+        ? formatArea(fractionToDecimal(finalFraction) * objectArea)
+        : "",
+    exceedsMskMinimum:
+      finalFraction && exactShare
+        ? compareFractions(finalFraction, exactShare) === 1
+        : false,
+    source: existing?.source || "auto",
+    manuallyEdited: existing?.manuallyEdited || false,
+    warning:
+      finalFraction &&
+      recommendedShare &&
+      compareFractions(finalFraction, recommendedShare) === -1
+        ? "Итоговая доля меньше рекомендуемой."
+        : "",
+  };
+};
 
 const calculateShares = ({ formData }) => {
   const participants =
@@ -125,22 +247,145 @@ const calculateShares = ({ formData }) => {
     (participant) => participant.receivesShare === true,
   );
   const base = formData.distributionBase || {};
+  const object = formData.object || {};
   const shares = formData.shares || {};
+  const mode = normalizeCalculationMode(shares.calculationMode);
   const amountUsed = parseMoney(
     formData.maternityCapital?.amountUsed || shares.maternityCapitalAmount,
   );
   const purchasePrice = parseMoney(
     shares.purchasePriceForCalculation ||
       base.purchasePriceForCalculation ||
-      formData.object?.purchasePrice,
+      object.purchasePrice,
   );
+  const objectArea =
+    Number(
+      String(object.area || base.totalObjectArea || "").replace(",", "."),
+    ) || 0;
   const baseFraction = getBaseFraction(base);
-  let maternityPart = null;
-  let warning = base.calculationWarning || "";
+  const acquiredFraction = baseFraction;
+  const mskShareRaw =
+    amountUsed > 0 && purchasePrice > 0
+      ? multiplyFractions(
+          baseFraction,
+          decimalToFraction(amountUsed / purchasePrice),
+        )
+      : null;
+  const mskShare =
+    mskShareRaw && compareFractions(mskShareRaw, baseFraction) >= 0
+      ? baseFraction
+      : mskShareRaw;
+  const nonMskShare = mskShare
+    ? subtractFractions(baseFraction, mskShare)
+    : null;
+  const exactPerRecipient =
+    mskShare && recipients.length
+      ? divideFractionByNumber(mskShare, recipients.length)
+      : null;
+  const children = getChildren(recipients);
+  const parents = getParents(recipients);
+  const existingRows = shares.rows || [];
+  const warnings = [];
+  let recommendationById = new Map();
+  let exactById = new Map();
 
-  if (amountUsed > 0 && purchasePrice > 0) {
-    const moneyPart = decimalToFraction(amountUsed / purchasePrice);
-    maternityPart = multiplyFractions(baseFraction, moneyPart);
+  recipients.forEach((participant) =>
+    exactById.set(participant.id, exactPerRecipient),
+  );
+
+  if (mskShare && recipients.length) {
+    if (mode === "area_equal_min_round") {
+      const personArea = ceilSquareMeters(
+        (objectArea * fractionToDecimal(mskShare)) / recipients.length,
+        2,
+      );
+      recipients.forEach((participant) =>
+        recommendationById.set(
+          participant.id,
+          formatFraction(decimalToFraction(personArea / objectArea)),
+        ),
+      );
+    } else if (mode === "area_total_rounded_meter") {
+      const roundedMskArea = ceilSquareMeters(
+        objectArea * fractionToDecimal(mskShare),
+        0,
+      );
+      const personArea = ceilSquareMeters(
+        roundedMskArea / recipients.length,
+        2,
+      );
+      recipients.forEach((participant) =>
+        recommendationById.set(
+          participant.id,
+          formatFraction(decimalToFraction(personArea / objectArea)),
+        ),
+      );
+    } else if (mode === "area_children_increased") {
+      const mskArea = objectArea * fractionToDecimal(mskShare);
+      const childArea = Math.max(
+        1,
+        ceilSquareMeters(mskArea / recipients.length, 0),
+      );
+      const childShare = decimalToFraction(childArea / objectArea);
+      const childTotal = decimalToFraction(
+        (childArea * children.length) / objectArea,
+      );
+      const parentBase = subtractFractions(mskShare, childTotal);
+      const parentShare =
+        parents.length && parentBase && fractionToDecimal(parentBase) > 0
+          ? ceilFractionToReadableFraction(
+              divideFractionByNumber(parentBase, parents.length),
+            )
+          : ceilFractionToReadableFraction(exactPerRecipient);
+      recipients.forEach((participant) =>
+        recommendationById.set(
+          participant.id,
+          formatFraction(
+            participant.role === "child" ? childShare : parentShare,
+          ),
+        ),
+      );
+    } else if (mode === "cost_total_percent") {
+      const roundedPercent = ceilPercent(fractionToDecimal(mskShare), 0);
+      const roundedTotal = decimalToFraction(roundedPercent / 100);
+      recipients.forEach((participant) =>
+        recommendationById.set(
+          participant.id,
+          formatFraction(
+            divideFractionByNumber(roundedTotal, recipients.length),
+          ),
+        ),
+      );
+    } else if (mode === "cost_children_increased") {
+      const childPercent = Math.max(
+        1,
+        ceilPercent(fractionToDecimal(exactPerRecipient), 0),
+      );
+      const childShare = decimalToFraction(childPercent / 100);
+      const childTotal = decimalToFraction(
+        (childPercent * children.length) / 100,
+      );
+      const parentBase = subtractFractions(mskShare, childTotal);
+      const parentShare =
+        parents.length && parentBase && fractionToDecimal(parentBase) > 0
+          ? ceilFractionToReadableFraction(
+              divideFractionByNumber(parentBase, parents.length),
+            )
+          : ceilFractionToReadableFraction(exactPerRecipient);
+      recipients.forEach((participant) =>
+        recommendationById.set(
+          participant.id,
+          formatFraction(
+            participant.role === "child" ? childShare : parentShare,
+          ),
+        ),
+      );
+    } else if (mode !== "manual") {
+      const rounded = ceilFractionToReadableFraction(exactPerRecipient);
+      recipients.forEach((participant) =>
+        recommendationById.set(participant.id, formatFraction(rounded)),
+      );
+    }
   }
 
   if (
@@ -148,47 +393,125 @@ const calculateShares = ({ formData }) => {
     !parseFraction(base.legalShare || base.purchasedShare) &&
     baseFraction.d !== 1
   ) {
-    warning =
-      "Юридическая доля рассчитана ориентировочно по площади комнаты. Проверьте долю по ЕГРН и правоустанавливающим документам.";
+    warnings.push(
+      "Юридическая доля рассчитана ориентировочно по площади комнаты. Проверьте долю по ЕГРН и правоустанавливающим документам.",
+    );
   }
 
-  let recommendedShare = "";
-  if (
-    shares.calculationMode === "equal_between_recipients" &&
-    recipients.length
-  ) {
-    recommendedShare = formatFraction(
-      divideFractionByNumber(baseFraction, recipients.length),
+  const rows = recipients.map((participant) => {
+    const existing = existingRows.find(
+      (row) => row.participantId === participant.id,
     );
-  } else if (maternityPart && recipients.length) {
-    recommendedShare = formatFraction(
-      divideFractionByNumber(maternityPart, recipients.length),
+    const recommendedShare =
+      mode === "manual"
+        ? existing?.recommendedShare || ""
+        : recommendationById.get(participant.id) || "";
+    return toRow({
+      participant,
+      existing,
+      exactShare: exactById.get(participant.id),
+      recommendedShare,
+      objectArea,
+    });
+  });
+  const distributedShare = sumFractions(
+    rows.map((row) => row.finalShare).filter(Boolean),
+  );
+  const remainderShare = distributedShare
+    ? subtractFractions(baseFraction, distributedShare)
+    : nonMskShare;
+  const overMskShare =
+    distributedShare && mskShare
+      ? subtractFractions(distributedShare, mskShare)
+      : null;
+  let riskLevel = "green";
+  let manualDistributionWarning = "";
+  let notaryRiskWarning = "";
+
+  if (mode === "manual" && distributedShare && mskShare) {
+    if (
+      compareFractions(distributedShare, baseFraction) === 0 &&
+      compareFractions(mskShare, baseFraction) === -1
+    ) {
+      riskLevel = "red";
+      manualDistributionWarning =
+        "Выбранный вариант предусматривает распределение всей квартиры между членами семьи в долевую собственность. Такой вариант может изменить режим общей совместной собственности супругов. В этой ситуации может потребоваться нотариальное удостоверение соглашения.";
+    } else if (compareFractions(distributedShare, mskShare) === 1) {
+      riskLevel = "yellow";
+      manualDistributionWarning =
+        "Вы распределяете между членами семьи больше, чем часть объекта, оплаченная средствами материнского капитала. Превышение приходится на часть объекта, приобретённую не за счёт средств МСК.";
+    } else {
+      manualDistributionWarning =
+        "Выбранное распределение долей соответствует логике выделения долей в рамках материнского капитала. Оставшаяся часть объекта сохраняет прежний правовой режим.";
+    }
+  }
+
+  if (
+    riskLevel === "red" ||
+    (distributedShare &&
+      compareFractions(distributedShare, baseFraction) === 0 &&
+      nonMskShare &&
+      fractionToDecimal(nonMskShare) > 0)
+  ) {
+    notaryRiskWarning =
+      "Выбранный вариант может изменить режим совместной собственности супругов или предусматривать передачу долей сверх части, оплаченной средствами материнского капитала. В этом случае может потребоваться нотариальное удостоверение соглашения.";
+  }
+
+  if (rows.some((row) => row.exceedsMskMinimum)) {
+    warnings.push(
+      "Доли отдельных членов семьи превышают минимальные расчётные доли, приходящиеся на них в рамках материнского капитала. Это допустимо по соглашению сторон, однако такое увеличение может затрагивать часть объекта, приобретённую не за счёт средств МСК.",
     );
   }
+  if (manualDistributionWarning && riskLevel !== "green")
+    warnings.push(manualDistributionWarning);
+  if (notaryRiskWarning) warnings.push(notaryRiskWarning);
+
+  const remainderLegalMode = getRemainderLegalMode(formData.family || {});
+  if (remainderLegalMode === "needs_review")
+    warnings.push(getRemainderLegalText(remainderLegalMode));
 
   return {
+    calculationMode: mode,
     baseType: base.type || "",
     purchasePriceForCalculation:
       shares.purchasePriceForCalculation ||
       base.purchasePriceForCalculation ||
-      formData.object?.purchasePrice ||
+      object.purchasePrice ||
       "",
     maternityCapitalAmount:
       formData.maternityCapital?.amountUsed ||
       shares.maternityCapitalAmount ||
       "",
-    calculatedMaternityPart: formatFraction(maternityPart),
-    calculatedMaternityPartFraction: formatFraction(maternityPart),
+    calculatedMaternityPart: formatFraction(mskShare),
+    calculatedMaternityPartFraction: formatFraction(mskShare),
+    mskShare: formatFraction(mskShare),
+    nonMskShare: formatFraction(nonMskShare),
+    mskArea:
+      mskShare && objectArea
+        ? formatArea(objectArea * fractionToDecimal(mskShare))
+        : "",
+    nonMskArea:
+      nonMskShare && objectArea
+        ? formatArea(objectArea * fractionToDecimal(nonMskShare))
+        : "",
+    baseFraction: formatFraction(baseFraction),
+    acquiredFraction: formatFraction(acquiredFraction),
     recipientsCount: recipients.length,
-    recommendedSharePerRecipient: recommendedShare,
-    recommendedSharePerRecipientFraction: recommendedShare,
-    rows: buildRows({
-      participants,
-      existingRows: shares.rows || [],
-      recommendedShare,
-      mode: shares.calculationMode,
-    }),
-    warnings: warning ? [warning] : [],
+    exactSharePerRecipient: formatFraction(exactPerRecipient),
+    recommendedSharePerRecipient: rows[0]?.recommendedShare || "",
+    recommendedSharePerRecipientFraction: rows[0]?.recommendedShare || "",
+    distributedShareTotal: formatFraction(distributedShare),
+    remainderShare: formatFraction(remainderShare),
+    overMskShare:
+      overMskShare && fractionToDecimal(overMskShare) > 0
+        ? formatFraction(overMskShare)
+        : "",
+    remainderLegalMode,
+    riskLevel,
+    notaryRiskWarning,
+    manualDistributionWarning,
+    rows,
+    warnings,
   };
 };
 
@@ -199,13 +522,25 @@ const Field = ({ label, children }) => (
   </label>
 );
 
-const TextInput = ({ value, onChange, placeholder = "", type = "text" }) => (
+const TextInput = ({ value, onChange, onBlur, placeholder = "" }) => (
   <input
-    type={type}
+    type="text"
     value={value || ""}
     onChange={(event) => onChange(event.target.value)}
+    onBlur={onBlur}
     placeholder={placeholder}
     className={inputClass}
+  />
+);
+
+const MoneyInput = ({ value, onChange, placeholder = "" }) => (
+  <TextInput
+    value={value}
+    onChange={onChange}
+    onBlur={() => {
+      if (String(value || "").trim()) onChange(formatMoneyInput(value));
+    }}
+    placeholder={placeholder}
   />
 );
 
@@ -226,6 +561,37 @@ const SummaryItem = ({ label, value }) => (
   </div>
 );
 
+const ReadinessGroup = ({ title, errors = [], warnings = [] }) => (
+  <div className="rounded-xl border border-gray-200 p-4">
+    <h3 className="font-semibold text-gray-900">{title}</h3>
+    {!errors.length && !warnings.length && (
+      <div className="mt-2 text-sm text-green-700">
+        Критичных замечаний нет.
+      </div>
+    )}
+    {!!errors.length && (
+      <div className="mt-2 text-sm text-red-800">
+        <strong>Критичные ошибки:</strong>
+        <ul className="list-disc pl-5 mt-1">
+          {errors.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+    {!!warnings.length && (
+      <div className="mt-2 text-sm text-yellow-800">
+        <strong>Предупреждения:</strong>
+        <ul className="list-disc pl-5 mt-1">
+          {warnings.map((item) => (
+            <li key={item.message || item}>{item.message || item}</li>
+          ))}
+        </ul>
+      </div>
+    )}
+  </div>
+);
+
 export default function MaternityCapitalAndSharesSection({
   formData,
   setFormData,
@@ -243,19 +609,42 @@ export default function MaternityCapitalAndSharesSection({
     [formData.maternityCapital],
   );
   const shares = formData.shares || {};
+  const holderId =
+    formData.participantsStep?.certificateHolderParticipantId || "";
+  const holderParticipant = participants.find(
+    (participant) => participant.id === holderId,
+  );
+  const calculationMode = normalizeCalculationMode(shares.calculationMode);
   const derived = useMemo(() => calculateShares({ formData }), [formData]);
-  const validation = useMemo(
+  const matcapValidation = useMemo(
     () => validateMaternityCapitalAndSharesStep(formData),
+    [formData],
+  );
+  const participantsValidation = useMemo(
+    () =>
+      validateParticipantsStep(
+        formData.participantsStep || {},
+        formData.family || {},
+      ),
+    [formData.family, formData.participantsStep],
+  );
+  const objectReadiness = useMemo(
+    () => buildObjectReadiness(formData),
     [formData],
   );
   const holderMatches = useMemo(
     () => findHolderMatches(participants, parsedStatement || maternityCapital),
     [participants, parsedStatement, maternityCapital],
   );
+  const visibleCalculationModes = shares.showAdvancedCalculationModes
+    ? CALCULATION_MODES
+    : CALCULATION_MODES.filter(([value]) =>
+        ["cost_equal_rounded_fraction", "manual"].includes(value),
+      );
   const needsManualConfirmation =
-    shares.calculationMode === "manual" ||
-    (validation.warnings || []).some((warning) =>
-      warning.includes("меньше рекомендуемой"),
+    calculationMode === "manual" ||
+    (matcapValidation.warnings || []).some((warning) =>
+      String(warning).includes("меньше рекомендуемой"),
     );
 
   useEffect(() => {
@@ -263,19 +652,26 @@ export default function MaternityCapitalAndSharesSection({
       const nextShares = {
         ...prev.shares,
         ...derived,
+        showAdvancedCalculationModes:
+          prev.shares.showAdvancedCalculationModes || false,
         warnings: Array.from(
           new Set([
             ...(derived.warnings || []),
-            ...(validation.warnings || []),
+            ...(matcapValidation.warnings || []),
           ]),
         ),
-        errors: validation.errors || [],
+        errors: matcapValidation.errors || [],
       };
       if (JSON.stringify(prev.shares) === JSON.stringify(nextShares))
         return prev;
       return { ...prev, shares: nextShares };
     });
-  }, [derived, validation.errors, validation.warnings, setFormData]);
+  }, [
+    derived,
+    matcapValidation.errors,
+    matcapValidation.warnings,
+    setFormData,
+  ]);
 
   const updateMaternityCapital = (patch) => {
     setFormData((prev) => ({
@@ -288,16 +684,33 @@ export default function MaternityCapitalAndSharesSection({
     setFormData((prev) => ({ ...prev, shares: { ...prev.shares, ...patch } }));
   };
 
+  const updateHolderParticipantId = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      participantsStep: {
+        ...prev.participantsStep,
+        certificateHolderParticipantId: value || null,
+      },
+      maternityCapital: {
+        ...prev.maternityCapital,
+        certificateHolderParticipantId: value || "",
+      },
+      family: { ...prev.family, certificateHolderParticipantId: value || "" },
+    }));
+  };
+
   const setParseResult = (parsed, sourceMode, fileName = "") => {
     const matches = findHolderMatches(participants, parsed);
     setParsedStatement(parsed);
     updateMaternityCapital({
       sourceMode,
       parseStatus: "parsed",
-      parseWarnings:
-        matches.length === 0
+      parseWarnings: [
+        ...(parsed.parseWarnings || []),
+        ...(matches.length === 0
           ? ["Владелец сертификата из выписки не найден среди участников."]
-          : [],
+          : []),
+      ],
       statementFileName: fileName,
     });
   };
@@ -333,19 +746,33 @@ export default function MaternityCapitalAndSharesSection({
   const applyParsedStatement = () => {
     if (!parsedStatement) return;
     const matches = findHolderMatches(participants, parsedStatement);
-    const autoParticipantId =
-      matches.length === 1
-        ? matches[0].id
-        : maternityCapital.certificateHolderParticipantId;
-    updateMaternityCapital({
-      ...parsedStatement,
-      certificateHolderParticipantId: autoParticipantId || "",
-      parseStatus: "applied",
-      parseWarnings:
-        matches.length === 0
-          ? ["Владелец сертификата из выписки не найден среди участников."]
-          : [],
-    });
+    const autoParticipantId = matches.length === 1 ? matches[0].id : holderId;
+    setFormData((prev) => ({
+      ...prev,
+      participantsStep: {
+        ...prev.participantsStep,
+        certificateHolderParticipantId: autoParticipantId || null,
+      },
+      maternityCapital: {
+        ...prev.maternityCapital,
+        ...parsedStatement,
+        certificateHolderParticipantId: autoParticipantId || "",
+        parseStatus: "applied",
+        parseWarnings: [
+          ...(parsedStatement.parseWarnings || []),
+          ...(matches.length === 0
+            ? ["Владелец сертификата из выписки не найден среди участников."]
+            : []),
+        ],
+      },
+      family: {
+        ...prev.family,
+        certificateHolderParticipantId:
+          autoParticipantId ||
+          prev.family?.certificateHolderParticipantId ||
+          "",
+      },
+    }));
   };
 
   const rejectParsedStatement = () => {
@@ -367,15 +794,17 @@ export default function MaternityCapitalAndSharesSection({
     });
   };
 
-  const finalSum = formatFraction(
-    sumFractions(
-      (shares.rows || []).map((row) => row.finalShare).filter(Boolean),
-    ),
-  );
   const isMortgagePurpose = [
     "mortgage_initial_payment",
     "mortgage_debt_repayment",
   ].includes(maternityCapital.usePurpose);
+  const allCriticalErrors = [
+    ...objectReadiness.errors,
+    ...(participantsValidation.errors || []).map(
+      (item) => item.message || item,
+    ),
+    ...(matcapValidation.errors || []),
+  ];
 
   return (
     <div className="space-y-6">
@@ -433,6 +862,10 @@ export default function MaternityCapitalAndSharesSection({
             </h3>
             <div className="grid sm:grid-cols-2 gap-4 text-sm">
               <SummaryItem
+                label="Тип выписки"
+                value={parsedStatement.statementType}
+              />
+              <SummaryItem
                 label="Дата выписки"
                 value={parsedStatement.statementDate}
               />
@@ -482,6 +915,11 @@ export default function MaternityCapitalAndSharesSection({
                 сертификата вручную.
               </div>
             )}
+            {!!parsedStatement.parseWarnings?.length && (
+              <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-800">
+                {parsedStatement.parseWarnings.join(" ")}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -503,14 +941,7 @@ export default function MaternityCapitalAndSharesSection({
 
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Владелец сертификата">
-            <SelectInput
-              value={maternityCapital.certificateHolderParticipantId}
-              onChange={(value) =>
-                updateMaternityCapital({
-                  certificateHolderParticipantId: value,
-                })
-              }
-            >
+            <SelectInput value={holderId} onChange={updateHolderParticipantId}>
               <option value="">Выберите участника</option>
               {participants.map((participant) => (
                 <option key={participant.id} value={participant.id}>
@@ -519,14 +950,10 @@ export default function MaternityCapitalAndSharesSection({
               ))}
             </SelectInput>
           </Field>
-          <Field label="ФИО владельца из выписки / вручную">
-            <TextInput
-              value={maternityCapital.certificateHolderFullName}
-              onChange={(value) =>
-                updateMaternityCapital({ certificateHolderFullName: value })
-              }
-            />
-          </Field>
+          <SummaryItem
+            label="Выбранный владелец из участников"
+            value={holderParticipant ? getFullName(holderParticipant) : "—"}
+          />
           <Field label="СНИЛС владельца">
             <TextInput
               value={maternityCapital.certificateHolderSnils}
@@ -623,6 +1050,33 @@ export default function MaternityCapitalAndSharesSection({
           <SummaryItem label="Выплачено" value={maternityCapital.paidAmount} />
         </div>
 
+        {!!(maternityCapital.operations || []).length && (
+          <div className="rounded-xl border border-gray-200 p-4">
+            <h3 className="font-semibold text-gray-900">Операции по выписке</h3>
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <tbody>
+                  {maternityCapital.operations.map((operation) => (
+                    <tr
+                      key={`${operation.index}-${operation.date}`}
+                      className="border-t"
+                    >
+                      <td className="py-2 pr-3">{operation.date || "—"}</td>
+                      <td className="py-2 pr-3">{operation.operationName}</td>
+                      <td className="py-2 pr-3 font-medium">
+                        {operation.amount}
+                      </td>
+                      <td className="py-2 text-gray-500">
+                        {operation.operationType}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {parseMoney(maternityCapital.paidAmount) > 0 && (
           <button
             type="button"
@@ -633,7 +1087,8 @@ export default function MaternityCapitalAndSharesSection({
             }
             className={`${pillClass} bg-green-600 text-white hover:bg-green-700 focus:ring-green-400`}
           >
-            Подставить выплаченные средства как сумму, использованную на объект
+            Подставить перечисленные средства как сумму, использованную на
+            объект
           </button>
         )}
         {parseMoney(maternityCapital.reservedAmount) > 0 && (
@@ -645,12 +1100,12 @@ export default function MaternityCapitalAndSharesSection({
 
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Сумма материнского капитала, использованная на объект">
-            <TextInput
+            <MoneyInput
               value={maternityCapital.amountUsed}
               onChange={(value) =>
                 updateMaternityCapital({ amountUsed: value })
               }
-              placeholder="800 000,00"
+              placeholder="800 000"
             />
           </Field>
           <Field label="Дата использования / перечисления, если известна">
@@ -741,7 +1196,7 @@ export default function MaternityCapitalAndSharesSection({
           />
         </div>
         <Field label="Цена приобретения / цена приобретённой части">
-          <TextInput
+          <MoneyInput
             value={
               shares.purchasePriceForCalculation ||
               formData.distributionBase?.purchasePriceForCalculation
@@ -749,41 +1204,114 @@ export default function MaternityCapitalAndSharesSection({
             onChange={(value) =>
               updateShares({ purchasePriceForCalculation: value })
             }
-            placeholder="8 000 000,00"
+            placeholder="8 000 000"
           />
         </Field>
       </section>
 
       <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5">
+        <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-950 space-y-2">
+          <p className="font-semibold">
+            Выберите способ расчёта долей по материнскому капиталу.
+          </p>
+          <p>
+            По общему правилу доли определяются исходя из того, какая часть
+            стоимости квартиры была оплачена средствами материнского капитала.
+            Эта часть распределяется между родителями и детьми. Оставшаяся часть
+            квартиры, которая была оплачена не средствами материнского капитала,
+            сохраняет прежний режим собственности.
+          </p>
+          <p>
+            Рекомендуемый вариант — расчёт по стоимости квартиры с равным
+            распределением долей между всеми членами семьи. Система не округляет
+            доли вниз: если применяется округление, оно производится только в
+            большую сторону.
+          </p>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-4">
           <Field label="Способ расчёта долей">
             <SelectInput
-              value={shares.calculationMode}
+              value={calculationMode}
               onChange={(value) => updateShares({ calculationMode: value })}
             >
-              {CALCULATION_MODES.map(([value, label]) => (
+              {visibleCalculationModes.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </SelectInput>
           </Field>
-          <div className="rounded-xl bg-blue-50 p-4 text-sm text-blue-950">
-            <div>
-              Маткапитальная часть:{" "}
-              <strong>{shares.calculatedMaternityPartFraction || "—"}</strong>
-            </div>
-            <div>
-              Получателей долей: <strong>{shares.recipientsCount || 0}</strong>
-            </div>
-            <div>
-              Рекомендуемая доля каждому:{" "}
-              <strong>
-                {shares.recommendedSharePerRecipientFraction || "—"}
-              </strong>
-            </div>
-          </div>
+          <label className="flex items-center gap-2 pt-7 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={shares.showAdvancedCalculationModes === true}
+              onChange={(event) =>
+                updateShares({
+                  showAdvancedCalculationModes: event.target.checked,
+                })
+              }
+            />
+            Показать другие варианты расчёта
+          </label>
         </div>
+
+        {calculationMode === "manual" && (
+          <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+            Вы можете самостоятельно указать долю каждого члена семьи. После
+            ввода долей система проверит, соответствует ли выбранное
+            распределение части квартиры, оплаченной средствами материнского
+            капитала.
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-4 gap-4 rounded-xl bg-gray-50 p-4 text-sm">
+          <SummaryItem
+            label="МСК-часть объекта"
+            value={`${shares.mskShare || "—"} (${asPercent(parseFraction(shares.mskShare))})`}
+          />
+          <SummaryItem
+            label="Распределённая доля"
+            value={shares.distributedShareTotal}
+          />
+          <SummaryItem
+            label="Не-МСК-остаток"
+            value={shares.remainderShare || shares.nonMskShare}
+          />
+          <SummaryItem
+            label="Правовой режим остатка"
+            value={getRemainderLegalText(shares.remainderLegalMode)}
+          />
+          <SummaryItem
+            label="МСК-площадь"
+            value={shares.mskArea ? `${shares.mskArea} кв. м` : "—"}
+          />
+          <SummaryItem
+            label="Не-МСК площадь"
+            value={shares.nonMskArea ? `${shares.nonMskArea} кв. м` : "—"}
+          />
+          <SummaryItem
+            label="Точная доля каждому"
+            value={shares.exactSharePerRecipient}
+          />
+          <SummaryItem
+            label="Рекомендуемая доля каждому"
+            value={shares.recommendedSharePerRecipientFraction}
+          />
+        </div>
+
+        {shares.manualDistributionWarning && (
+          <div
+            className={`rounded-lg p-4 text-sm ${shares.riskLevel === "red" ? "bg-red-50 text-red-800" : shares.riskLevel === "yellow" ? "bg-yellow-50 text-yellow-800" : "bg-green-50 text-green-800"}`}
+          >
+            {shares.manualDistributionWarning}
+          </div>
+        )}
+        {shares.notaryRiskWarning && (
+          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
+            {shares.notaryRiskWarning}
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border border-gray-200 rounded-xl overflow-hidden">
@@ -791,10 +1319,11 @@ export default function MaternityCapitalAndSharesSection({
               <tr>
                 <th className="px-3 py-2">Участник</th>
                 <th className="px-3 py-2">Роль</th>
-                <th className="px-3 py-2">Тип участника</th>
+                <th className="px-3 py-2">Минимальная МСК-доля</th>
                 <th className="px-3 py-2">Рекомендуемая доля</th>
                 <th className="px-3 py-2">Итоговая доля</th>
-                <th className="px-3 py-2">Комментарий / предупреждение</th>
+                <th className="px-3 py-2">Площадь</th>
+                <th className="px-3 py-2">Комментарий</th>
               </tr>
             </thead>
             <tbody>
@@ -809,7 +1338,7 @@ export default function MaternityCapitalAndSharesSection({
                   <td className="px-3 py-2">
                     {getParticipantRoleLabel(row.role)}
                   </td>
-                  <td className="px-3 py-2">{row.personType || "—"}</td>
+                  <td className="px-3 py-2">{row.exactMskShare || "—"}</td>
                   <td className="px-3 py-2">{row.recommendedShare || "—"}</td>
                   <td className="px-3 py-2 min-w-[120px]">
                     <TextInput
@@ -820,24 +1349,28 @@ export default function MaternityCapitalAndSharesSection({
                       placeholder="1/40"
                     />
                   </td>
+                  <td className="px-3 py-2">
+                    {row.finalShareArea ? `${row.finalShareArea} кв. м` : "—"}
+                  </td>
                   <td className="px-3 py-2 text-yellow-800">
                     {row.warning ||
-                      (row.manuallyEdited ? "Изменено вручную" : "")}
+                      (row.exceedsMskMinimum
+                        ? "Доля выше минимальной МСК-доли"
+                        : row.manuallyEdited
+                          ? "Изменено вручную"
+                          : "")}
                   </td>
                 </tr>
               ))}
               {!(shares.rows || []).length && (
                 <tr>
-                  <td className="px-3 py-4 text-gray-500" colSpan="6">
+                  <td className="px-3 py-4 text-gray-500" colSpan="7">
                     В Пакете 3 нет участников с флагом “Получает долю”.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-        <div className="text-sm text-gray-600">
-          Сумма итоговых долей: <strong>{finalSum || "—"}</strong>
         </div>
 
         <div className="rounded-xl bg-gray-50 p-4 space-y-3">
@@ -882,27 +1415,47 @@ export default function MaternityCapitalAndSharesSection({
             </span>
           </label>
         )}
+      </section>
 
-        {!!validation.errors.length && (
-          <div className="rounded-lg bg-red-50 p-4 text-sm text-red-800">
-            <strong>Блокирующие ошибки:</strong>
-            <ul className="list-disc pl-5 mt-2">
-              {validation.errors.map((error) => (
-                <li key={error}>{error}</li>
-              ))}
-            </ul>
+      <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Проверка готовности соглашения
+            </h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Переходы между вкладками не блокируются. В будущем критичные
+              ошибки будут блокировать только кнопку формирования соглашения.
+            </p>
           </div>
-        )}
-        {!!validation.warnings.length && (
-          <div className="rounded-lg bg-yellow-50 p-4 text-sm text-yellow-800">
-            <strong>Предупреждения:</strong>
-            <ul className="list-disc pl-5 mt-2">
-              {validation.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${allCriticalErrors.length ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}
+          >
+            {allCriticalErrors.length ? "Есть ошибки" : "Готово"}
+          </span>
+        </div>
+        <ReadinessGroup
+          title="Объект и право собственности"
+          errors={objectReadiness.errors}
+          warnings={objectReadiness.warnings}
+        />
+        <ReadinessGroup
+          title="Участники и подписи"
+          errors={(participantsValidation.errors || []).map(
+            (item) => item.message || item,
+          )}
+          warnings={participantsValidation.warnings || []}
+        />
+        <ReadinessGroup
+          title="Материнский капитал и расчёт долей"
+          errors={matcapValidation.errors || []}
+          warnings={Array.from(
+            new Set([
+              ...(shares.warnings || []),
+              ...(matcapValidation.warnings || []),
+            ]),
+          )}
+        />
       </section>
 
       <FreeTextImportModal

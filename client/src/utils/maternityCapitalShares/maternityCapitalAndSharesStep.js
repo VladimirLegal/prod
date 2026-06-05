@@ -39,7 +39,10 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
   const errors = [];
   const warnings = [];
 
-  if (!normalize(maternityCapital.certificateHolderParticipantId)) {
+  const holderParticipantId =
+    formData.participantsStep?.certificateHolderParticipantId ||
+    maternityCapital.certificateHolderParticipantId;
+  if (!normalize(holderParticipantId)) {
     errors.push("Не выбран владелец сертификата.");
   }
 
@@ -96,10 +99,7 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
     errors.push("Выбран дом с участком — сценарий пока не поддержан.");
   }
 
-  if (
-    maternityCapital.certificateHolderFullName &&
-    !maternityCapital.certificateHolderParticipantId
-  ) {
+  if (maternityCapital.certificateHolderFullName && !holderParticipantId) {
     warnings.push(
       "Владелец сертификата из выписки не найден среди участников.",
     );
@@ -132,6 +132,16 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
 
   if (shares.calculationMode === "manual")
     warnings.push("Используется ручной расчёт.");
+  if (
+    !amountUsed &&
+    (parseMoney(maternityCapital.assignedAmount) > 0 ||
+      parseMoney(maternityCapital.remainingAmount) > 0 ||
+      parseMoney(maternityCapital.paidAmount) > 0)
+  ) {
+    warnings.push(
+      "Сумма материнского капитала, использованная на объект, не подставлена автоматически. Укажите её вручную или подтвердите подстановку перечисленных средств.",
+    );
+  }
   if (parseMoney(maternityCapital.reservedAmount) > 0) {
     warnings.push(
       "В выписке есть зарезервированные средства — проверьте, относятся ли они к этому объекту.",
@@ -140,7 +150,7 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
   if (
     parseMoney(maternityCapital.paidAmount) > 0 &&
     amountUsed > 0 &&
-    parseMoney(maternityCapital.paidAmount) !== amountUsed
+    Math.abs(parseMoney(maternityCapital.paidAmount) - amountUsed) > 0.01
   ) {
     warnings.push(
       "Размер выплаченных средств из выписки не равен сумме, указанной как использованная на объект.",

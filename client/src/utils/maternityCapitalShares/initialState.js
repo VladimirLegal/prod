@@ -1,4 +1,7 @@
-import { normalizeParticipantsStepState } from "./participantsStep";
+import {
+  normalizeParticipantsStepState,
+  toDisplayDate,
+} from "./participantsStep";
 export const MATERNITY_CAPITAL_SHARES_STORAGE_KEY =
   "maternityCapitalShares:formData";
 
@@ -15,7 +18,7 @@ export const initialMaternityCapitalSharesForm = {
 
   agreement: {
     place: "",
-    date: "",
+    date: new Date().toLocaleDateString("ru-RU"),
   },
 
   acquisition: {
@@ -157,6 +160,11 @@ export const initialMaternityCapitalSharesForm = {
     creditContractNumber: "",
     creditContractDate: "",
     lenderName: "",
+    operations: [],
+    statementType: "",
+    initialCertificateAmount: "",
+    latestEstablishedAmount: "",
+    holderStatus: "",
     rawText: "",
   },
   family: {
@@ -188,17 +196,32 @@ export const initialMaternityCapitalSharesForm = {
     warnings: [],
   },
   shares: {
-    calculationMode: "minimum_by_maternity_capital",
+    calculationMode: "cost_equal_rounded_fraction",
+    showAdvancedCalculationModes: false,
     baseType: "",
     purchasePriceForCalculation: "",
     maternityCapitalAmount: "",
     calculatedMaternityPart: "",
     calculatedMaternityPartFraction: "",
+    mskShare: "",
+    nonMskShare: "",
+    mskArea: "",
+    nonMskArea: "",
+    baseFraction: "",
+    acquiredFraction: "",
     recipientsCount: 0,
+    exactSharePerRecipient: "",
     recommendedSharePerRecipient: "",
     recommendedSharePerRecipientFraction: "",
+    distributedShareTotal: "",
+    remainderShare: "",
+    overMskShare: "",
     remainderMode: "keep_current_owners",
     remainderDescription: "",
+    remainderLegalMode: "joint_spouses",
+    riskLevel: "green",
+    notaryRiskWarning: "",
+    manualDistributionWarning: "",
     rows: [],
     warnings: [],
     errors: [],
@@ -249,8 +272,24 @@ export const hydrateMaternityCapitalSharesForm = (saved) => {
     };
   }
 
+  hydrated.agreement = {
+    ...hydrated.agreement,
+    date: toDisplayDate(
+      hydrated.agreement.date || new Date().toLocaleDateString("ru-RU"),
+    ),
+  };
+  if (
+    ["minimum_by_maternity_capital", "equal_between_recipients"].includes(
+      hydrated.shares?.calculationMode,
+    )
+  ) {
+    hydrated.shares.calculationMode = "cost_equal_rounded_fraction";
+  }
   hydrated.participantsStep = normalizeParticipantsStepState(
-    hydrated.participantsStep,
+    {
+      ...hydrated.participantsStep,
+      agreementDate: hydrated.agreement.date,
+    },
     hydrated.agreement.date,
   );
   hydrated.participants = hydrated.participantsStep.participants;

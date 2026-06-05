@@ -112,6 +112,85 @@ export function decimalToFraction(value) {
   });
 }
 
+export const fractionToDecimal = (fraction) => {
+  const parsed = parseFraction(fraction);
+  if (!parsed) return 0;
+  return parsed.n / parsed.d;
+};
+
+export const subtractFractions = (a, b) => {
+  const left = parseFraction(a);
+  const right = parseFraction(b);
+  if (!left || !right) return null;
+  return simplifyFraction({
+    n: left.n * right.d - right.n * left.d,
+    d: left.d * right.d,
+  });
+};
+
+export const ceilDecimalToStep = (value, step) => {
+  const number = Number(value);
+  const size = Number(step);
+  if (!Number.isFinite(number) || !Number.isFinite(size) || size <= 0) return 0;
+  return Math.ceil((number - Number.EPSILON) / size) * size;
+};
+
+export const ceilSquareMeters = (value, decimals = 2) => {
+  const factor = 10 ** Number(decimals || 0);
+  return Math.ceil((Number(value) || 0) * factor - Number.EPSILON) / factor;
+};
+
+export const ceilPercent = (value, decimals = 0) => {
+  const factor = 10 ** Number(decimals || 0);
+  return (
+    Math.ceil((Number(value) || 0) * 100 * factor - Number.EPSILON) / factor
+  );
+};
+
+export const ceilFractionToReadableFraction = (fraction) => {
+  const decimal = fractionToDecimal(fraction);
+  if (!decimal) return null;
+
+  const denominators = [
+    100, 200, 250, 500, 1000, 1250, 2000, 2500, 5000, 10000,
+  ];
+
+  let best = null;
+
+  for (const denominator of denominators) {
+    const numerator = Math.ceil(decimal * denominator - Number.EPSILON);
+    const candidate = simplifyFraction({ n: numerator, d: denominator });
+    if (!candidate) continue;
+
+    const candidateDecimal = fractionToDecimal(candidate);
+
+    // Не допускаем округление вниз.
+    if (candidateDecimal + 1e-12 < decimal) continue;
+
+    const excess = candidateDecimal - decimal;
+
+    if (
+      !best ||
+      excess < best.excess - 1e-12 ||
+      (Math.abs(excess - best.excess) <= 1e-12 &&
+        candidate.d < best.fraction.d)
+    ) {
+      best = {
+        fraction: candidate,
+        excess,
+      };
+    }
+  }
+
+  return (
+    best?.fraction ||
+    simplifyFraction({
+      n: Math.ceil(decimal * 10000 - Number.EPSILON),
+      d: 10000,
+    })
+  );
+};
+
 export const parseMoney = (value) => {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   const normalized = String(value || "")

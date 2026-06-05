@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import FreeTextImportModal from "../common/FreeTextImportModal";
 import {
   parseBirthCertificateText,
@@ -8,7 +8,6 @@ import {
 import {
   applyParticipantAgeRules,
   buildEgrnParticipantCandidates,
-  buildParticipantSignatureText,
   createParticipant,
   emptyAttorneyRepresentative,
   emptyPowerOfAttorney,
@@ -192,9 +191,13 @@ const ParticipantsSection = ({ formData, setFormData }) => {
     () =>
       buildEgrnParticipantCandidates(
         formData.rights?.ownerBlocks || [],
-        step.agreementDate,
+        formData.agreement?.date || step.agreementDate,
       ),
-    [formData.rights?.ownerBlocks, step.agreementDate],
+    [
+      formData.agreement?.date,
+      formData.rights?.ownerBlocks,
+      step.agreementDate,
+    ],
   );
 
   const updateStep = (updater) => {
@@ -213,22 +216,30 @@ const ParticipantsSection = ({ formData, setFormData }) => {
     });
   };
 
+  useEffect(() => {
+    const agreementDate = formData.agreement?.date || step.agreementDate;
+    if (!agreementDate || agreementDate === step.agreementDate) return;
+    setFormData((prev) => ({
+      ...prev,
+      participantsStep: {
+        ...prev.participantsStep,
+        agreementDate,
+        participants: (prev.participantsStep.participants || []).map(
+          (participant) => applyParticipantAgeRules(participant, agreementDate),
+        ),
+      },
+      participants: (prev.participantsStep.participants || []).map(
+        (participant) => applyParticipantAgeRules(participant, agreementDate),
+      ),
+    }));
+  }, [formData.agreement?.date, setFormData, step.agreementDate]);
+
   const updateFamily = (updater) => {
     setFormData((prev) => {
       const nextFamily =
         typeof updater === "function" ? updater(prev.family || {}) : updater;
       return { ...prev, family: nextFamily };
     });
-  };
-
-  const updateAgreementDate = (agreementDate) => {
-    updateStep((current) => ({
-      ...current,
-      agreementDate,
-      participants: current.participants.map((participant) =>
-        applyParticipantAgeRules(participant, agreementDate),
-      ),
-    }));
   };
 
   const addParticipant = (role) => {
@@ -373,14 +384,6 @@ const ParticipantsSection = ({ formData, setFormData }) => {
               представителей и представителей по доверенности.
             </p>
           </div>
-          <div className="min-w-[220px]">
-            <Field label="Дата соглашения для расчёта возраста">
-              <DateInput
-                value={step.agreementDate}
-                onChange={updateAgreementDate}
-              />
-            </Field>
-          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -399,7 +402,11 @@ const ParticipantsSection = ({ formData, setFormData }) => {
             onClick={() => setShowImport(true)}
             className="rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-200"
           >
-            Создать участников из ЕГРН
+            {participants.some(
+              (participant) => participant.source?.origin === "egrn",
+            )
+              ? "Обновить участников из ЕГРН"
+              : "Создать участников из ЕГРН"}
           </button>
         </div>
       </section>
@@ -604,10 +611,7 @@ const ParticipantCard = ({
     participants,
     participant.id,
   );
-  const signaturePreview = buildParticipantSignatureText(
-    participant,
-    participants,
-  );
+  
   const isCertificateHolder = participant.id === certificateHolderParticipantId;
   const updateDocument = (patch) => onUpdate({ document: patch });
   const updateRepresentative = (patch) =>
@@ -721,11 +725,7 @@ const ParticipantCard = ({
         </Field>
       </div>
 
-      <PersonFields
-        person={participant}
-        onChange={onUpdate}
-        includeRegistration
-      />
+      <PersonFields person={participant} onChange={onUpdate} />
 
       {participant.role === "child" &&
         participant.personType === "minor_14_18" && (
@@ -749,6 +749,7 @@ const ParticipantCard = ({
         participant={participant}
         updateDocument={updateDocument}
         onTextImport={onTextImport}
+        onUpdatePerson={onUpdate}
       />
 
       {participant.role === "child" &&
@@ -814,21 +815,38 @@ const ParticipantCard = ({
             >
               Вставить паспортные данные текстом
             </button>
-            <PersonFields
+                        <PersonFields
               person={
                 participant.attorneyRepresentative ||
                 emptyAttorneyRepresentative()
               }
               onChange={updateRepresentative}
-              includeRegistration
             />
-            <PassportFields
-              document={
-                participant.attorneyRepresentative?.document ||
-                emptyAttorneyRepresentative().document
-              }
-              onChange={(document) => updateRepresentative({ document })}
-            />
+
+            <div className="rounded-xl border border-gray-200 p-4">
+              <h4 className="font-medium text-gray-900">Паспорт РФ</h4>
+
+              <PassportFields
+                document={
+                  participant.attorneyRepresentative?.document ||
+                  emptyAttorneyRepresentative().document
+                }
+                onChange={(document) => updateRepresentative({ document })}
+              />
+
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <h5 className="mb-3 text-sm font-medium text-gray-900">
+                  Регистрация
+                </h5>
+                <RegistrationFields
+                  person={
+                    participant.attorneyRepresentative ||
+                    emptyAttorneyRepresentative()
+                  }
+                  onChange={updateRepresentative}
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Field label="Дата доверенности">
                 <DateInput
@@ -853,17 +871,12 @@ const ParticipantCard = ({
         )}
       </div>
 
-      <details className="mt-5 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
-        <summary className="cursor-pointer font-medium text-gray-900">
-          Предпросмотр фрагмента подписанта
-        </summary>
-        <p className="mt-3 leading-6">{signaturePreview}</p>
-      </details>
+      
     </article>
   );
 };
 
-const PersonFields = ({ person, onChange, includeRegistration = false }) => (
+const PersonFields = ({ person, onChange }) => (
   <div className="mt-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     <Field label="Фамилия">
       <TextInput
@@ -905,9 +918,7 @@ const PersonFields = ({ person, onChange, includeRegistration = false }) => (
         onChange={(birthPlace) => onChange({ birthPlace })}
       />
     </Field>
-    {includeRegistration && (
-      <RegistrationFields person={person} onChange={onChange} />
-    )}
+    
     <Field label="СНИЛС (необязательно)">
       <TextInput
         value={person.snils}
@@ -967,7 +978,12 @@ const RegistrationFields = ({ person, onChange }) => (
   </>
 );
 
-const DocumentFields = ({ participant, updateDocument, onTextImport }) => {
+const DocumentFields = ({
+  participant,
+  updateDocument,
+  onTextImport,
+  onUpdatePerson,
+}) => {
   const isBirthCertificate =
     participant.document?.type === "birth_certificate_rf";
   return (
@@ -999,6 +1015,12 @@ const DocumentFields = ({ participant, updateDocument, onTextImport }) => {
           onChange={updateDocument}
         />
       )}
+      <div className="mt-4 border-t border-gray-100 pt-4">
+        <h5 className="mb-3 text-sm font-medium text-gray-900">
+          Регистрация
+        </h5>
+        <RegistrationFields person={participant} onChange={onUpdatePerson} />
+      </div>
     </div>
   );
 };

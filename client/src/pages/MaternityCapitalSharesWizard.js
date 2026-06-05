@@ -14,7 +14,10 @@ import {
   initialMaternityCapitalSharesForm,
   MATERNITY_CAPITAL_SHARES_STORAGE_KEY,
 } from "../utils/maternityCapitalShares/initialState";
-import { validateParticipantsStep } from "../utils/maternityCapitalShares/participantsStep";
+import {
+  buildEgrnParticipantCandidates,
+  getFullName,
+} from "../utils/maternityCapitalShares/participantsStep";
 import { validateMaternityCapitalAndSharesStep } from "../utils/maternityCapitalShares/maternityCapitalAndSharesStep";
 
 const PILL = {
@@ -41,27 +44,51 @@ const loadDraft = () => {
   }
 };
 
-const isObjectStepReady = (formData) => {
-  if (!formData.ui.sourceMode) return false;
-  if (
-    formData.ui.sourceMode === "egrn" &&
-    formData.ui.parseStatus === "error" &&
-    !formData.egrn.applied
-  ) {
-    return false;
-  }
+const sameNormalized = (left = "", right = "") =>
+  String(left || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase() ===
+  String(right || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
 
-  const hasMinimumObject = !!(
-    formData.object.address.trim() &&
-    formData.object.cadastralNumber.trim() &&
-    String(formData.object.area || "").trim()
+  const passportKey = (participant = {}) => {
+    const document = participant.document || {};
+    const key = `${document.series || ""}${document.number || ""}`.replace(
+      /\D/g,
+      "",
   );
-  const unsupportedHouse = [
-    "house_with_land",
-    "house_with_land_share",
-  ].includes(formData.acquisition.type);
+    return key.length >= 6 ? key : "";
+  };
 
-  return hasMinimumObject && !unsupportedHouse;
+const mergeEgrnParticipants = (existing = [], candidates = []) => {
+  const result = [...existing];
+  candidates.forEach((candidate) => {
+    const candidateName = getFullName(candidate);
+    const candidatePassport = passportKey(candidate);
+    const duplicate = result.some((participant) => {
+      const sameOwnerIndex =
+        participant.source?.egrnOwnerIndex !== null &&
+        participant.source?.egrnOwnerIndex !== undefined &&
+        participant.source?.egrnOwnerIndex === candidate.source?.egrnOwnerIndex;
+      const sameNameAndBirthDate =
+        candidateName &&
+        sameNormalized(getFullName(participant), candidateName) &&
+        participant.birthDate &&
+        candidate.birthDate &&
+        participant.birthDate === candidate.birthDate;
+      const sameNameAndPassport =
+        candidateName &&
+        candidatePassport &&
+        sameNormalized(getFullName(participant), candidateName) &&
+        passportKey(participant) === candidatePassport;
+      return sameOwnerIndex || sameNameAndBirthDate || sameNameAndPassport;
+    });
+    if (!duplicate) result.push(candidate);
+  });
+  return result;
 };
 
 const MaternityCapitalSharesWizard = () => {
@@ -74,26 +101,11 @@ const MaternityCapitalSharesWizard = () => {
   const hydratedRef = useRef(false);
 
   const currentStep = formData.ui.currentStep || 0;
-  const participantsValidation = useMemo(
-    () => validateParticipantsStep(formData.participantsStep),
-    [formData.participantsStep],
-  );
   const maternitySharesValidation = useMemo(
     () => validateMaternityCapitalAndSharesStep(formData),
-    [formData],
+    [formData],  
   );
-  const canContinue = useMemo(() => {
-    if (currentStep === 0) return isObjectStepReady(formData);
-    if (currentStep === 1) return participantsValidation.isValid;
-    if (currentStep === 2) return maternitySharesValidation.isValid;
-    return true;
-  }, [
-    currentStep,
-    formData,
-    participantsValidation.isValid,
-    maternitySharesValidation.isValid,
-  ]);
-
+  
   useEffect(() => {
     let mounted = true;
     fetch("/api/me", { credentials: "include" })
@@ -141,39 +153,58 @@ const MaternityCapitalSharesWizard = () => {
     return () => window.clearTimeout(timer);
   }, [formData]);
 
+  
   const applyEgrnData = () => {
     if (!parsedEgrn) return;
-    setFormData((prev) => ({
-      ...prev,
-      ui: { ...prev.ui, parseStatus: "applied" },
-      object: {
-        ...prev.object,
-        ...parsedEgrn.object,
-        purchasePrice: prev.object.purchasePrice,
-        purchasedShare: prev.object.purchasedShare,
-        legalShare: prev.object.legalShare,
-        roomNumber: prev.object.roomNumber,
-        roomArea: prev.object.roomArea,
-        livingArea: prev.object.livingArea,
-      },
-      acquisition: {
-        ...prev.acquisition,
-        suggestedType: parsedEgrn.suggestion.suggestedType,
-        confidence: parsedEgrn.suggestion.confidence,
-        reason: parsedEgrn.suggestion.reason,
-        alternatives: parsedEgrn.suggestion.alternatives,
-        type:
-          parsedEgrn.suggestion.confidence === "high"
-            ? parsedEgrn.suggestion.suggestedType
-            : prev.acquisition.type,
-        confirmedByUser: false,
-      },
-      rights: parsedEgrn.rights,
-      encumbrance: parsedEgrn.encumbrance,
-      recipientOwnerMatch: parsedEgrn.recipientOwnerMatch,
-      distributionBase: parsedEgrn.distributionBaseDraft,
-      egrn: { ...prev.egrn, parsed: parsedEgrn, applied: true },
-    }));
+    setFormData((prev) => {
+      const agreementDate =
+        prev.agreement.date || new Date().toLocaleDateString("ru-RU");
+      const candidates = buildEgrnParticipantCandidates(
+        parsedEgrn.rights?.ownerBlocks || [],
+        agreementDate,
+      );
+      const participants = mergeEgrnParticipants(
+        prev.participantsStep?.participants || prev.participants || [],
+        candidates,
+      );
+      return {
+        ...prev,
+        ui: { ...prev.ui, parseStatus: "applied" },
+        object: {
+          ...prev.object,
+          ...parsedEgrn.object,
+          purchasePrice: prev.object.purchasePrice,
+          purchasedShare: prev.object.purchasedShare,
+          legalShare: prev.object.legalShare,
+          roomNumber: prev.object.roomNumber,
+          roomArea: prev.object.roomArea,
+          livingArea: prev.object.livingArea,
+        },
+        acquisition: {
+          ...prev.acquisition,
+          suggestedType: parsedEgrn.suggestion.suggestedType,
+          confidence: parsedEgrn.suggestion.confidence,
+          reason: parsedEgrn.suggestion.reason,
+          alternatives: parsedEgrn.suggestion.alternatives,
+          type:
+            parsedEgrn.suggestion.confidence === "high"
+              ? parsedEgrn.suggestion.suggestedType
+              : prev.acquisition.type,
+          confirmedByUser: false,
+        },
+        rights: parsedEgrn.rights,
+        encumbrance: parsedEgrn.encumbrance,
+        recipientOwnerMatch: parsedEgrn.recipientOwnerMatch,
+        distributionBase: parsedEgrn.distributionBaseDraft,
+        participantsStep: {
+          ...prev.participantsStep,
+          agreementDate,
+          participants,
+        },
+        participants,
+        egrn: { ...prev.egrn, parsed: parsedEgrn, applied: true },
+      };
+    });
   };
 
   const rejectEgrnData = () => {
@@ -202,55 +233,20 @@ const MaternityCapitalSharesWizard = () => {
   };
 
   const goNext = () => {
-    if (!canContinue) {
-      if (currentStep === 0) {
-        setValidationMessage(
-          "Заполните источник данных, адрес, кадастровый номер и площадь. Дом с участком пока недоступен в этом мастере.",
-        );
-        return;
-      }
-      if (currentStep === 1) {
-        setValidationMessage(
-          "Исправьте блокирующие ошибки пакета 3 перед переходом к материнскому капиталу.",
-        );
-        return;
-      }
-      setValidationMessage(maternitySharesValidation.errors.join(" "));
-      return;
-    }
-
-    if (currentStep === 0) {
+    if (currentStep < steps.length - 1) {
       setFormData((prev) => ({
         ...prev,
-        participantsStep: {
-          ...prev.participantsStep,
-          agreementDate:
-            prev.participantsStep.agreementDate ||
-            prev.agreement.date ||
-            new Date().toISOString().slice(0, 10),
-        },
-        ui: { ...prev.ui, currentStep: 1 },
+        ui: { ...prev.ui, currentStep: currentStep + 1 },
       }));
       setValidationMessage("");
       return;
     }
 
-    if (currentStep === 1) {
-      setFormData((prev) => ({
-        ...prev,
-        ui: { ...prev.ui, currentStep: 2 },
-      }));
-      setValidationMessage("");
-      return;
-    }
-
-    if (currentStep === 2) {
-      setValidationMessage(
-        maternitySharesValidation.isValid
-          ? "Пакет 4 заполнен. Генерация итогового документа будет подключена следующим этапом."
-          : maternitySharesValidation.errors.join(" "),
-      );
-    }
+    setValidationMessage(
+      maternitySharesValidation.isValid
+        ? "Пакет 4 заполнен. Генерация итогового документа будет подключена следующим этапом."
+        : "Проверьте блок “Проверка готовности соглашения” на финальной вкладке.",
+    );
   };
 
   const goBack = () => {
@@ -306,30 +302,16 @@ const MaternityCapitalSharesWizard = () => {
             key={stepName}
             type="button"
             onClick={() => {
-              if (
-                index === 0 ||
-                (index === 1 && isObjectStepReady(formData)) ||
-                (index === 2 &&
-                  isObjectStepReady(formData) &&
-                  participantsValidation.isValid)
-              ) {
-                setFormData((prev) => ({
-                  ...prev,
-                  ui: { ...prev.ui, currentStep: index },
-                }));
-              }
+              setFormData((prev) => ({
+                ...prev,
+                ui: { ...prev.ui, currentStep: index },
+              }));
             }}
             className={`pb-2 px-4 whitespace-nowrap relative ${
               currentStep === index
                 ? "text-blue-600 font-medium border-b-2 border-blue-600"
                 : "text-gray-600"
-            } ${(index === 1 && !isObjectStepReady(formData)) || (index === 2 && (!isObjectStepReady(formData) || !participantsValidation.isValid)) ? "cursor-not-allowed opacity-60" : ""}`}
-            disabled={
-              (index === 1 && !isObjectStepReady(formData)) ||
-              (index === 2 &&
-                (!isObjectStepReady(formData) ||
-                  !participantsValidation.isValid))
-            }
+            }`}
           >
             <FontAwesomeIcon icon={faFileContract} className="mr-2" />
             {stepName}
