@@ -90,6 +90,69 @@ const extractAmounts = (text = "") => {
   };
 };
 
+
+const OPERATION_TYPE_LABELS = [
+  ["certificate_issue", /выдач[аеи]\s+сертификата|сертификат\s+мск/i],
+  ["established_amount", /установлени[ея]\s+размера|установлен\s+размер/i],
+  ["reserved", /резервировани[ея]\s+средств|зарезерв/i],
+  ["paid", /перечислени[ея]\s+средств|направлени[ея]\s+средств|использовани[ея]\s+средств/i],
+];
+
+const classifyOperation = (operationName = "") =>
+  OPERATION_TYPE_LABELS.find(([, pattern]) => pattern.test(operationName))?.[0] ||
+  "other";
+
+const MONEY_PATTERN =
+  "((?:(?:\\d{1,3}(?:[ \\u00a0]\\d{3})+)|\\d+)\\s*руб\\.?\\s*\\d{1,2}\\s*коп\\.?|(?:(?:\\d{1,3}(?:[ \\u00a0]\\d{3})+)|\\d+)[,.]\\d{2})";
+
+const normalizeMoney = (value = "") => {
+  const text = String(value || "").trim();
+  const rubKop = text.match(
+    /((?:\d{1,3}(?:[ \u00a0]\d{3})+)|\d+)\s*руб\.?\s*(\d{1,2})\s*коп\.?/i,
+  );
+  if (rubKop) return normalizeMoneyFromMatch(rubKop[1], rubKop[2]);
+  const decimal = text.match(/((?:\d{1,3}(?:[ \u00a0]\d{3})+)|\d+)[,.](\d{2})/);
+  if (decimal) return normalizeMoneyFromMatch(decimal[1], decimal[2]);
+  return "";
+};
+
+const extractOperations = (text = "") => {
+  const inline = normalizeInlineText(text);
+  const rowRegex = new RegExp(
+    `(?:^|\\s)(\\d{1,2})\\s+(\\d{1,2}[./-]\\d{1,2}[./-]\\d{4})\\s+(.{3,180}?)\\s+${MONEY_PATTERN}`,
+    "gi",
+  );
+  const operations = [];
+  let match = rowRegex.exec(inline);
+  while (match) {
+    const operationName = normalizeInlineText(match[3])
+      .replace(/^(?:операция|наименование операции)\s*/i, "")
+      .trim();
+    if (!/итого/i.test(operationName)) {
+      operations.push({
+        index: Number(match[1]),
+        date: normalizeDate(match[2]),
+        operationName,
+        amount: normalizeMoney(match[4]),
+        operationType: classifyOperation(operationName),
+      });
+    }
+    match = rowRegex.exec(inline);
+  }
+  return operations;
+};
+
+const lastOperationOfType = (operations = [], type) =>
+  (operations.filter((operation) => operation.operationType === type).slice(-1)[0] ||
+    null);
+
+const findTotalAmount = (text = "") => {
+  const match = normalizeInlineText(text).match(
+    new RegExp(`(?:итого|остаток(?:\\s+средств)?)[^0-9]{0,80}${MONEY_PATTERN}`, "i"),
+  );
+  return match ? normalizeMoney(match[1]) : "";
+};
+
 const extractHolderName = (text = "") => {
   const lines = normalizeText(text)
     .split("\n")
@@ -141,24 +204,46 @@ export function parseMaternityCapitalStatementText(rawText) {
   const inline = normalizeInlineText(text);
   const amounts = extractAmounts(inline);
   const fallback = amounts.fallbackAmounts;
+  const operations = extractOperations(text);
+  const certificateIssue = lastOperationOfType(operations, "certificate_issue");
+  const latestEstablished = lastOperationOfType(operations, "established_amount");
+  const reserved = lastOperationOfType(operations, "reserved");
+  const paid = lastOperationOfType(operations, "paid");
   const snilsMatch = inline.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{3}\s*\d{2}\b/);
   const certificate = extractCertificate(inline);
+  const parseWarnings = [];
+
+  if (!paid) {
+    parseWarnings.push(
+      "Не найдена операция перечисления средств. Укажите сумму материнского капитала, использованную на объект, вручную.",
+    );
+  }
+  if (paid && reserved && paid.amount === reserved.amount) {
+    parseWarnings.push(
+      "В выписке найдены операции резервирования и перечисления средств. Для расчета использована операция перечисления средств.",
+    );
+  }
 
   return {
     statementDate: normalizeDate(
       inline.match(
-        /по\s+состоянию\s+на\s+("?\d{1,2}"?\s+[а-яё]+\s+\d{4})/i,
+        /по\s+состоянию\s+на\s+("?\d{1,2}"?\s+[а-яё]+\s+\d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})/i,
       )?.[1] || "",
     ),
     certificateHolderFullName: extractHolderName(text),
     certificateHolderSnils: normalizeSnils(snilsMatch?.[0] || ""),
     ...certificate,
-    assignedAmount: amounts.assignedAmount || fallback[0] || "",
-    remainingAmount: amounts.remainingAmount || fallback[1] || "",
-    reservedAmount: amounts.reservedAmount || fallback[2] || "",
-    paidAmount: amounts.paidAmount || fallback[3] || "",
+    assignedAmount: amounts.assignedAmount || certificateIssue?.amount || fallback[0] || "",
+    remainingAmount: findTotalAmount(text) || amounts.remainingAmount || "",
+    reservedAmount: reserved?.amount || amounts.reservedAmount || "",
+    reservedDate: reserved?.date || "",
+    paidAmount: paid?.amount || "",
+    amountUsed: paid?.amount || "",
+    useDate: paid?.date || "",
+    latestEstablishedAmount: latestEstablished?.amount || "",
+    operations,
     rawText: rawText || "",
-    parseWarnings: [],
+    parseWarnings,
   };
 }
 

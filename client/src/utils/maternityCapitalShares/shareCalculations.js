@@ -59,6 +59,15 @@ export const formatFraction = (fraction) => {
   return `${simplified.n}/${simplified.d}`;
 };
 
+export const moneyToKopecks = (value) => Math.round(parseMoney(value) * 100);
+
+export const moneyRatioToFraction = (amount, total) => {
+  const amountKopecks = moneyToKopecks(amount);
+  const totalKopecks = moneyToKopecks(total);
+  if (!amountKopecks || !totalKopecks) return null;
+  return simplifyFraction({ n: amountKopecks, d: totalKopecks });
+};
+
 export const multiplyFractions = (a, b) => {
   const left = parseFraction(a);
   const right = parseFraction(b);

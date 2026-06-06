@@ -15,6 +15,7 @@ import {
   formatFraction,
   formatMoneyInput,
   fractionToDecimal,
+  moneyRatioToFraction,
   multiplyFractions,
   parseFraction,
   parseMoney,
@@ -47,8 +48,6 @@ const USE_PURPOSES = [
 ];
 
 const CALCULATION_MODES = [
-  ["cost_equal_rounded_fraction", "2.3 — Рекомендуемый расчёт по стоимости"],
-  ["manual", "Ручное распределение долей"],
   [
     "area_equal_min_round",
     "1.1 — Точный расчёт по площади с минимальным округлением",
@@ -63,6 +62,8 @@ const CALCULATION_MODES = [
     "cost_children_increased",
     "2.2 — Детям по понятному проценту, родителям остаток",
   ],
+  ["cost_equal_rounded_fraction", "2.3 — Рекомендуемый расчёт по стоимости"],
+  ["manual", "Ручное распределение долей"],
 ];
 
 const BASE_LABELS = {
@@ -115,6 +116,24 @@ const findHolderMatches = (participants = [], parsed = {}) => {
   });
 };
 
+
+const findTitleOwnerParticipantId = (participants = [], rights = {}) => {
+  const ownerBlocks = rights.ownerBlocks || [];
+  const titleOwnerName = normalizeName(
+    ownerBlocks.find((owner) => owner.fullName || owner.ownerFullName)?.fullName ||
+      ownerBlocks.find((owner) => owner.fullName || owner.ownerFullName)?.ownerFullName ||
+      rights.owners?.[0]?.fullName ||
+      rights.owners?.[0]?.ownerFullName ||
+      "",
+  );
+  if (!titleOwnerName) return "";
+  return (
+    participants.find(
+      (participant) => normalizeName(getFullName(participant)) === titleOwnerName,
+    )?.id || ""
+  );
+};
+
 const getBaseFraction = (base = {}) => {
   if (
     base.type === "share_in_apartment" ||
@@ -143,21 +162,32 @@ const getParents = (recipients = []) =>
     ["certificateHolder", "spouse"].includes(participant.role),
   );
 
-const getRemainderLegalMode = (family = {}) => {
-  if (
-    family.maritalStatusMode === "married" &&
-    (!family.marriageContract ||
-      family.marriageContract.status === "not_concluded")
-  ) {
-    return "joint_spouses";
+const hasMarriageContract = (family = {}) =>
+  family.marriageContract?.status === "concluded";
+
+const getRemainderLegalMode = (family = {}, shares = {}) => {
+  if (hasMarriageContract(family)) {
+    return shares.remainderMode && shares.remainderMode !== "keep_current_owners"
+      ? shares.remainderMode
+      : "keep_title_owner_by_contract"
   }
-  return "needs_review";
+  if (shares.remainderMode && shares.remainderMode !== "keep_current_owners")
+    return shares.remainderMode;
+  if (family.maritalStatusMode === "current_marriage") return "keep_title_owner";
+  return "keep_current_owners";
 };
 
-const getRemainderLegalText = (mode) =>
-  mode === "joint_spouses"
-    ? "Оставшаяся часть объекта сохраняется в общей совместной собственности супругов."
-    : "Правовой режим остатка требует проверки. Укажите сведения о браке и брачном договоре на вкладке “Участники”.";
+const getRemainderLegalText = (mode) => {
+  if (mode === "keep_title_owner_by_contract")
+    return "Не-МСК-остаток сохраняется за титульным собственником в соответствии с брачным договором. МСК-часть распределяется между обязательными членами семьи.";
+  if (mode === "joint_spouses")
+    return "Оставшаяся часть объекта после выделения долей по материнскому капиталу сохраняется в общей совместной собственности супругов.";
+  if (mode === "manual")
+    return "Ручное распределение не-МСК-остатка может изменить режим совместной собственности супругов или иной ранее существующий режим собственности. В этой ситуации может потребоваться нотариальное удостоверение соглашения.";
+  if (mode === "keep_title_owner")
+    return "Оставшаяся часть объекта остается за текущим титульным собственником по данным ЕГРН. Если объект приобретен в браке и брачный договор отсутствует, семейно-правовой режим указанной части как общего имущества супругов настоящим соглашением не изменяется.";
+  return "Оставшаяся часть объекта остается текущим правообладателям по данным ЕГРН.";
+};
 
 const buildObjectReadiness = (formData = {}) => {
   const object = formData.object || {};
@@ -207,10 +237,14 @@ const toRow = ({
   exactShare,
   recommendedShare,
   objectArea,
+  retainedRemainderShare,
 }) => {
+  const automaticShare = retainedRemainderShare
+    ? formatFraction(sumFractions([recommendedShare, retainedRemainderShare]))
+    : recommendedShare;
   const finalShare = existing?.manuallyEdited
     ? existing.finalShare
-    : recommendedShare;
+    : automaticShare;
   const finalFraction = parseFraction(finalShare);
   return {
     participantId: participant.id,
@@ -219,6 +253,7 @@ const toRow = ({
     personType: participant.personType,
     receivesShare: true,
     exactMskShare: formatFraction(exactShare),
+    retainedRemainderShare: formatFraction(retainedRemainderShare),
     recommendedShare,
     finalShare: finalShare || "",
     finalShareArea:
@@ -236,7 +271,9 @@ const toRow = ({
       recommendedShare &&
       compareFractions(finalFraction, recommendedShare) === -1
         ? "Итоговая доля меньше рекомендуемой."
-        : "",
+        : retainedRemainderShare
+          ? "Итоговая доля включает МСК-долю и сохраняемый не-МСК-остаток"
+          : "",
   };
 };
 
@@ -266,10 +303,7 @@ const calculateShares = ({ formData }) => {
   const acquiredFraction = baseFraction;
   const mskShareRaw =
     amountUsed > 0 && purchasePrice > 0
-      ? multiplyFractions(
-          baseFraction,
-          decimalToFraction(amountUsed / purchasePrice),
-        )
+      ? multiplyFractions(baseFraction, moneyRatioToFraction(amountUsed, purchasePrice))
       : null;
   const mskShare =
     mskShareRaw && compareFractions(mskShareRaw, baseFraction) >= 0
@@ -285,6 +319,11 @@ const calculateShares = ({ formData }) => {
   const children = getChildren(recipients);
   const parents = getParents(recipients);
   const existingRows = shares.rows || [];
+  const titleOwnerParticipantId = hasMarriageContract(formData.family || {})
+    ? findTitleOwnerParticipantId(participants, formData.rights || {}) ||
+      parents[0]?.id ||
+      recipients[0]?.id
+    : "";
   const warnings = [];
   let recommendationById = new Map();
   let exactById = new Map();
@@ -412,6 +451,8 @@ const calculateShares = ({ formData }) => {
       exactShare: exactById.get(participant.id),
       recommendedShare,
       objectArea,
+      retainedRemainderShare:
+        participant.id === titleOwnerParticipantId ? nonMskShare : null,
     });
   });
   const distributedShare = sumFractions(
@@ -446,9 +487,17 @@ const calculateShares = ({ formData }) => {
     }
   }
 
+  const preservesNonMskRemainder = [
+    "keep_title_owner",
+    "keep_title_owner_by_contract",
+    "keep_current_owners",
+    "joint_spouses",
+  ].includes(getRemainderLegalMode(formData.family || {}, shares));
+
   if (
     riskLevel === "red" ||
-    (distributedShare &&
+    (!preservesNonMskRemainder &&
+      distributedShare &&
       compareFractions(distributedShare, baseFraction) === 0 &&
       nonMskShare &&
       fractionToDecimal(nonMskShare) > 0)
@@ -466,9 +515,17 @@ const calculateShares = ({ formData }) => {
     warnings.push(manualDistributionWarning);
   if (notaryRiskWarning) warnings.push(notaryRiskWarning);
 
-  const remainderLegalMode = getRemainderLegalMode(formData.family || {});
-  if (remainderLegalMode === "needs_review")
-    warnings.push(getRemainderLegalText(remainderLegalMode));
+  const remainderLegalMode = getRemainderLegalMode(formData.family || {}, shares);
+  const remainderLegalText = getRemainderLegalText(remainderLegalMode);
+  if (remainderLegalMode === "manual") {
+    warnings.push(remainderLegalText);
+    if (!notaryRiskWarning) notaryRiskWarning = remainderLegalText;
+  }
+  if (hasMarriageContract(formData.family || {})) {
+    warnings.push(
+      "Объект или не-МСК-остаток принадлежит титульному собственнику в соответствии с брачным договором. МСК-часть рассчитывается на всех обязательных членов семьи. Расчетная МСК-доля титульного собственника прибавляется к сохраняемому за ним остатку.",
+    );
+  }
 
   return {
     calculationMode: mode,
@@ -507,6 +564,7 @@ const calculateShares = ({ formData }) => {
         ? formatFraction(overMskShare)
         : "",
     remainderLegalMode,
+    remainderLegalText,
     riskLevel,
     notaryRiskWarning,
     manualDistributionWarning,
@@ -636,11 +694,7 @@ export default function MaternityCapitalAndSharesSection({
     () => findHolderMatches(participants, parsedStatement || maternityCapital),
     [participants, parsedStatement, maternityCapital],
   );
-  const visibleCalculationModes = shares.showAdvancedCalculationModes
-    ? CALCULATION_MODES
-    : CALCULATION_MODES.filter(([value]) =>
-        ["cost_equal_rounded_fraction", "manual"].includes(value),
-      );
+  
   const needsManualConfirmation =
     calculationMode === "manual" ||
     (matcapValidation.warnings || []).some((warning) =>
@@ -652,8 +706,6 @@ export default function MaternityCapitalAndSharesSection({
       const nextShares = {
         ...prev.shares,
         ...derived,
-        showAdvancedCalculationModes:
-          prev.shares.showAdvancedCalculationModes || false,
         warnings: Array.from(
           new Set([
             ...(derived.warnings || []),
@@ -1235,25 +1287,17 @@ export default function MaternityCapitalAndSharesSection({
               value={calculationMode}
               onChange={(value) => updateShares({ calculationMode: value })}
             >
-              {visibleCalculationModes.map(([value, label]) => (
+              {CALCULATION_MODES.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </SelectInput>
           </Field>
-          <label className="flex items-center gap-2 pt-7 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={shares.showAdvancedCalculationModes === true}
-              onChange={(event) =>
-                updateShares({
-                  showAdvancedCalculationModes: event.target.checked,
-                })
-              }
-            />
-            Показать другие варианты расчёта
-          </label>
+          <SummaryItem
+            label="Вариант по умолчанию"
+            value="2.3 — рекомендуемый расчёт по стоимости"
+          />
         </div>
 
         {calculationMode === "manual" && (
@@ -1266,6 +1310,22 @@ export default function MaternityCapitalAndSharesSection({
         )}
 
         <div className="grid sm:grid-cols-4 gap-4 rounded-xl bg-gray-50 p-4 text-sm">
+          <SummaryItem
+            label="Сумма МСК для расчёта"
+            value={shares.maternityCapitalAmount}
+          />
+          <SummaryItem
+            label="Дата перечисления"
+            value={maternityCapital.useDate}
+          />
+          <SummaryItem
+            label="Цена приобретения"
+            value={shares.purchasePriceForCalculation}
+          />
+          <SummaryItem
+            label="Источник цены"
+            value={shares.purchasePriceForCalculation ? "поле расчёта / база распределения / объект" : "—"}
+          />
           <SummaryItem
             label="МСК-часть объекта"
             value={`${shares.mskShare || "—"} (${asPercent(parseFraction(shares.mskShare))})`}
@@ -1280,7 +1340,7 @@ export default function MaternityCapitalAndSharesSection({
           />
           <SummaryItem
             label="Правовой режим остатка"
-            value={getRemainderLegalText(shares.remainderLegalMode)}
+            value={shares.remainderLegalText || getRemainderLegalText(shares.remainderLegalMode)}
           />
           <SummaryItem
             label="МСК-площадь"
@@ -1321,6 +1381,7 @@ export default function MaternityCapitalAndSharesSection({
                 <th className="px-3 py-2">Роль</th>
                 <th className="px-3 py-2">Минимальная МСК-доля</th>
                 <th className="px-3 py-2">Рекомендуемая доля</th>
+                <th className="px-3 py-2">Не-МСК-остаток</th>
                 <th className="px-3 py-2">Итоговая доля</th>
                 <th className="px-3 py-2">Площадь</th>
                 <th className="px-3 py-2">Комментарий</th>
@@ -1340,6 +1401,9 @@ export default function MaternityCapitalAndSharesSection({
                   </td>
                   <td className="px-3 py-2">{row.exactMskShare || "—"}</td>
                   <td className="px-3 py-2">{row.recommendedShare || "—"}</td>
+                  <td className="px-3 py-2">
+                    {row.retainedRemainderShare || "—"}
+                  </td>
                   <td className="px-3 py-2 min-w-[120px]">
                     <TextInput
                       value={row.finalShare}
@@ -1364,7 +1428,7 @@ export default function MaternityCapitalAndSharesSection({
               ))}
               {!(shares.rows || []).length && (
                 <tr>
-                  <td className="px-3 py-4 text-gray-500" colSpan="7">
+                  <td className="px-3 py-4 text-gray-500" colSpan="8">
                     В Пакете 3 нет участников с флагом “Получает долю”.
                   </td>
                 </tr>
@@ -1382,10 +1446,19 @@ export default function MaternityCapitalAndSharesSection({
               value={shares.remainderMode}
               onChange={(value) => updateShares({ remainderMode: value })}
             >
-              <option value="keep_current_owners">
-                Оставить текущим собственникам по данным ЕГРН
+              <option value="keep_title_owner">
+                Оставить остаток за титульным собственником по данным ЕГРН
               </option>
-              <option value="manual">Распределить вручную</option>
+              <option value="joint_spouses">
+                Зарегистрировать / сохранить остаток в общей совместной собственности супругов
+              </option>
+              <option value="keep_current_owners">
+                Оставить текущим правообладателям по данным ЕГРН
+              </option>
+              <option value="keep_title_owner_by_contract">
+                Оставить не-МСК-остаток за титульным собственником по брачному договору
+              </option>
+              <option value="manual">Распределить остаток вручную</option>
             </SelectInput>
           </Field>
           {shares.remainderMode === "manual" && (

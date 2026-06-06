@@ -725,6 +725,13 @@ const ParticipantCard = ({
         </Field>
       </div>
 
+       {["certificateHolder", "spouse", "child"].includes(participant.role) &&
+        participant.receivesShare === false && (
+          <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+            Обязательный участник не включен в расчет долей по материнскому капиталу. Проверьте состав участников.
+          </div>
+        )}
+
       <PersonFields person={participant} onChange={onUpdate} />
 
       {participant.role === "child" &&

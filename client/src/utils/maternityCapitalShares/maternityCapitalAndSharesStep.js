@@ -1,4 +1,3 @@
-import { getFullName } from "./participantsStep";
 import {
   compareFractions,
   formatFraction,
@@ -106,14 +105,12 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
   }
 
   participants.forEach((participant) => {
-    if (participant.role === "child" && participant.receivesShare === false) {
-      warnings.push(
-        `Ребёнок ${getFullName(participant) || "без ФИО"} указан в участниках, но не получает долю.`,
-      );
-    }
-    if (participant.role === "spouse" && participant.receivesShare === false) {
-      warnings.push(
-        `Супруг/супруга ${getFullName(participant) || "без ФИО"} указан в участниках, но не получает долю.`,
+    const isMandatoryRole = ["certificateHolder", "spouse", "child"].includes(
+      participant.role,
+    );
+    if (isMandatoryRole && participant.receivesShare === false) {
+      errors.push(
+        "Обязательный участник не включен в расчет долей по материнскому капиталу. Проверьте состав участников.",
       );
     }
   });
@@ -142,7 +139,10 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
       "Сумма материнского капитала, использованная на объект, не подставлена автоматически. Укажите её вручную или подтвердите подстановку перечисленных средств.",
     );
   }
-  if (parseMoney(maternityCapital.reservedAmount) > 0) {
+  if (
+    parseMoney(maternityCapital.reservedAmount) > 0 &&
+    !parseMoney(maternityCapital.paidAmount)
+  ) {
     warnings.push(
       "В выписке есть зарезервированные средства — проверьте, относятся ли они к этому объекту.",
     );
