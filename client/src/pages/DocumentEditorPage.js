@@ -131,7 +131,17 @@ function wrapPlaceholdersWithChips(html) {
 }
 
 // Try to load formData from storage (sessionStorage or localStorage)
-async function loadFormDataFallback() {
+async function loadFormDataFallback(docType = 'rent') {
+  if (docType === 'maternity_capital_shares') {
+    try {
+      const s = window.sessionStorage.getItem("maternityCapitalSharesFormData");
+      if (s) return JSON.parse(s);
+    } catch {}
+    try {
+      const l = window.localStorage.getItem("maternityCapitalSharesFormData");
+      if (l) return JSON.parse(l);
+    } catch {}
+  }
   try {
     const s = window.sessionStorage.getItem("leaseFormData");
     if (s) return JSON.parse(s);
@@ -166,12 +176,14 @@ export default function DocumentEditorPage() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const docIdFromUrl = params.get('docId') || null;         // строка или null
+  const docTypeFromUrl = params.get('docType') || null;
   const versionIdFromUrl = params.get('versionId'); // строка или null
   
   const [html, setHtml] = useState("");              // current editor HTML content
   const [formData, setFormData] = useState(null);    // form data object from wizard
   const [saving, setSaving] = useState(false);
   const [documentId, setDocumentId] = useState(null);
+  const [loadedDocument, setLoadedDocument] = useState(null);
   // ------------- ID helpers -------------
   const isUUID = (s) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(s || ''));
@@ -181,6 +193,14 @@ export default function DocumentEditorPage() {
   const currentDocId = docUUID || 1;
 
   const terms = formData?.terms || {};
+  const normalizeDocType = (value) => value === 'maternity_capital_shares_agreement' ? 'maternity_capital_shares' : (value || 'rent');
+  const effectiveDocType = normalizeDocType(docTypeFromUrl || loadedDocument?.type || formData?.documentType || 'rent');
+  const isMaternityCapitalShares = effectiveDocType === 'maternity_capital_shares';
+  const documentTitleLabel = isMaternityCapitalShares ? 'Соглашение о выделении долей' : 'Договор найма';
+  const storageHtmlKey = isMaternityCapitalShares ? 'maternityCapitalSharesDocumentHtml' : 'leaseDocumentHtml';
+  const exportDocxFileName = isMaternityCapitalShares ? 'soglashenie-o-vydelenii-doley-matkapital.docx' : 'lease.docx';
+  const templateQuery = `docType=${encodeURIComponent(effectiveDocType)}`;
+
   const [savedAt, setSavedAt] = useState(null); // если такого состояния у тебя ещё нет
 
   const [versions, setVersions] = useState([]);
@@ -456,7 +476,7 @@ export default function DocumentEditorPage() {
   const renderReviewSection = () => (
     <div style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Согласования по договору</h3>
+        <h3 style={{ margin: 0 }}>Согласования по документу</h3>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             type="button"
@@ -781,6 +801,10 @@ export default function DocumentEditorPage() {
       // === 1) СУЩЕСТВУЮЩИЙ ДОКУМЕНТ ПО UUID ===
       if (docUUID) {
         try {
+          try {
+            const doc = await fetch(`/api/documents/${encodeURIComponent(docUUID)}`, { credentials: 'include' }).then(r => r.ok ? r.json() : null);
+            if (doc) setLoadedDocument(doc);
+          } catch {}
           // 1.1 Если указан versionId — грузим её
           if (versionIdFromUrl) {
             const htmlResp = await fetch(
@@ -832,7 +856,7 @@ export default function DocumentEditorPage() {
       // === 2) НОВЫЙ ДОКУМЕНТ: шаблон + локальная форма ===
       try {
         const tplText = await fetch(
-          `/api/docs/${encodeURIComponent(currentDocId)}/editor?fresh=1`,
+          `/api/docs/${encodeURIComponent(currentDocId)}/editor?fresh=1&${templateQuery}`,
           { credentials: 'include' }
         ).then(r => r.text());
         const tplWrapped = wrapPlaceholdersWithChips(tplText);
@@ -842,7 +866,7 @@ export default function DocumentEditorPage() {
       }
 
       try {
-        const fd = await loadFormDataFallback();
+        const fd = await loadFormDataFallback(effectiveDocType);
         setFormData(fd || {});
         if (fd && Object.keys(fd).length === 0) {
           console.warn("Form data not found. The document will have empty placeholders.");
@@ -855,7 +879,7 @@ export default function DocumentEditorPage() {
       // у нового документа версий ещё нет — но вызов без docUUID вернёт return
       await reloadVersions();
     })();
-  }, [docUUID, versionIdFromUrl, currentDocId, reloadVersions]);
+  }, [docUUID, versionIdFromUrl, currentDocId, reloadVersions, effectiveDocType, templateQuery]);
 
 
   
@@ -1012,9 +1036,9 @@ export default function DocumentEditorPage() {
   // Save current edits to localStorage on each change (for restore on reload)
   useEffect(() => {
     if (html) {
-      window.localStorage.setItem("leaseDocumentHtml", html);
+      window.localStorage.setItem(storageHtmlKey, html);
     }
-  }, [html]);
+  }, [html, storageHtmlKey]);
   // НОВЫЙ ЭФФЕКТ: при первой загрузке formData подложить таблицы в слоты
   useEffect(() => {
     if (editor && formData) {
@@ -1072,11 +1096,11 @@ export default function DocumentEditorPage() {
     isRenderingRef.current = true;
     try {
       // 0) выбираем id: docIdFromUrl (открытый документ) || documentId (только что созданный) || 1 (базовый шаблон)
-      const id = docIdFromUrl || documentId || 1;
+      const id = docIdFromUrl || documentId || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1);
 
       // 1) берём свежий шаблон именно для выбранного id
       const templateHtml = await fetch(
-        `/api/docs/${encodeURIComponent(id)}/editor?fresh=1`,
+        `/api/docs/${encodeURIComponent(id)}/editor?fresh=1&${templateQuery}`,
         { credentials: 'include' }
       ).then(r => r.text());
 
@@ -1087,7 +1111,7 @@ export default function DocumentEditorPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: 'include',
-          body: JSON.stringify({ html: templateHtml, data: formData })
+          body: JSON.stringify({ html: templateHtml, data: { ...(formData || {}), documentType: effectiveDocType }, docType: effectiveDocType })
         }
       );
 
@@ -1152,8 +1176,10 @@ export default function DocumentEditorPage() {
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include', // <= ДОБАВЛЕНО
           body: JSON.stringify({
-            type: 'rent',
-            title: terms?.objectAddress ? `Договор найма: ${terms.objectAddress}` : 'Договор найма',
+            type: effectiveDocType,
+            title: isMaternityCapitalShares
+              ? (formData?.object?.address ? `Соглашение о выделении долей: ${formData.object.address}` : 'Соглашение о выделении долей по материнскому капиталу')
+              : (terms?.objectAddress ? `Договор найма: ${terms.objectAddress}` : 'Договор найма'),
             status: 'draft',
             html
           }),
@@ -1327,7 +1353,7 @@ export default function DocumentEditorPage() {
         if (cid) headers["X-Consent-Id"] = cid;
       }
 
-      const draftRes = await fetch(`/api/docs/1/drafts`, {
+      const draftRes = await fetch(`/api/docs/${encodeURIComponent(docUUID || 1)}/drafts`, {
         method: "POST",
         headers,
         credentials: "include",
@@ -1347,11 +1373,11 @@ export default function DocumentEditorPage() {
       }
 
       // 2) Генерация PDF — теми же headers (для авторизованных без X-Consent-Id)
-      const pdfRes = await fetch(`/api/docs/1/export/pdf`, {
+      const pdfRes = await fetch(`/api/docs/${encodeURIComponent(docUUID || 1)}/export/pdf`, {
         method: "POST",
         headers,
         credentials: "include",
-        body: JSON.stringify({ html: htmlNow, data: formData })
+        body: JSON.stringify({ html: htmlNow, data: { ...(formData || {}), documentType: effectiveDocType }, docType: effectiveDocType })
       });
 
 
@@ -1394,8 +1420,8 @@ export default function DocumentEditorPage() {
   async function handleDownloadDocx() {
     if (!editor) return;
     try {
-      const payload = { html: editor.getHTML(), data: formData };
-      const res = await fetch(`/api/docs/1/export/docx`, {
+      const payload = { html: editor.getHTML(), data: { ...(formData || {}), documentType: effectiveDocType }, docType: effectiveDocType };
+      const res = await fetch(`/api/docs/${encodeURIComponent(docUUID || 1)}/export/docx`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: 'include',
@@ -1412,7 +1438,7 @@ export default function DocumentEditorPage() {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = "lease.docx";
+      link.download = exportDocxFileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1428,11 +1454,11 @@ export default function DocumentEditorPage() {
       if (isRenderingRef.current) return;
       isRenderingRef.current = true;
       // 1) ID: UUID для существующих, иначе 1
-      const id = docIdArg || docUUID || 1;
+      const id = docIdArg || docUUID || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1);
 
       // 2) Шаблон (для /api/docs/… допускается 1)
       const templateHtml = await fetch(
-        `/api/docs/${encodeURIComponent(id)}/editor?fresh=1`,
+        `/api/docs/${encodeURIComponent(id)}/editor?fresh=1&${templateQuery}`,
         { credentials: 'include' }
       ).then(r => r.text());
 
@@ -1460,7 +1486,7 @@ export default function DocumentEditorPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ html: templateHtml, data: dataForRender })
+          body: JSON.stringify({ html: templateHtml, data: { ...(dataForRender || {}), documentType: effectiveDocType }, docType: effectiveDocType })
         }
       );
 
@@ -1560,7 +1586,7 @@ export default function DocumentEditorPage() {
                 <button onClick={handleBackToWizard} className="tt-back">
                   ← Назад к мастеру
                 </button>
-                <h2 className="tt-title">Редактор договора</h2>
+                <h2 className="tt-title">Редактор: {documentTitleLabel}</h2>
               </div>
               <div className="tt-right doc-actions">
                 <button onClick={handleSaveVersion} disabled={saving} className="doc-btn save">
@@ -1580,7 +1606,7 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faFilePdf} className="fa-icon" />
                   PDF
                 </button>
-                <button onClick={() => restoreFromTemplate(docUUID || 1)} className="doc-btn restore">
+                <button onClick={() => restoreFromTemplate(docUUID || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1))} className="doc-btn restore">
                   <FontAwesomeIcon icon={faUndoAlt} className="fa-icon" />
                   Восстановить
                 </button>

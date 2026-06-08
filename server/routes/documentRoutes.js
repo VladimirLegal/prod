@@ -19,6 +19,8 @@ const {
   deleteVersion,
   buildDiff,
   getFreshLeaseTemplate,
+  getFreshTemplate,
+  getTemplateInfoByType,
   clearVersions,
   getLeaseTemplateInfo,   // ⬅️ добавили
   buildApartmentTableHtml,   // ⬅️ NEW
@@ -28,6 +30,37 @@ const {
 // ==== Guest cooldown (15 min) & identification via X-Consent-Id ====
 const _guestCooldown = new Map();              // key -> { last:number, until:number }
 const COOLDOWN_MS = 15 * 60 * 1000;
+
+
+const DOCUMENT_TYPE_META = {
+  rent: { templateType: 'rent', pdfFileName: 'lease.pdf', docxFileName: 'lease.docx' },
+  maternity_capital_shares: {
+    templateType: 'maternity_capital_shares',
+    pdfFileName: 'soglashenie-o-vydelenii-doley-matkapital.pdf',
+    docxFileName: 'soglashenie-o-vydelenii-doley-matkapital.docx'
+  }
+};
+
+const isUuidValue = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+
+async function resolveDocumentType(req, fallbackData = {}) {
+  const explicit = req.query?.docType || req.body?.docType || fallbackData?.documentType || fallbackData?.type;
+  if (explicit === 'maternity_capital_shares' || explicit === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
+  if (explicit === 'rent') return 'rent';
+  if (isUuidValue(req.params?.id)) {
+    try {
+      const { rows } = await query('select type from documents where id = $1 limit 1', [req.params.id]);
+      if (rows[0]?.type === 'maternity_capital_shares') return 'maternity_capital_shares';
+    } catch (e) {
+      console.warn('[resolveDocumentType] failed:', e.message);
+    }
+  }
+  return 'rent';
+}
+
+function normalizeDocumentType(type) {
+  return type === 'maternity_capital_shares_agreement' ? 'maternity_capital_shares' : (type || 'rent');
+}
 
 function getGuestKey(req) {
   // если пользователь авторизован — это НЕ гость
@@ -51,6 +84,8 @@ function checkAndSetCooldown(req) {
 }
 
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
+const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
+const { query } = require('../db');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -1224,15 +1259,17 @@ function insertDocxPageBreaks(html) {
 // 1) GET template for editor (with data substituted if available)
 router.get('/docs/:id/editor', async (req, res) => {
   try {
-    const html = getFreshLeaseTemplate();
-    const info = getLeaseTemplateInfo();
+    const docType = await resolveDocumentType(req);
+    const html = getFreshTemplate(docType);
+    const info = getTemplateInfoByType(docType);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     // Жёстко выключаем кеш на любом уровне
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     // Для отладки пробрасываем md5 шаблона
-    res.setHeader('X-Lease-Template-MD5', info.md5);
+    res.setHeader('X-Document-Type', docType);
+    res.setHeader('X-Template-MD5', info.md5);
     res.send(html);
   } catch (e) {
     console.error('Error in /docs/:id/editor:', e);
@@ -1249,9 +1286,14 @@ router.post('/docs/:id/render', async (req, res) => {
 
     // отключаем кеширование ответа
     res.setHeader('Cache-Control', 'no-store');
-
     console.log('[/render] Input HTML length:', htmlInput.length);
     console.log('[/render] Data keys:', Object.keys(data));
+    const docType = normalizeDocumentType(await resolveDocumentType(req, data));
+    if (docType === 'maternity_capital_shares') {
+      const renderData = buildMaternityCapitalSharesRenderData({ ...data, documentType: docType });
+      const finalHtml = renderFinalHtml(htmlInput, renderData);
+      return res.json({ ok: true, html: finalHtml, data: renderData });
+    }
 
     // ===================== LANDLORDS =====================
     normalizeLandlords(data);
@@ -2159,6 +2201,8 @@ router.post('/docs/:id/export/pdf', async (req, res) => {
     let htmlInput = req.body.html || req.body.content || '';
     res.setHeader('Cache-Control', 'no-store');
     const data = req.body.data || req.body.formData || {};
+    const docType = normalizeDocumentType(await resolveDocumentType(req, data));
+    const fileName = DOCUMENT_TYPE_META[docType]?.pdfFileName || DOCUMENT_TYPE_META.rent.pdfFileName;
     // ⬇️ ВСТАВИТЬ СРАЗУ ПОСЛЕ ПОЛУЧЕНИЯ htmlInput
     htmlInput = stripEditorHints(htmlInput);
     // Кулдаун только для гостей
@@ -2179,7 +2223,7 @@ router.post('/docs/:id/export/pdf', async (req, res) => {
     const pdfBuffer = await exportPdf(alignedHtml);         // 👈 передаём alignedHtml
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="lease.pdf"');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.end(pdfBuffer);
   } catch (e) {
     console.error('PDF export error:', e);
@@ -2195,6 +2239,8 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     
     res.setHeader('Cache-Control', 'no-store');
     const data = req.body.data || req.body.formData || {};
+    const docType = normalizeDocumentType(await resolveDocumentType(req, data));
+    const fileName = DOCUMENT_TYPE_META[docType]?.docxFileName || DOCUMENT_TYPE_META.rent.docxFileName;
     // DOCX — только для зарегистрированных (учитываем и req.userId, и req.user?.id)
     const isAuthed = !!(req.userId || (req.user && req.user.id));
     if (!isAuthed) {
@@ -2221,7 +2267,7 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     const docxBuffer = await exportHtmlToDocxBuffer(cleanedHtml);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    res.setHeader('Content-Disposition', 'attachment; filename="lease.docx"');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.end(docxBuffer);
   } catch (e) {
     console.error('DOCX export error:', e);

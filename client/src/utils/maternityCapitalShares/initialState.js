@@ -6,7 +6,7 @@ export const MATERNITY_CAPITAL_SHARES_STORAGE_KEY =
   "maternityCapitalShares:formData";
 
 export const initialMaternityCapitalSharesForm = {
-  documentType: "maternity_capital_shares_agreement",
+  documentType: "maternity_capital_shares",
 
   ui: {
     currentStep: 0,

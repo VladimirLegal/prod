@@ -1,4 +1,4 @@
-export function formatDateToText(dateString) {
+function formatDateToText(dateString) {
   if (!dateString) return '';
 
   let day, month, year;
@@ -55,7 +55,7 @@ export function formatDateToText(dateString) {
 };
 
 // Форматирование паспорта при вводе
-export const formatPassport = (value) => {
+const formatPassport = (value) => {
   if (!value) return value;
   const passport = value.replace(/\D/g, '');
   if (passport.length <= 4) return passport;
@@ -63,7 +63,7 @@ export const formatPassport = (value) => {
 };
 
 // Форматирование номера телефона
-export const formatPhone = (value) => {
+const formatPhone = (value) => {
   if (!value) return value;
   const phone = value.replace(/\D/g, '');
   const length = phone.length;
@@ -76,7 +76,7 @@ export const formatPhone = (value) => {
 };
 
 // Форматирование паспорта в текстовый вид
-export const formatPassportText = (passport) => {
+const formatPassportText = (passport) => {
   if (!passport) return '';
   const cleanPassport = passport.replace(/\D/g, '');
   if (cleanPassport.length !== 10) return 'Неверный формат паспорта';
@@ -87,7 +87,7 @@ export const formatPassportText = (passport) => {
 };
 
 // Форматирование кода подразделения
-export const formatDepartmentCode = (value) => {
+const formatDepartmentCode = (value) => {
   if (!value) return value;
   const code = value.replace(/\D/g, '');
   if (code.length <= 3) return code;
@@ -95,7 +95,7 @@ export const formatDepartmentCode = (value) => {
 };
 
 // Форматирование кадастрового номера
-export const formatCadastral = (value) => {
+const formatCadastral = (value) => {
   const clean = value.replace(/\D/g, '');
   if (clean.length > 18) return value.substring(0, 18);
   
@@ -111,7 +111,7 @@ export const formatCadastral = (value) => {
 };
 
 // Функция для преобразования строки в дату
-export const parseDate = (dateString) => {
+const parseDate = (dateString) => {
   if (!dateString) return null;
   const cleanDate = dateString.replace(/\D/g, '');
   let day, month, year;
@@ -151,7 +151,7 @@ export const parseDate = (dateString) => {
 };
 
 // Функция преобразования числа в текст
-export const numberToWords = (num) => {
+const numberToWords = (num) => {
   const units = ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'];
   const teens = ['десять', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать',
                 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать'];
@@ -227,7 +227,7 @@ export const numberToWords = (num) => {
 };
 
 // Форматирование стоимости аренды
-export const formatRentAmount = (value) => {
+const formatRentAmount = (value) => {
   if (!value) return '';
   
   // Разделяем рубли и копейки
@@ -256,7 +256,7 @@ export const formatRentAmount = (value) => {
   return formattedNum;
 };
 // === СУММА: цифрами + прописью (RU) ===
-export const amountRu = (input) => {
+const amountRu = (input) => {
   if (input === null || input === undefined || input === '') return '';
   const normalized = String(input).replace(/\s+/g, '').replace(',', '.');
   let value = Number(normalized);
@@ -325,4 +325,18 @@ const triadToWords = (num, fem, unitsM, unitsF, teens, tens, hundreds) => {
     res.push((fem ? unitsF : unitsM)[u]);
   }
   return res.join(' ');
+};
+
+
+module.exports = {
+  formatDateToText,
+  formatPassport,
+  formatPhone,
+  formatPassportText,
+  formatDepartmentCode,
+  formatCadastral,
+  parseDate,
+  numberToWords,
+  formatRentAmount,
+  amountRu,
 };

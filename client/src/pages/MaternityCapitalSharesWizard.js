@@ -98,6 +98,8 @@ const MaternityCapitalSharesWizard = () => {
   const [formData, setFormData] = useState(loadDraft);
   const [parsedEgrn, setParsedEgrn] = useState(formData.egrn.parsed || null);
   const [validationMessage, setValidationMessage] = useState("");
+  const [generationErrors, setGenerationErrors] = useState([]);
+  const [generating, setGenerating] = useState(false);
   const hydratedRef = useRef(false);
 
   const currentStep = formData.ui.currentStep || 0;
@@ -232,6 +234,84 @@ const MaternityCapitalSharesWizard = () => {
     setValidationMessage("Черновик очищен.");
   };
 
+
+  const getGenerationErrors = () => {
+    const errors = [...(maternitySharesValidation.errors || [])];
+    if (!String(formData.maternityCapital?.certificateSeries || '').trim()) {
+      errors.push('Не указана серия сертификата на материнский капитал.');
+    }
+    if (!String(formData.maternityCapital?.certificateNumber || '').trim()) {
+      errors.push('Не указан номер сертификата на материнский капитал.');
+    }
+    return Array.from(new Set(errors));
+  };
+
+  const handleGenerateAgreement = async () => {
+    const errors = getGenerationErrors();
+    setGenerationErrors(errors);
+    if (errors.length) {
+      setValidationMessage('Документ не создан: исправьте критичные ошибки в блоке “Проверка готовности соглашения”.');
+      return;
+    }
+
+    if ((maternitySharesValidation.warnings || []).length) {
+      const confirmed = window.confirm(
+        'В соглашении есть предупреждения. Проверьте их перед формированием документа.\n\nЯ проверил предупреждения и хочу сформировать соглашение.',
+      );
+      if (!confirmed) return;
+    }
+
+    setGenerating(true);
+    try {
+      const preparedFormData = {
+        ...formData,
+        documentType: 'maternity_capital_shares',
+      };
+      const serialized = JSON.stringify(preparedFormData);
+      try {
+        sessionStorage.setItem('maternityCapitalSharesFormData', serialized);
+        localStorage.setItem('maternityCapitalSharesFormData', serialized);
+        localStorage.setItem(MATERNITY_CAPITAL_SHARES_STORAGE_KEY, serialized);
+      } catch {
+        // Хранилище может быть недоступно, но серверная форма всё равно будет сохранена ниже.
+      }
+
+      const title = preparedFormData.object?.address
+        ? `Соглашение о выделении долей: ${preparedFormData.object.address}`
+        : 'Соглашение о выделении долей по материнскому капиталу';
+
+      const createRes = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          type: 'maternity_capital_shares',
+          title,
+          status: 'draft',
+          html: '',
+        }),
+      });
+      const created = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || !created?.id) {
+        throw new Error(created?.error || 'Не удалось создать документ');
+      }
+
+      await fetch(`/api/documents/${encodeURIComponent(created.id)}/form`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ json: preparedFormData, consentId: localStorage.getItem('consent_id') || null }),
+      });
+
+      navigate(`/document-editor?docId=${encodeURIComponent(created.id)}&docType=maternity_capital_shares`);
+    } catch (error) {
+      console.error('Maternity capital shares generation failed:', error);
+      setValidationMessage(error?.message || 'Не удалось сформировать соглашение.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const goNext = () => {
     if (currentStep < steps.length - 1) {
       setFormData((prev) => ({
@@ -244,7 +324,7 @@ const MaternityCapitalSharesWizard = () => {
 
     setValidationMessage(
       maternitySharesValidation.isValid
-        ? "Пакет 4 заполнен. Генерация итогового документа будет подключена следующим этапом."
+        ? "Пакет 4 заполнен. Нажмите “Сформировать соглашение”."
         : "Проверьте блок “Проверка готовности соглашения” на финальной вкладке.",
     );
   };
@@ -341,6 +421,29 @@ const MaternityCapitalSharesWizard = () => {
         />
       )}
 
+      {generationErrors.length > 0 && (
+        <div className="mt-6 rounded-lg bg-red-50 text-red-800 p-4">
+          <div className="font-semibold mb-2">Критичные ошибки не позволяют сформировать соглашение:</div>
+          <ul className="list-disc list-inside space-y-1">
+            {generationErrors.map((error) => (
+              <li key={error}>{error}</li>
+            ))}
+          </ul>
+          <div className="mt-3 flex gap-2">
+            {steps.map((stepName, index) => (
+              <button
+                key={stepName}
+                type="button"
+                onClick={() => setFormData((prev) => ({ ...prev, ui: { ...prev.ui, currentStep: index } }))}
+                className="text-sm underline text-red-900"
+              >
+                Перейти: {stepName}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      
       {validationMessage && (
         <div className="mt-6 rounded-lg bg-yellow-50 text-yellow-800 p-4">
           {validationMessage}
@@ -364,6 +467,16 @@ const MaternityCapitalSharesWizard = () => {
           >
             Очистить черновик
           </button>
+          {currentStep === steps.length - 1 && (
+            <button
+              type="button"
+              onClick={handleGenerateAgreement}
+              disabled={generating}
+              className={`${PILL.base} ${PILL.primary} disabled:opacity-60`}
+            >
+              {generating ? 'Формируем…' : 'Сформировать соглашение'}
+            </button>
+          )}
           <button
             type="button"
             onClick={goNext}

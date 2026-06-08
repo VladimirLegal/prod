@@ -6,6 +6,7 @@ const sanitizeHtml = require('sanitize-html');
 const { diff_match_patch } = require('diff-match-patch');
 
 const leaseTemplatePath = path.join(__dirname, '../templates/lease.html');
+const maternityCapitalSharesTemplatePath = path.join(__dirname, '../templates/maternity-capital-shares.html');
 
 // читаем файл всегда свежим
 function readLeaseTemplateFile() {
@@ -22,6 +23,34 @@ function getLeaseTemplateInfo() {
 }
 
 // публичная функция: отдать свежий шаблон и залогировать инфо
+function readTemplateFileByType(docType = 'rent') {
+  const templatePath = docType === 'maternity_capital_shares' ? maternityCapitalSharesTemplatePath : leaseTemplatePath;
+  return fs.readFileSync(templatePath, 'utf8');
+}
+
+function getTemplateInfoByType(docType = 'rent') {
+  const templatePath = docType === 'maternity_capital_shares' ? maternityCapitalSharesTemplatePath : leaseTemplatePath;
+  const resolved = path.resolve(templatePath);
+  const stat = fs.statSync(resolved);
+  const raw = fs.readFileSync(resolved, 'utf8');
+  const md5 = crypto.createHash('md5').update(raw, 'utf8').digest('hex');
+  return { path: resolved, mtime: stat.mtime.toISOString(), md5 };
+}
+
+function getFreshTemplate(docType = 'rent') {
+  try {
+    const html = readTemplateFileByType(docType);
+    const info = getTemplateInfoByType(docType);
+    console.log(`🧩 ${docType} template path:`, info.path);
+    console.log(`🕒 ${docType} template mtime:`, info.mtime);
+    console.log(`🔑 ${docType} template md5 :`, info.md5.slice(0, 12));
+    return html;
+  } catch (e) {
+    console.error('[getFreshTemplate] read error:', e);
+    return '';
+  }
+}
+
 function getFreshLeaseTemplate() {
   try {
     const html = readLeaseTemplateFile();
@@ -970,6 +999,8 @@ module.exports = {
   deleteVersion,
   buildDiff,
   getFreshLeaseTemplate,
+  getFreshTemplate,
+  getTemplateInfoByType,
   clearVersions,
   getLeaseTemplateInfo,
   buildApartmentTableHtml,

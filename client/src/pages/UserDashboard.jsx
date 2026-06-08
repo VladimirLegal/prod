@@ -147,12 +147,12 @@ async function handleExportPdf(doc) {
 
     // 4) отправляем в РАБОЧИЙ PDF-генератор (как в редакторе)
     const apiOrigin = process.env.REACT_APP_API_ORIGIN || 'http://localhost:5000';
-    const res = await fetch(`${API_ORIGIN}/api/docs/1/export/pdf`, {
+    const res = await fetch(`${API_ORIGIN}/api/docs/${encodeURIComponent(doc.id)}/export/pdf`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       // генератор ждёт { html, data }
-      body: JSON.stringify({ html, data: formJson }),
+      body: JSON.stringify({ html, data: { ...formJson, documentType: doc.type }, docType: doc.type }),
     });
     if (!res.ok) {
       const t = await res.text();
@@ -208,11 +208,11 @@ async function handleExportDocx(doc) {
     } catch {}
 
     // 4) отдаём на уже рабочий генератор DOCX (тот же, что использовал редактор)
-    const res = await fetch(`${API_ORIGIN}/api/docs/1/export/docx`, {
+    const res = await fetch(`${API_ORIGIN}/api/docs/${encodeURIComponent(doc.id)}/export/docx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ html, data: formJson }),
+        body: JSON.stringify({ html, data: { ...formJson, documentType: doc.type }, docType: doc.type }),
       }
     );
     if (!res.ok) {
@@ -282,10 +282,14 @@ function DocCard({ doc }) {
         // собрать краткую инфу
         let address='', landlords='', tenants='', period='', amount='';
         const jf = form?.json || {};
-        address = jf?.terms?.objectAddress || jf?.terms?.address || doc.address || '';
+        address = jf?.terms?.objectAddress || jf?.terms?.address || jf?.object?.address || doc.address || '';
+        const maternityParticipants = jf?.participantsStep?.participants || jf?.participants || [];
+        if (doc.type === 'maternity_capital_shares' && maternityParticipants.length) {
+          landlords = maternityParticipants.map(p => shortFio(p.fullName || [p.lastName, p.firstName, p.patronymic].filter(Boolean).join(' '))).filter(Boolean).join('; ');
+        }
         const lns = (jf?.landlords || []).map(p => shortFio(p.fullName)).filter(Boolean);
         const tns = (jf?.tenants   || []).map(p => shortFio(p.fullName)).filter(Boolean);
-        if (lns.length) landlords = lns.join('; ');
+        if (lns.length && doc.type !== 'maternity_capital_shares') landlords = lns.join('; ');
         if (tns.length) tenants   = tns.join('; ');
         if (jf?.terms?.startDate || jf?.terms?.endDate) {
           const s = jf?.terms?.startDate ? jf.terms.startDate.split('-').reverse().join('.') : '';
@@ -313,7 +317,7 @@ function DocCard({ doc }) {
         className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-gray-50 rounded-xl"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">{doc.icon || (doc.type==='rent' ? '🏠' : doc.type==='sale' ? '🤝' : '📄')}</span>
+          <span className="text-xl">{doc.icon || (doc.type==='rent' ? '🏠' : doc.type==='sale' ? '🤝' : doc.type==='maternity_capital_shares' ? '👨‍👩‍👧‍👦' : '📄')}</span>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium">{doc.title}</span>
@@ -373,7 +377,7 @@ function DocCard({ doc }) {
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {/* Открыть в редакторе */}
             <Link
-              to={`/document-editor?docId=${encodeURIComponent(doc.id)}`}
+              to={`/document-editor?docId=${encodeURIComponent(doc.id)}&docType=${encodeURIComponent(doc.type || 'rent')}`}
               className={`${BTN.base} ${BTN.primary} w-full sm:w-auto`}
             >
               Открыть
@@ -497,10 +501,14 @@ function DealsSection() {
             const jf = await fetch(`/api/documents/${r.id}/form`, { credentials: 'include' }).then(x => x.json());
             const form = jf?.json || null;
 
-            address = form?.terms?.objectAddress || form?.terms?.address || '';
+            address = form?.terms?.objectAddress || form?.terms?.address || form?.object?.address || '';
+            const maternityParticipants = form?.participantsStep?.participants || form?.participants || [];
+            if (r.type === 'maternity_capital_shares' && maternityParticipants.length) {
+              landlords = maternityParticipants.map(p => shortFio(p.fullName || [p.lastName, p.firstName, p.patronymic].filter(Boolean).join(' '))).filter(Boolean).join('; ');
+            }
             const lns = (form?.landlords || []).map(p => shortFio(p.fullName)).filter(Boolean);
             const tns = (form?.tenants   || []).map(p => shortFio(p.fullName)).filter(Boolean);
-            if (lns.length) landlords = lns.join('; ');
+            if (lns.length && r.type !== 'maternity_capital_shares') landlords = lns.join('; ');
             if (tns.length) tenants   = tns.join('; ');
             if (form?.terms?.startDate || form?.terms?.endDate) {
               const s = form?.terms?.startDate ? form.terms.startDate.split('-').reverse().join('.') : '';
