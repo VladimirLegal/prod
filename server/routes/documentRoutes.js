@@ -86,6 +86,7 @@ function checkAndSetCooldown(req) {
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
 const { query } = require('../db');
+const { splitPassportSeriesNumber } = require('../utils/personDisplay');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -172,14 +173,6 @@ function ensureGoda(s) {
   if (!t) return '';
   // если строка уже заканчивается на "года" — ничего не добавляем
   return /(?:^|\s)года$/.test(t) ? t : (t + ' года');
-}
-
-function splitPassportSeriesNumber(passport) {
-  const digits = String(passport || '').replace(/\D/g, '');
-  if (digits.length >= 10) {
-    return { series: digits.slice(0, 4), number: digits.slice(4, 10) };
-  }
-  return { series: '', number: '' };
 }
 
 function buildDisplayForPerson(p) {
