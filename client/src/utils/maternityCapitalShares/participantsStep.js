@@ -1,5 +1,6 @@
 import { formatDateInput } from "../inputMasks";
 import { calculateAgeOnDate, toDisplayDate } from "../dateUtils";
+import { getFullName, splitFullName, splitPassport } from "../personIdentity";
 
 const ROLE_DEFAULTS = {
   certificateHolder: {
@@ -66,7 +67,14 @@ const emptyDocument = (type = "") => ({
 const makeId = (prefix = "p") =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-export { calculateAgeOnDate, formatDateInput, toDisplayDate };
+export {
+  calculateAgeOnDate,
+  formatDateInput,
+  getFullName,
+  splitFullName,
+  splitPassport,
+  toDisplayDate,
+  };
 
 const RU_MONTHS = {
   января: "01",
@@ -160,31 +168,6 @@ export const emptyPowerOfAttorney = () => ({
 
 export const getParticipantRoleLabel = (role) =>
   ROLE_DEFAULTS[role]?.label || "Участник";
-
-export const getFullName = (participant = {}) =>
-  [participant.lastName, participant.firstName, participant.middleName]
-    .map((part) => String(part || "").trim())
-    .filter(Boolean)
-    .join(" ") ||
-  participant.fullNameRaw ||
-  "";
-
-export const splitFullName = (fullName = "") => {
-  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
-  return {
-    lastName: parts[0] || "",
-    firstName: parts[1] || "",
-    middleName: parts.slice(2).join(" "),
-  };
-};
-
-export const splitPassport = (passport = "") => {
-  const digits = String(passport).replace(/\D/g, "");
-  return {
-    series: digits.slice(0, 4),
-    number: digits.slice(4, 10),
-  };
-};
 
 export const getPersonTypeByAge = ({
   role,

@@ -23,7 +23,7 @@ import {
 import FreeTextImportModal from '../common/FreeTextImportModal';
 // ↓ парсер (named export)
 import { parseFreeTextPerson } from '../../utils/freeTextParser';
-import petrovich from 'petrovich';
+import { declineGenitive } from '../../utils/personNameRu';
 
 // Единые пресеты для кнопок
 const BTN = {
@@ -241,26 +241,6 @@ const LandlordSection = ({
       };
     }
   };
-  // --- FIO declension helpers ---
-  const splitFio = (fullName = '') => {
-    const parts = fullName.trim().split(/\s+/).filter(Boolean);
-    const [last = '', first = '', middle = ''] = parts;
-    return { last, first, middle };
-  };
-  const joinFio = ({ last = '', first = '', middle = '' }) =>
-    [last, first, middle].filter(Boolean).join(' ').trim();
-  const declineGenitive = (fullName = '', gender = '') => {
-    if (!fullName) return '';
-    try {
-      const person = splitFio(fullName);
-      if (gender) person.gender = gender;
-      const declined = petrovich(person, 'genitive');
-      return joinFio(declined);
-    } catch (e) {
-      return fullName; // фолбэк
-    }
-  };
-
   // ====== handlers: арендодатель ======
   const handleLandlordFieldChange = (field, value) => {
     updateCurrentLandlord((cur) => {
