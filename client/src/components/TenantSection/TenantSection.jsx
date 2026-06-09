@@ -9,12 +9,15 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import ErrorMessage from '../ErrorMessage';
 import {
-  formatPassport,
   formatDateToText,
-  formatDepartmentCode,
   formatPhone,
   formatPassportText
 } from '../../utils/formatters';
+import {
+  formatDateInput,
+  formatPassportInput,
+  formatDepartmentCodeInput,
+} from '../../utils/inputMasks';
 
 // Новое: универсальная модалка «Вставить паспортные данные текстом»
 import FreeTextImportModal from '../common/FreeTextImportModal';
@@ -48,14 +51,6 @@ const TenantSection = ({
   removeTenant,
   handleRegistrationTypeChange
 }) => {
-  const formatDateInput = (value) => {
-    const digits = (value || '').replace(/\D/g, '').slice(0, 8);
-    const dd = digits.slice(0, 2);
-    const mm = digits.slice(2, 4);
-    const yyyy = digits.slice(4, 8);
-    
-    return [dd, mm, yyyy].filter(Boolean).join('.');
-  };
   // ---------- ЕДИНАЯ точка доступа к текущему арендатору ----------
   const tenant = tenants?.[currentTenantIndex] || null;
 
@@ -191,15 +186,10 @@ const TenantSection = ({
   };
 
   const handleAttorneyDateChange = (e) => {
-    const value = e.target.value;
-    let formatted = value.replace(/\D/g, '');
-    if (formatted.length > 2) formatted = `${formatted.substring(0, 2)}.${formatted.substring(2)}`;
-    if (formatted.length > 5) formatted = `${formatted.substring(0, 5)}.${formatted.substring(5, 9)}`;
-
     const updated = [...tenants];
     const current = updated[currentTenantIndex];
     ensureRep(current);
-    current.representative.attorneyDate = formatted;
+    current.representative.attorneyDate = formatDateInput(e.target.value);
     setTenants(updated);
   };
   
@@ -594,7 +584,7 @@ const TenantSection = ({
                 className="w-full p-3 border border-gray-300 rounded-lg"
                 value={tenant.passport}
                 onChange={(e) => {
-                  const formatted = formatPassport(e.target.value);
+                  const formatted = formatPassportInput(e.target.value);
                   const updated = [...tenants];
                   updated[currentTenantIndex].passport = formatted;
                   setTenants(updated);
@@ -646,7 +636,7 @@ const TenantSection = ({
                 className="w-full p-3 border border-gray-300 rounded-lg"
                 value={tenant.departmentCode}
                 onChange={(e) => {
-                  const formatted = formatDepartmentCode(e.target.value);
+                  const formatted = formatDepartmentCodeInput(e.target.value);
                   const updated = [...tenants];
                   updated[currentTenantIndex].departmentCode = formatted;
                   setTenants(updated);
@@ -985,7 +975,7 @@ const TenantSection = ({
                       className="w-full p-3 border border-gray-300 rounded-lg"
                       value={tenant.representative?.passport || ''}
                       onChange={(e) => {
-                        const formatted = formatPassport(e.target.value);
+                        const formatted = formatPassportInput(e.target.value);
                         const updated = [...tenants];
                         const current = updated[currentTenantIndex];
                         ensureRep(current);
@@ -1040,7 +1030,7 @@ const TenantSection = ({
                       className="w-full p-3 border border-gray-300 rounded-lg"
                       value={tenant.representative?.departmentCode || ''}
                       onChange={(e) => {
-                        const formatted = formatDepartmentCode(e.target.value);
+                        const formatted = formatDepartmentCodeInput(e.target.value);
                         const updated = [...tenants];
                         const current = updated[currentTenantIndex];
                         ensureRep(current);

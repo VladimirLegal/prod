@@ -1,3 +1,5 @@
+import { formatDateInput } from "../inputMasks";
+
 const ROLE_DEFAULTS = {
   certificateHolder: {
     label: "Владелец сертификата",
@@ -63,13 +65,7 @@ const emptyDocument = (type = "") => ({
 const makeId = (prefix = "p") =>
   `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-export const formatDateInput = (value = "") => {
-  const digits = String(value).replace(/\D/g, "").slice(0, 8);
-  const dd = digits.slice(0, 2);
-  const mm = digits.slice(2, 4);
-  const yyyy = digits.slice(4, 8);
-  return [dd, mm, yyyy].filter(Boolean).join(".");
-};
+export { formatDateInput };
 
 export const toDisplayDate = (value = "") => {
   const text = String(value || "").trim();

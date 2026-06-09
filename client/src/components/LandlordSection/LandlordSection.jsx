@@ -10,12 +10,15 @@ import {
 
 import ErrorMessage from '../ErrorMessage';
 import {
-  formatPassport,
   formatPassportText,
-  formatDepartmentCode,
   formatPhone,
   formatDateToText,
 } from '../../utils/formatters';
+import {
+  formatDateInput,
+  formatPassportInput,
+  formatDepartmentCodeInput,
+} from '../../utils/inputMasks';
 // ↓ компонент модалки (default export)
 import FreeTextImportModal from '../common/FreeTextImportModal';
 // ↓ парсер (named export)
@@ -43,19 +46,6 @@ const PILL = {
   subtle:  "bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-gray-200",
   disabled:"bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed",
   warn:    "bg-amber-500 text-white border-amber-500 hover:bg-amber-600 focus:ring-amber-200",
-};
-
-
-/**
- * Полезные мелкие форматтеры для локального ввода
- */
-const formatDateInput = (v) => {
-  const digits = (v || '').replace(/\D/g, '').slice(0, 8);
-  const dd = digits.slice(0, 2);
-  const mm = digits.slice(2, 4);
-  const yyyy = digits.slice(4, 8);
-
-  return [dd, mm, yyyy].filter(Boolean).join('.');
 };
 
 
@@ -744,7 +734,7 @@ const LandlordSection = ({
             data-error-key="landlordPassport"
             className="w-full p-3 border border-gray-300 rounded-lg"
             value={landlord.passport || ''}
-            onChange={(e) => handleLandlordFieldChange('passport', formatPassport(e.target.value))}
+            onChange={(e) => handleLandlordFieldChange('passport', formatPassportInput(e.target.value))}
             placeholder="Серия и номер"
           />
           <div className="text-sm text-gray-500 mt-1">
@@ -790,7 +780,7 @@ const LandlordSection = ({
             data-error-key="landlordDepartmentCode"
             className="w-full p-3 border border-gray-300 rounded-lg"
             value={landlord.departmentCode || ''}
-            onChange={(e) => handleLandlordFieldChange('departmentCode', formatDepartmentCode(e.target.value))}
+            onChange={(e) => handleLandlordFieldChange('departmentCode', formatDepartmentCodeInput(e.target.value))}
             placeholder="000-000"
           />
           <ErrorMessage error={currentErrors.landlordDepartmentCode} />
@@ -1172,7 +1162,7 @@ const LandlordSection = ({
                   className="w-full p-3 border border-gray-300 rounded-lg"
                   value={landlord.representative.passport}
                   onChange={(e) =>
-                    handleRepresentativeFieldChange('passport', formatPassport(e.target.value))
+                    handleRepresentativeFieldChange('passport', formatPassportInput(e.target.value))
                   }
                   placeholder="Серия и номер"
                 />
@@ -1224,7 +1214,7 @@ const LandlordSection = ({
                   onChange={(e) =>
                     handleRepresentativeFieldChange(
                       'departmentCode',
-                      formatDepartmentCode(e.target.value)
+                      formatDepartmentCodeInput(e.target.value)
                     )
                   }
                   placeholder="000-000"

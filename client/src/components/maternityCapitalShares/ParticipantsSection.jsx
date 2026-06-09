@@ -6,12 +6,16 @@ import {
   normalizeSnils,
 } from "../../utils/freeTextParser";
 import {
+  formatDateInput,
+  formatPassportInput,
+  formatDepartmentCodeInput,
+} from "../../utils/inputMasks";
+import {
   applyParticipantAgeRules,
   buildEgrnParticipantCandidates,
   createParticipant,
   emptyAttorneyRepresentative,
   emptyPowerOfAttorney,
-  formatDateInput,
   getFullName,
   getLegalRepresentativeOptions,
   getParticipantRoleLabel,
@@ -103,20 +107,6 @@ const TextArea = ({ value, onChange, placeholder = "" }) => (
     className={inputClass}
   />
 );
-
-const formatPassportInput = (value = "") => {
-  const digits = String(value).replace(/\D/g, "").slice(0, 10);
-  return digits.length <= 4
-    ? digits
-    : `${digits.slice(0, 4)} ${digits.slice(4)}`;
-};
-
-const formatDepartmentCodeInput = (value = "") => {
-  const digits = String(value).replace(/\D/g, "").slice(0, 6);
-  return digits.length <= 3
-    ? digits
-    : `${digits.slice(0, 3)}-${digits.slice(3)}`;
-};
 
 const applyParsedPassport = (target, parsed) => {
   const name = splitFullName(parsed.fullName || "");
