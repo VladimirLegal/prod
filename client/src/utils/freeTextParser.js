@@ -595,16 +595,24 @@ export function parseBirthCertificateText(raw) {
   );
   const birthDate =
     extractBirthDateByMarkers(text) || extractAllDates(text)[0] || "";
-  const birthPlace = norm(
+  let birthPlace = norm(
     grab(text, [
-      /место\s*рождения\s*[:\-]?\s*([\s\S]*?)(?=,?\s*(?:зарегистр|свидетельство|СНИЛС|$))/i,
+      /место\s*рождения\s*[:\-]?\s*([\s\S]*?)(?=,?\s*(?:пол|зарегистр|свидетельство|запис[ьи]\s+акта|актовая\s+запись|СНИЛС|$))/i,
     ]),
   );
+
+  birthPlace = birthPlace
+    .replace(/\s*,?\s*пол\s*[–—-]?\s*(мужской|женский)[\s\S]*$/i, "")
+    .replace(/[.;,\s]+$/g, "");
+
   let registration = grab(text, [
-    /зарегистрирован[а-я]*\s*(?:по\s*адресу)?\s*[:\-]?\s*([\s\S]*?)(?=\s*\(\s*свидетельство|свидетельство\s+о\s+рождении|СНИЛС|$)/i,
+    /зарегистрирован[а-я]*\s*(?:по\s*месту\s*жительства\s*)?(?:по\s*адресу)?\s*[:\-]?\s*([\s\S]*?)(?=\s*\(\s*свидетельство|свидетельство\s+о\s+рождении|СНИЛС|$)/i,
     /адрес\s*регистрации\s*[:\-]?\s*([\s\S]*?)(?=\s*\(\s*свидетельство|свидетельство\s+о\s+рождении|СНИЛС|$)/i,
   ]);
-  registration = norm(registration).replace(/[.;,\s]+$/g, "");
+
+  registration = norm(registration)
+    .replace(/^(?:по\s*месту\s*жительства\s*)?по\s*адресу\s*[:\-]?\s*/i, "")
+    .replace(/[.;,\s]+$/g, "");
 
   const snils = normalizeSnils(
     grab(text, [
@@ -623,11 +631,14 @@ export function parseBirthCertificateText(raw) {
     number = docMatch[2].trim();
   }
 
-  let issuedBy = grab(text, [
-    /свидетельство\s+о\s+рождении[\s\S]*?выдано\s+([\s\S]*?)(?=\s+[0-3]?\d[./-][01]?\d[./-]\d{2,4}\s*(?:г\.|года)?|,\s*о\s+чем|\s*о\s+чем|$)/i,
-    /выдано\s+([\s\S]*?)(?=\s+[0-3]?\d[./-][01]?\d[./-]\d{2,4}\s*(?:г\.|года)?|,\s*о\s+чем|\s*о\s+чем|$)/i,
+    let issuedBy = grab(text, [
+    /свидетельство\s+о\s+рождении[\s\S]*?выдано\s+([\s\S]*?)(?=,\s*(?:запис[ьи]\s+акта|актовая\s+запись|зарегистрирован[а-я]*)|\s+[0-3]?\d[./-][01]?\d[./-]\d{2,4}\s*(?:г\.|года)?|,\s*о\s+чем|\s*о\s+чем|$)/i,
+    /выдано\s+([\s\S]*?)(?=,\s*(?:запис[ьи]\s+акта|актовая\s+запись|зарегистрирован[а-я]*)|\s+[0-3]?\d[./-][01]?\d[./-]\d{2,4}\s*(?:г\.|года)?|,\s*о\s+чем|\s*о\s+чем|$)/i,
   ]);
-  issuedBy = norm(issuedBy).replace(/[.,\s]+$/g, "");
+
+  issuedBy = norm(issuedBy)
+    .replace(/\s*,?\s*(?:запис[ьи]\s+акта|актовая\s+запись|зарегистрирован[а-я]*)[\s\S]*$/i, "")
+    .replace(/[.,\s]+$/g, "");
 
   let issueDate = "";
   const issueMatch = flat.match(
@@ -637,12 +648,12 @@ export function parseBirthCertificateText(raw) {
 
   let actRecordNumber = "";
   let actRecordDate = "";
-  const actMatch =
+    const actMatch =
     flat.match(
-      /запис[ьи]\s+акта\s+о\s+рождении\s*№?\s*([0-9А-Яа-яA-Za-z/-]+)\s+от\s+([0-3]?\d[./-][01]?\d[./-]\d{2,4})/i,
+      /запис[ьи]\s+акта\s+о\s+рождении\s*№?\s*([0-9А-Яа-яA-Za-z/-]+)\s+от\s+([0-3]?\d[./-][01]?\d[./-]\d{2,4}|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)/i,
     ) ||
     flat.match(
-      /актовая\s+запись\s*№?\s*([0-9А-Яа-яA-Za-z/-]+)\s+от\s+([0-3]?\d[./-][01]?\d[./-]\d{2,4})/i,
+      /актовая\s+запись\s*№?\s*([0-9А-Яа-яA-Za-z/-]+)\s+от\s+([0-3]?\d[./-][01]?\d[./-]\d{2,4}|[0-3]?\d\s+[А-Яа-яё]+\s+\d{4}(?:\s+г(?:ода)?\.?)?)/i,
     );
   if (actMatch) {
     actRecordNumber = actMatch[1];

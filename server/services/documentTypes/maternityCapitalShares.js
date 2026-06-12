@@ -86,6 +86,22 @@ const ageOnDate = (birthDate, agreementDate) => {
   return age;
 };
 
+const agreementDateOf = (formData = {}) =>
+  formData.agreement?.date || formData.participantsStep?.agreementDate;
+
+const participantAge = (formData, participant = {}) =>
+  ageOnDate(participant.birthDate, agreementDateOf(formData));
+
+const isUnder14 = (formData, participant = {}) => {
+  const age = participantAge(formData, participant);
+  return age !== null && age < 14;
+};
+
+const isMinor14To18 = (formData, participant = {}) => {
+  const age = participantAge(formData, participant);
+  return age !== null && age >= 14 && age < 18;
+};
+
 const findParticipant = (formData, idOrName) => {
   const participants = formData.participantsStep?.participants || formData.participants || [];
   return participants.find((p) => String(p.id) === String(idOrName) || fullName(p) === text(idOrName)) || null;
@@ -93,8 +109,47 @@ const findParticipant = (formData, idOrName) => {
 
 const representativeName = (formData, participant = {}) => {
   const rep = participant.legalRepresentative || participant.representative || participant.guardian || {};
-  const fromId = findParticipant(formData, rep.participantId || participant.legalRepresentativeParticipantId || participant.representativeParticipantId);
-  return fullName(fromId) || fullName(rep) || text(rep.fullName || participant.legalRepresentativeFullName || participant.representativeFullName);
+  const fromId = findParticipant(
+    formData,
+    rep.participantId ||
+      participant.legalRepresentativeParticipantId ||
+      participant.representativeParticipantId ||
+      participant.consentProviderParticipantId,
+  );
+
+  return fullName(fromId) || fullName(rep) || text(
+    rep.fullName ||
+      participant.legalRepresentativeFullName ||
+      participant.representativeFullName,
+  );
+};
+
+const representativeParticipant = (formData, participant = {}) => {
+  const rep = participant.legalRepresentative || participant.representative || participant.guardian || {};
+  return findParticipant(
+    formData,
+    rep.participantId ||
+      participant.legalRepresentativeParticipantId ||
+      participant.representativeParticipantId ||
+      participant.consentProviderParticipantId,
+  );
+};
+
+const representativeKey = (formData, participant = {}) => {
+  const rep = participant.legalRepresentative || participant.representative || participant.guardian || {};
+  const fromId =
+    rep.participantId ||
+    participant.legalRepresentativeParticipantId ||
+    participant.representativeParticipantId ||
+    participant.consentProviderParticipantId;
+
+  if (fromId) return `id:${fromId}`;
+
+  const repObj = representativeParticipant(formData, participant);
+  if (repObj?.id) return `id:${repObj.id}`;
+
+  const repFullName = representativeName(formData, participant);
+  return repFullName ? `name:${repFullName}` : '';
 };
 
 const isPowerOfAttorney = (participant = {}) => Boolean(
@@ -113,6 +168,166 @@ const poaDetails = (participant = {}) => pick(
 const isPassportRfParticipant = (participant = {}) => {
   const type = participant.document?.type || participant.documentType || '';
   return !type || type === 'passport_rf';
+};
+
+const genderWordNoColon = (person = {}) => {
+  const gender = normalizeGender(person);
+  if (gender === 'female') return 'женский';
+  if (gender === 'male') return 'мужской';
+  return '';
+};
+
+const formatDateLongLocal = (value) => {
+  const s = text(value);
+  if (!s) return '';
+
+  let m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) {
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) m = [m[0], m[3], m[2], m[1]];
+  }
+
+  if (!m) return s;
+
+  const months = [
+    'января',
+    'февраля',
+    'марта',
+    'апреля',
+    'мая',
+    'июня',
+    'июля',
+    'августа',
+    'сентября',
+    'октября',
+    'ноября',
+    'декабря',
+  ];
+
+  const day = String(Number(m[1]));
+  const month = months[Number(m[2]) - 1];
+  const year = m[3];
+
+  return month ? `${day} ${month} ${year}` : s;
+};
+
+const birthCertificateTitle = (participant = {}) => {
+  const cert = participant.birthCertificate || participant.document || {};
+
+  const series = text(cert.series || cert.birthCertificateSeries);
+  const number = text(cert.number || cert.birthCertificateNumber);
+  const issuedBy = text(cert.issuedBy || cert.birthCertificateIssuedBy);
+  const actNumber = text(cert.actRecordNumber || cert.birthActRecordNumber);
+  const actDate = formatDateLongLocal(cert.actRecordDate || cert.birthActRecordDate);
+
+  const certParts = join([
+    series,
+    number && `№ ${number}`,
+  ], ' ');
+
+  const parts = [];
+
+  if (certParts) {
+    parts.push(`свидетельство о рождении ${certParts}`);
+  } else {
+    parts.push('свидетельство о рождении');
+  }
+
+  if (issuedBy) parts.push(`выдано ${issuedBy}`);
+
+  if (actNumber || actDate) {
+    parts.push(`запись акта о рождении${actNumber ? ` № ${actNumber}` : ''}${actDate ? ` от ${actDate}` : ''}`);
+  }
+
+  return parts.join(', ');
+};
+
+const under14ChildTitleGenitive = (participant = {}) => {
+  const name = inflectName(participant, 'genitive') || fullName(participant);
+  const birthDate = formatDateLongLocal(participant.birthDate);
+  const birthPlace = text(participant.birthPlace);
+  const genderWord = genderWordNoColon(participant);
+  const registration = text(
+    participant.registrationAddress ||
+    participant.registration ||
+    participant.address,
+  );
+
+  const parts = [
+    name,
+    birthDate && `${birthDate} года рождения`,
+    birthPlace && `место рождения: ${birthPlace}`,
+    genderWord && `пол ${genderWord}`,
+  ];
+
+  const cert = birthCertificateTitle(participant);
+  if (cert) parts.push(cert);
+
+  if (registration) {
+    parts.push(`зарегистрированного по месту жительства по адресу: ${registration}`);
+  }
+
+  return parts.filter(Boolean).join(', ');
+};
+
+const under14ChildrenByRepresentative = (formData, participants = []) => {
+  const result = new Map();
+
+  participants
+    .filter((participant) => isUnder14(formData, participant))
+    .forEach((child) => {
+      const key = representativeKey(formData, child);
+      if (!key) return;
+      if (!result.has(key)) result.set(key, []);
+      result.get(key).push(child);
+    });
+
+  return result;
+};
+
+const under14RepresentativePhrase = (representative, children = []) => {
+  if (!children.length) return '';
+
+  const gender = normalizeGender(representative);
+  const acting = gender === 'female' ? 'действующая' : 'действующий';
+  const childWord = children.length === 1
+    ? 'своего несовершеннолетнего ребёнка'
+    : 'своих несовершеннолетних детей';
+
+  const childrenText = children
+    .map((child) => under14ChildTitleGenitive(child))
+    .filter(Boolean)
+    .join('; ');
+
+  return childrenText
+    ? `${acting} за себя и как законный представитель ${childWord}: ${childrenText}`
+    : '';
+};
+
+const buildPersonTitleWithNameCase = (person = {}, grammaticalCase = 'nominative') => {
+  const base = buildPersonTitle(person);
+  if (grammaticalCase === 'nominative') return base;
+
+  const nominativeName = fullName(person);
+  const declinedName = inflectName(person, grammaticalCase);
+
+  if (!base || !nominativeName || !declinedName) return base;
+
+  if (base.startsWith(nominativeName)) {
+    return `${declinedName}${base.slice(nominativeName.length)}`;
+  }
+
+  return base.replace(nominativeName, declinedName);
+};
+
+const representativeFullTitle = (formData, participant = {}) => {
+  const repObj = representativeParticipant(formData, participant);
+  if (repObj) return buildPersonTitleWithNameCase(repObj, 'genitive');
+
+  const rep = participant.legalRepresentative || participant.representative || participant.guardian || {};
+  if (fullName(rep) || rep.fullName) return buildPersonTitleWithNameCase(rep, 'genitive');
+
+  return representativeName(formData, participant);
 };
 
 const participantDescription = (formData, participant) => {
@@ -178,28 +393,15 @@ const participantDescriptionForTitle = (formData, participant) => {
     };
   }
 
-  const age = ageOnDate(
-    participant.birthDate,
-    formData.agreement?.date || formData.participantsStep?.agreementDate,
-  );
-
   let base = buildPersonTitle(participant);
 
-  const repName = representativeName(formData, participant);
-
-  if (age !== null && age >= 14 && age < 18 && repName) {
-    const gender = normalizeGender(participant);
-    const acting = gender === 'female' ? 'действующая' : 'действующий';
-    const relation = text(
-      participant.legalRepresentativeRelation ||
-      participant.representativeRelation ||
-      'законного представителя',
-    );
-    const own = /мать|матер/i.test(relation)
-      ? 'своей'
-      : (/отец|отц/i.test(relation) ? 'своего' : 'своего/своей');
-
-    base += `, ${acting} с согласия ${own} ${relation} ${repName}`;
+  if (isMinor14To18(formData, participant)) {
+    const repTitle = representativeFullTitle(formData, participant);
+    if (repTitle) {
+      const gender = normalizeGender(participant);
+      const acting = gender === 'female' ? 'действующая' : 'действующий';
+      base += `, ${acting} с согласия своего законного представителя ${repTitle}`;
+    }
   }
 
   if (isPowerOfAttorney(participant)) {
@@ -216,15 +418,29 @@ const participantDescriptionForTitle = (formData, participant) => {
   };
 };
 
-const participantsTitleHtml = (formData, participants = []) =>
-  participants
+const participantsTitleHtml = (formData, participants = []) => {
+  const childrenByRep = under14ChildrenByRepresentative(formData, participants);
+  const visibleParticipants = participants.filter((participant) => !isUnder14(formData, participant));
+
+  return visibleParticipants
     .map((participant, index) => {
       const item = participantDescriptionForTitle(formData, participant);
-      const safeText = item.alreadyEscaped ? item.text : escapeHtml(item.text);
-      const tail = index < participants.length - 1 ? ';' : '';
+      let safeText = item.alreadyEscaped ? item.text : escapeHtml(item.text);
+
+      const key = participant.id ? `id:${participant.id}` : `name:${fullName(participant)}`;
+      const representedChildren = childrenByRep.get(key) || [];
+      const representedPhrase = under14RepresentativePhrase(participant, representedChildren);
+
+      if (representedPhrase) {
+        safeText += `, ${escapeHtml(representedPhrase)}`;
+      }
+
+      const tail = index < visibleParticipants.length - 1 ? ';' : '';
+
       return `<p style="text-indent: 2em;">${safeText}${tail}</p>`;
     })
     .join('\n');
+};
 
 const participantSignatures = (formData, participants) => participants.map((participant) => {
   const name = fullName(participant);
