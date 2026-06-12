@@ -1,5 +1,6 @@
 const path = require('path');
 const { amountRu } = require('../../utils/formatters');
+const { buildPersonTitle } = require('../../utils/personDisplay');
 
 let petrovich = null;
 try {
@@ -109,6 +110,11 @@ const poaDetails = (participant = {}) => pick(
   ], ' '),
 );
 
+const isPassportRfParticipant = (participant = {}) => {
+  const type = participant.document?.type || participant.documentType || '';
+  return !type || type === 'passport_rf';
+};
+
 const participantDescription = (formData, participant) => {
   const name = escapeHtml(fullName(participant));
   const gender = normalizeGender(participant);
@@ -163,6 +169,62 @@ const participantDescription = (formData, participant) => {
   }
   return base;
 };
+
+const participantDescriptionForTitle = (formData, participant) => {
+  if (!isPassportRfParticipant(participant)) {
+    return {
+      text: participantDescription(formData, participant),
+      alreadyEscaped: true,
+    };
+  }
+
+  const age = ageOnDate(
+    participant.birthDate,
+    formData.agreement?.date || formData.participantsStep?.agreementDate,
+  );
+
+  let base = buildPersonTitle(participant);
+
+  const repName = representativeName(formData, participant);
+
+  if (age !== null && age >= 14 && age < 18 && repName) {
+    const gender = normalizeGender(participant);
+    const acting = gender === 'female' ? 'действующая' : 'действующий';
+    const relation = text(
+      participant.legalRepresentativeRelation ||
+      participant.representativeRelation ||
+      'законного представителя',
+    );
+    const own = /мать|матер/i.test(relation)
+      ? 'своей'
+      : (/отец|отц/i.test(relation) ? 'своего' : 'своего/своей');
+
+    base += `, ${acting} с согласия ${own} ${relation} ${repName}`;
+  }
+
+  if (isPowerOfAttorney(participant)) {
+    const rep = participant.representative || {};
+    const repFullName = fullName(rep) || rep.fullName;
+    if (repFullName) {
+      base += ` в лице представителя ${repFullName}, ${normalizeGender(rep) === 'female' ? 'действующей' : 'действующего'} на основании доверенности ${poaDetails(participant)}`;
+    }
+  }
+
+  return {
+    text: base,
+    alreadyEscaped: false,
+  };
+};
+
+const participantsTitleHtml = (formData, participants = []) =>
+  participants
+    .map((participant, index) => {
+      const item = participantDescriptionForTitle(formData, participant);
+      const safeText = item.alreadyEscaped ? item.text : escapeHtml(item.text);
+      const tail = index < participants.length - 1 ? ';' : '';
+      return `<p style="text-indent: 2em;">${safeText}${tail}</p>`;
+    })
+    .join('\n');
 
 const participantSignatures = (formData, participants) => participants.map((participant) => {
   const name = fullName(participant);
@@ -309,7 +371,7 @@ function buildMaternityCapitalSharesRenderData(formData = {}) {
     signatures: participantSignatures(formData, participants),
     copies: { count: Math.max(1, participants.length) },
     calc: {},
-    participantsText: participants.map((p) => escapeHtml(participantDescription(formData, p))).join('; '),
+    participantsText: participantsTitleHtml(formData, participants),
     objectText: `${ownerText} принадлежит жилое помещение (${escapeHtml(object.objectKindFromEgrn || object.residentialKind || 'квартира')}), приобретённое с использованием средств материнского капитала, находящееся по адресу: ${escapeHtml(object.address || '')}${object.area ? `, площадью ${escapeHtml(object.area)} кв. м` : ''}${object.floor ? `, этаж № ${escapeHtml(object.floor)}` : ''}. ${object.cadastralNumber ? `Кадастровый номер ${escapeHtml(object.cadastralNumber)}.` : ''}`,
     rightsText: rightsText(formData),
     priceText: `${ownerNames.length ? escapeHtml(ownerNames.join(', ')) : 'Стороны'} ${pluralOwners ? 'приобрели' : 'приобрёл(а)'} ${/share|дол/i.test(acquisitionType) ? 'долю в праве собственности на указанное жилое помещение' : /room|комнат/i.test(acquisitionType) ? 'комнату / долю, соответствующую комнате' : 'указанное жилое помещение'} за сумму ${amountRu(price)}.`,
