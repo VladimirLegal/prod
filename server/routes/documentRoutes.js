@@ -87,6 +87,7 @@ const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
 const { query } = require('../db');
 const { splitPassportSeriesNumber } = require('../utils/personDisplay');
+const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -1041,30 +1042,7 @@ function rublesToWordsTitleCase(n) {
   // Заглавная первая буква
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
- 
 
-// --- contacts helper (ФИО: тел. …; email … по строкам) ---
-function buildContactsHtml(list) {
-  const esc = (s) => String(s ?? '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-  if (!Array.isArray(list) || !list.length) return '—';
-
-  const rows = list.map(p => {
-    const name  = esc((p?.fullName || '').trim());
-    const phone = (p?.phone || '').trim();
-    const mail  = (p?.email || '').trim();
-
-    const parts = [];
-    if (phone) parts.push(`тел. ${esc(phone)}`);
-    if (mail)  parts.push(`email ${esc(mail)}`);
-
-    if (!parts.length) return ''; // у человека нет ни телефона, ни email — пропускаем
-    return (name ? `${name}: ` : '') + parts.join('; ');
-  }).filter(Boolean);
-
-  return rows.length ? rows.join('<br>') : '—';
-}
 // === Обогащение участников для блока "Подписи" ===
 // добавляем: item.current.{ ...копия полей..., index, representative.attorneyDateFormatted }
 // и ссылку item.calc на общий calc, чтобы внутри data-repeat сработали условия вида data-if="calc.multipleLandlords"
