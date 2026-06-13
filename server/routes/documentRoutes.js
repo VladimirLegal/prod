@@ -88,6 +88,7 @@ const { buildMaternityCapitalSharesRenderData } = require('../services/documentT
 const { query } = require('../db');
 const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
+const { insertShareWord } = require('../services/documentTypes/rent/ownershipDocs');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -883,22 +884,6 @@ function markShowNamedLaterForLandlords(data) {
   }
 
   return data;
-}
-// Вставляет "доли" после дроби в начале заголовка документа:
-// "7/10, Договор ..." -> "7/10 доли, Договор ..."
-// Если "доли" уже стоит ("1/10 доли, ...") — оставляем как есть.
-// Работает только для паттерна "дробь, остальной текст".
-function insertShareWord(title) {
-  const t = String(title || '').trim();
-  // Уже содержит "дол" сразу после дроби — не трогаем
-  if (/^\d+\s*\/\s*\d+\s+дол/i.test(t)) return t;
-
-  const m = t.match(/^(\d+\s*\/\s*\d+)\s*,\s*(.+)$/);
-  if (!m) return t;
-
-  const share = m[1].replace(/\s*/g, ''); // "7/10"
-  const rest  = m[2];                     // "Договор ..."
-  return `${share} доли, ${rest}`;
 }
 
 // ======= Ownership docs (1.2) — поддержка долей у одного наймодателя =======
