@@ -86,7 +86,7 @@ function checkAndSetCooldown(req) {
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
 const { query } = require('../db');
-const { splitPassportSeriesNumber } = require('../utils/personDisplay');
+const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
@@ -167,13 +167,6 @@ function formatDateLongLocal(input) {
   const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
   const dd = String(d.getDate()); // без паддинга — как в твоём UI («4 января…»)
   return `${dd} ${months[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-function ensureGoda(s) {
-  const t = String(s || '').trim();
-  if (!t) return '';
-  // если строка уже заканчивается на "года" — ничего не добавляем
-  return /(?:^|\s)года$/.test(t) ? t : (t + ' года');
 }
 
 function buildDisplayForPerson(p) {
