@@ -89,6 +89,7 @@ const { query } = require('../db');
 const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
 const { insertShareWord } = require('../services/documentTypes/rent/ownershipDocs');
+const { buildGroupLabels } = require('../services/documentTypes/rent/groupLabels');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -108,58 +109,6 @@ function parseAnyDateLocal(input) {
   if (m) return new Date(+m[1], +m[2]-1, +m[3]);
   const d = new Date(s);
   return isNaN(d) ? null : d;
-}
-// ==== Russian group labels by case (Наймодатель / Наниматель) ====
-const GROUP_FORMS = {
-  landlord: {
-    sg: { // единственное число
-      nom: 'Наймодатель',
-      gen: 'Наймодателя',
-      dat: 'Наймодателю',
-      acc: 'Наймодателя',     // одуш., значит как gen
-      ins: 'Наймодателем',
-      pre: 'Наймодателе',
-    },
-    pl: { // множественное число
-      nom: 'Наймодатели',
-      gen: 'Наймодателей',
-      dat: 'Наймодателям',
-      acc: 'Наймодателей',    // одуш., значит как gen
-      ins: 'Наймодателями',
-      pre: 'Наймодателях',
-    },
-  },
-  tenant: {
-    sg: {
-      nom: 'Наниматель',
-      gen: 'Нанимателя',
-      dat: 'Нанимателю',
-      acc: 'Нанимателя',      // одуш., значит как gen
-      ins: 'Нанимателем',
-      pre: 'Нанимателе',
-    },
-    pl: {
-      nom: 'Наниматели',
-      gen: 'Нанимателей',
-      dat: 'Нанимателям',
-      acc: 'Нанимателей',     // одуш., значит как gen
-      ins: 'Нанимателями',
-      pre: 'Нанимателях',
-    },
-  },
-};
-
-function buildGroupLabels(nounKey, isOne) {
-  const forms = GROUP_FORMS[nounKey][isOne ? 'sg' : 'pl'];
-  // возвращаем с «говорящими» ключами
-  return {
-    nominative: forms.nom,       // именительный
-    genitive: forms.gen,         // родительный
-    dative: forms.dat,           // дательный
-    accusative: forms.acc,       // винительный
-    instrumental: forms.ins,     // творительный
-    prepositional: forms.pre,    // предложный
-  };
 }
 
 function formatDateLongLocal(input) {
