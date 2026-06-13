@@ -327,6 +327,11 @@ const triadToWords = (num, fem, unitsM, unitsF, teens, tens, hundreds) => {
   return res.join(' ');
 };
 
+const numberToWordsRuTitleCase = (n) => {
+  const words = numberToWordsRu(n);
+  if (!words) return '';
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 module.exports = {
   formatDateToText,
@@ -339,4 +344,5 @@ module.exports = {
   numberToWords,
   formatRentAmount,
   amountRu,
+  numberToWordsRuTitleCase,
 };

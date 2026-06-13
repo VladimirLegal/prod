@@ -90,6 +90,7 @@ const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDispl
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
 const { insertShareWord } = require('../services/documentTypes/rent/ownershipDocs');
 const { buildGroupLabels } = require('../services/documentTypes/rent/groupLabels');
+const { numberToWordsRuTitleCase } = require('../utils/formatters');
 // === Helpers: dates/passports and representatives display ===
 function parseAnyDateLocal(input) {
   if (!input) return null;
@@ -929,47 +930,6 @@ function buildLandlordsBasisHtml(data) {
 
   return parts.join('\n');
 }
-// === Простейшая пропись суммы в рублях (только целые, до миллионов) ===
-function rublesToWordsTitleCase(n) {
-  n = Math.floor(Math.max(0, Number(n) || 0));
-  const ones = ['ноль','один','два','три','четыре','пять','шесть','семь','восемь','девять'];
-  const onesF = ['ноль','одна','две','три','четыре','пять','шесть','семь','восемь','девять'];
-  const teens = ['десять','одиннадцать','двенадцать','тринадцать','четырнадцать','пятнадцать','шестнадцать','семнадцать','восемнадцать','девятнадцать'];
-  const tens = ['','десять','двадцать','тридцать','сорок','пятьдесят','шестьдесят','семьдесят','восемьдесят','девяносто'];
-  const hund = ['','сто','двести','триста','четыреста','пятьсот','шестьсот','семьсот','восемьсот','девятьсот'];
-  function triadToWords(num, female=false) {
-    const a = num % 10, b = Math.floor(num / 10) % 10, c = Math.floor(num / 100);
-    let out = [];
-    if (c) out.push(hund[c]);
-    if (b === 1) out.push(teens[a]);
-    else {
-      if (b) out.push(tens[b]);
-      if (a) out.push((female ? onesF : ones)[a]);
-    }
-    return out.join(' ');
-  }
-  function unitName(n, forms) { // формы: ['тысяча','тысячи','тысяч']
-    const a = n % 10, b = Math.floor(n/10)%10;
-    if (b === 1) return forms[2];
-    if (a === 1) return forms[0];
-    if (a >= 2 && a <= 4) return forms[1];
-    return forms[2];
-  }
-  const parts = [];
-  const millions = Math.floor(n / 1_000_000);
-  const thousands = Math.floor((n % 1_000_000) / 1_000);
-  const rub = n % 1_000;
-
-  if (millions) parts.push(triadToWords(millions), unitName(millions, ['миллион','миллиона','миллионов']));
-  if (thousands) parts.push(triadToWords(thousands, true), unitName(thousands, ['тысяча','тысячи','тысяч']));
-  if (rub || parts.length===0) parts.push(triadToWords(rub, false));
-
-  let text = parts.join(' ').replace(/\s+/g,' ').trim();
-  if (!text) text = 'ноль';
-  // Заглавная первая буква
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
 // === Обогащение участников для блока "Подписи" ===
 // добавляем: item.current.{ ...копия полей..., index, representative.attorneyDateFormatted }
 // и ссылку item.calc на общий calc, чтобы внутри data-repeat сработали условия вида data-if="calc.multipleLandlords"
@@ -1370,7 +1330,7 @@ router.post('/docs/:id/render', async (req, res) => {
             rub,
             kop: kopStr,
             formatted: spaced(rub),                 // "50 000"
-            words: rublesToWordsTitleCase(rub),     // "Пятьдесят тысяч"
+            words: numberToWordsRuTitleCase(rub),   // "Пятьдесят тысяч"
             rubWord,                                // "рубль/рубля/рублей"
             kopWord                                 // "копейка/копейки/копеек"
           };
