@@ -1,6 +1,7 @@
 const path = require('path');
 const { amountRu } = require('../../utils/formatters');
 const { buildPersonTitle } = require('../../utils/personDisplay');
+const { buildPropertyRightsBlockHtml } = require('../documentShared/propertyRights');
 
 let petrovich = null;
 try {
@@ -29,7 +30,7 @@ const normalizeGender = (person = {}) => {
   const raw = text(person.gender || person.sex || person.display?.gender || person.display?.genderWord).toLowerCase();
   if (['female', 'f', 'ж', 'женский', 'женщина'].includes(raw)) return 'female';
   if (['male', 'm', 'м', 'мужской', 'мужчина'].includes(raw)) return 'male';
-  const patronymic = text(person.patronymic || person.middleName).toLowerCase();
+  const patronymic = text(person.patronymic || person.middleName || person.middle).toLowerCase();
   if (patronymic.endsWith('вна') || patronymic.endsWith('чна')) return 'female';
   if (patronymic.endsWith('вич') || patronymic.endsWith('ич')) return 'male';
   return 'male';
@@ -460,21 +461,539 @@ const participantSignatures = (formData, participants) => participants.map((part
   return `<div class="signature-block"><p>______________________________</p><p>(${caption})</p></div>`;
 }).join('\n');
 
-const rightsText = (formData) => {
-  const blocks = formData.rights?.ownerBlocks?.length ? formData.rights.ownerBlocks : (formData.rights?.owners || []).map((owner) => ({ ownerFullName: fullName(owner) || owner.fullName, ...owner }));
-  if (!blocks.length) return 'Сведения об основаниях права собственности заполняются по данным ЕГРН и представленным документам.';
-  return blocks.map((block) => {
-    const docs = block.documents || block.basisDocuments || block.rights?.documents || [];
-    const docsText = docs.length ? `Документы-основания: ${escapeHtml(docs.map((d) => pick(d.name, d.type, d.title, d.description, d.rawText)).filter(Boolean).join('; '))}.` : '';
-    return join([
-      escapeHtml(pick(block.ownerFullName, block.fullName, fullName(block.owner), block.name)),
-      block.ownershipType || block.rightType || formData.rights?.ownershipType ? `вид права: ${escapeHtml(block.ownershipType || block.rightType || formData.rights?.ownershipType)}` : '',
-      block.share || block.existingShare ? `доля: ${escapeHtml(block.share || block.existingShare)}` : '',
-      block.registrationNumber || formData.rights?.registrationNumber ? `номер государственной регистрации ${escapeHtml(block.registrationNumber || formData.rights?.registrationNumber)}` : '',
-      block.registrationDate || formData.rights?.registrationDate ? `дата государственной регистрации ${escapeHtml(block.registrationDate || formData.rights?.registrationDate)}` : '',
-      docsText,
-    ], ', ');
-  }).join('<br>');
+const formatDateLongWithYearWord = (value) => {
+  const formatted = formatDateLongLocal(value);
+  if (!formatted) return '';
+  return /года$/i.test(formatted) ? formatted : `${formatted} года`;
+};
+
+const normalizeRightTypeForText = (value) => {
+  const source = text(value).toLowerCase();
+  if (!source) return 'собственности';
+  if (source === 'собственность') return 'собственности';
+  if (source === 'общая совместная собственность') return 'общей совместной собственности';
+  if (source === 'общая долевая собственность') return 'общей долевой собственности';
+  return source;
+};
+
+const rawDocsScore = (owner = {}) => {
+  const ownsGroups = Boolean(
+    owner.registrationGroups ||
+      owner.registration_groups ||
+      owner.documentGroups ||
+      owner.document_groups ||
+      owner.rights?.registrationGroups ||
+      owner.rights?.registration_groups ||
+      owner.rights?.documentGroups ||
+      owner.rights?.document_groups,
+  );
+
+  const ownsDocs = Boolean(
+    owner.documents ||
+      owner.basisDocuments ||
+      owner.basis_documents ||
+      owner.rights?.documents ||
+      owner.rights?.basisDocuments ||
+      owner.rights?.basis_documents,
+  );
+
+  return (ownsGroups ? 100 : 0) + (ownsDocs ? 10 : 0);
+};
+
+const normalizeOwnerSource = (items = []) =>
+  (Array.isArray(items) ? items : []).map((owner) => ({
+    ...owner,
+    ownerFullName: pick(
+      owner.ownerFullName,
+      owner.owner_full_name,
+      owner.fullName,
+      fullName(owner.owner),
+      fullName(owner),
+      owner.name,
+    ),
+  }));
+
+const getOwnerSourceScore = (items = []) =>
+  items.reduce((sum, item) => sum + rawDocsScore(item), 0) + items.length;
+
+const getMaternityOwnerBlocks = (formData = {}) => {
+  const ownerBlocks = normalizeOwnerSource(
+    formData.rights?.ownerBlocks || formData.rights?.owner_blocks,
+  );
+
+  const owners = normalizeOwnerSource(formData.rights?.owners);
+
+  if (!ownerBlocks.length) return owners;
+  if (!owners.length) return ownerBlocks;
+
+  const ownerBlocksScore = getOwnerSourceScore(ownerBlocks);
+  const ownersScore = getOwnerSourceScore(owners);
+
+  return ownersScore > ownerBlocksScore ? owners : ownerBlocks;
+};
+
+const ownerNameFromBlock = (block = {}) => pick(
+  block.ownerFullName,
+  block.owner_full_name,
+  block.fullName,
+  fullName(block.owner),
+  fullName(block),
+  block.name,
+);
+
+const ownerItemName = (owner = {}) => pick(
+  owner.ownerFullName,
+  owner.owner_full_name,
+  owner.fullName,
+  fullName(owner.owner),
+  fullName(owner),
+  owner.name,
+);
+
+const ownerNameItemsFromBlock = (block = {}) => {
+  const owners = Array.isArray(block.owners) ? block.owners : [];
+
+  const fromOwners = owners
+    .map((owner) => ({
+      owner,
+      name: ownerItemName(owner),
+    }))
+    .filter((item) => item.name);
+
+  if (fromOwners.length) return fromOwners;
+
+  const rawFullName = [
+    block.fullName,
+    block.ownerFullName,
+    block.owner_full_name,
+    block.name,
+  ]
+    .map((value) => String(value || '').trim())
+    .find(Boolean);
+
+  if (rawFullName && /[\n;]/.test(rawFullName)) {
+    return rawFullName
+      .split(/[\n;]/)
+      .map(text)
+      .filter(Boolean)
+      .map((name) => ({ owner: null, name }));
+  }
+
+  const source = ownerNameFromBlock(block);
+  return source ? [{ owner: block.owner || null, name: source }] : [];
+};
+
+const ownerHasExplicitGender = (owner = {}) => Boolean(text(
+  owner.gender ||
+    owner.sex ||
+    owner.display?.gender ||
+    owner.display?.genderWord,
+));
+
+const inflectOwnerNameDative = ({ owner, name }) => {
+  if (!name) return '';
+
+  const sourceForInflection = owner && ownerHasExplicitGender(owner)
+    ? { ...owner, fullName: name }
+    : name;
+
+  return inflectName(sourceForInflection, 'dative') || name;
+};
+
+const ownerDativeNameFromBlock = (block = {}) => {
+  const names = ownerNameItemsFromBlock(block)
+    .map(inflectOwnerNameDative)
+    .filter(Boolean);
+
+  return joinDativeOwnerNames(names);
+};
+
+const joinDativeOwnerNames = (names = []) => {
+  const filtered = names.map(text).filter(Boolean);
+  if (filtered.length <= 2) return filtered.join(' и ');
+  return `${filtered.slice(0, -1).join(', ')} и ${filtered[filtered.length - 1]}`;
+};
+
+const getDocumentTitle = (document = {}) =>
+  pick(
+    document.title,
+    document.name,
+    document.documentName,
+    document.document_name,
+    document.documentTitle,
+    document.document_title,
+    document.type,
+    document.description,
+    document.rawText,
+  );
+
+const asArray = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+
+  if (value && typeof value === 'object') {
+    const values = Object.values(value);
+    const looksLikeObjectMap =
+      values.length > 0 &&
+      values.every((item) => item && typeof item === 'object');
+
+    return looksLikeObjectMap ? values : [value];
+  }
+
+  return [];
+};
+
+const isBasisDocumentLike = (value = {}) => {
+  if (!value || typeof value !== 'object') return false;
+  return Boolean(getDocumentTitle(value));
+};
+
+const hasNestedBasisDocuments = (value = {}) =>
+  asArray(value.basisDocuments).length > 0 ||
+  asArray(value.basis_documents).length > 0 ||
+  asArray(value.underlyingDocuments).length > 0 ||
+  asArray(value.underlying_documents).length > 0 ||
+  asArray(value.registrationGroups).length > 0 ||
+  asArray(value.registration_groups).length > 0 ||
+  asArray(value.rights?.basisDocuments).length > 0 ||
+  asArray(value.rights?.basis_documents).length > 0 ||
+  asArray(value.rights?.underlyingDocuments).length > 0 ||
+  asArray(value.rights?.underlying_documents).length > 0 ||
+  asArray(value.rights?.registrationGroups).length > 0 ||
+  asArray(value.rights?.registration_groups).length > 0;
+
+const hasRegistrationInfo = (value = {}) =>
+  Boolean(
+    pick(
+      value.registrationDate,
+      value.registration_date,
+      value.regDate,
+      value.registrationNumber,
+      value.registration_number,
+      value.regNumber,
+      value.rights?.registrationDate,
+      value.rights?.registration_date,
+      value.rights?.regDate,
+      value.rights?.registrationNumber,
+      value.rights?.registration_number,
+      value.rights?.regNumber,
+    ),
+  );
+
+const isDocumentGroupLike = (value = {}) => {
+  if (!value || typeof value !== 'object') return false;
+
+  // Явная группа документов: внутри есть basisDocuments / underlyingDocuments.
+  if (hasNestedBasisDocuments(value)) return true;
+
+  // Группа может содержать только данные регистрации и массив documents.
+  if (
+    asArray(value.documents).length > 0 &&
+    asArray(value.documents).some((item) => hasNestedBasisDocuments(item) || isDocumentGroupLike(item))
+  ) {
+    return true;
+  }
+
+  // Если есть регистрационная дата/номер и это не обычный документ с title/name,
+  // считаем объект группой документов.
+  return hasRegistrationInfo(value) && !isBasisDocumentLike(value);
+};
+
+const normalizeMaternityBasisDocument = (document = {}) => {
+  const title = getDocumentTitle(document);
+
+  const number = text(
+    document.number ||
+      document.documentNumber ||
+      document.document_number,
+  );
+
+  const titleWithNumber =
+    title && number && !/(?:номер|№)/i.test(title)
+      ? `${title}, номер ${number}`
+      : title;
+
+  return {
+    title: titleWithNumber,
+    date: pick(
+      document.date,
+      document.docDate,
+      document.documentDate,
+      document.document_date,
+      document.doc_date,
+      document.issueDate,
+    ),
+  };
+};
+
+const normalizeMaternityBasisDocuments = (...sources) => {
+  const seen = new Set();
+
+  return sources
+    .flatMap(asArray)
+    .filter(isBasisDocumentLike)
+    .map(normalizeMaternityBasisDocument)
+    .filter((document) => document.title)
+    .filter((document) => {
+      const key = `${document.title}|${document.date || ''}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const isCreditOrMortgageBasisDocument = (document = {}) => {
+  const title = text(document.title || document.name || document.description || document.rawText).toLowerCase();
+
+  return /кредит|ипотек|залог|mortgage/i.test(title);
+};
+
+const getEncumbranceOwnershipLikeBasisDocuments = (block = {}, formData = {}) => {
+  const documents = normalizeMaternityBasisDocuments(
+    block.encumbrance?.basisDocuments,
+    block.encumbrance?.basis_documents,
+    block.encumbrance?.documents,
+    block.encumbrance?.underlyingDocuments,
+    block.encumbrance?.underlying_documents,
+    formData.encumbrance?.basisDocuments,
+    formData.encumbrance?.basis_documents,
+    formData.encumbrance?.documents,
+    formData.encumbrance?.underlyingDocuments,
+    formData.encumbrance?.underlying_documents,
+  );
+
+  return documents.filter((document) => !isCreditOrMortgageBasisDocument(document));
+};
+
+const getTopLevelBasisDocuments = (formData = {}) =>
+  normalizeMaternityBasisDocuments(
+    formData.rights?.basisDocuments,
+    formData.rights?.basis_documents,
+    formData.rights?.underlyingDocuments,
+    formData.rights?.underlying_documents,
+    formData.rights?.documents,
+  );
+
+const getBlockBasisDocuments = (block = {}, formData = {}) => {
+  const documents = normalizeMaternityBasisDocuments(
+    block.basisDocuments,
+    block.basis_documents,
+    block.underlyingDocuments,
+    block.underlying_documents,
+    block.registrationGroups,
+    block.registration_groups,
+    block.documents,
+    block.rights?.basisDocuments,
+    block.rights?.basis_documents,
+    block.rights?.underlyingDocuments,
+    block.rights?.underlying_documents,
+    block.rights?.registrationGroups,
+    block.rights?.registration_groups,
+    block.rights?.documents,
+    getTopLevelBasisDocuments(formData),
+  );
+
+  if (documents.length) return documents;
+
+  return getEncumbranceOwnershipLikeBasisDocuments(block, formData);
+};
+
+const getGroupBasisDocuments = (group = {}) =>
+  normalizeMaternityBasisDocuments(
+    group.basisDocuments,
+    group.basis_documents,
+    group.underlyingDocuments,
+    group.underlying_documents,
+    group.documents,
+    group.rights?.basisDocuments,
+    group.rights?.basis_documents,
+    group.rights?.underlyingDocuments,
+    group.rights?.underlying_documents,
+    group.rights?.documents,
+  );
+
+const getRawDocumentGroups = (block = {}, formData = {}) => {
+  const sources = [
+    block.registrationGroups,
+    block.registration_groups,
+    block.documentGroups,
+    block.document_groups,
+    block.documents,
+    block.rights?.registrationGroups,
+    block.rights?.registration_groups,
+    block.rights?.documentGroups,
+    block.rights?.document_groups,
+    block.rights?.documents,
+    formData.rights?.registrationGroups,
+    formData.rights?.registration_groups,
+    formData.rights?.documentGroups,
+    formData.rights?.document_groups,
+    formData.rights?.documents,
+  ];
+
+  return sources
+    .flatMap(asArray)
+    .filter(isDocumentGroupLike);
+};
+
+const normalizeMaternityDocumentGroups = (block = {}, formData = {}) => {
+  const registrationDate = pick(
+    block.registrationDate,
+    block.registration_date,
+    block.regDate,
+    block.rights?.registrationDate,
+    block.rights?.registration_date,
+    block.rights?.regDate,
+    formData.rights?.registrationDate,
+    formData.rights?.registration_date,
+    formData.rights?.regDate,
+  );
+
+  const registrationNumber = pick(
+    block.registrationNumber,
+    block.registration_number,
+    block.regNumber,
+    block.rights?.registrationNumber,
+    block.rights?.registration_number,
+    block.rights?.regNumber,
+    formData.rights?.registrationNumber,
+    formData.rights?.registration_number,
+    formData.rights?.regNumber,
+  );
+
+  const blockDocuments = getBlockBasisDocuments(block, formData);
+  const rawGroups = getRawDocumentGroups(block, formData);
+
+  if (rawGroups.length) {
+    return rawGroups
+      .map((group = {}, groupIndex) => {
+        const groupDocuments = getGroupBasisDocuments(group);
+
+        return {
+          registrationDate: pick(
+            group.registrationDate,
+            group.registration_date,
+            group.regDate,
+            group.rights?.registrationDate,
+            group.rights?.registration_date,
+            group.rights?.regDate,
+            registrationDate,
+          ),
+          registrationNumber: pick(
+            group.registrationNumber,
+            group.registration_number,
+            group.regNumber,
+            group.rights?.registrationNumber,
+            group.rights?.registration_number,
+            group.rights?.regNumber,
+            registrationNumber,
+          ),
+          basisDocuments: groupDocuments.length
+            ? groupDocuments
+            : groupIndex === 0
+              ? blockDocuments
+              : [],
+        };
+      })
+      .filter(
+        (group) =>
+          group.basisDocuments.length ||
+          group.registrationDate ||
+          group.registrationNumber,
+      );
+  }
+
+  return [
+    {
+      registrationDate,
+      registrationNumber,
+      basisDocuments: blockDocuments,
+    },
+  ].filter(
+    (group) =>
+      group.basisDocuments.length ||
+      group.registrationDate ||
+      group.registrationNumber,
+  );
+};
+
+const buildMaternityRightHolders = (formData = {}) => getMaternityOwnerBlocks(formData)
+  .map((block) => {
+    const name = ownerNameFromBlock(block);
+    const label = ownerDativeNameFromBlock(block);
+
+    const registrationDate = pick(
+      block.registrationDate,
+      block.registration_date,
+      block.regDate,
+      block.rights?.registrationDate,
+      block.rights?.registration_date,
+      block.rights?.regDate,
+      formData.rights?.registrationDate,
+      formData.rights?.registration_date,
+      formData.rights?.regDate,
+    );
+
+    const registrationNumber = pick(
+      block.registrationNumber,
+      block.registration_number,
+      block.regNumber,
+      block.rights?.registrationNumber,
+      block.rights?.registration_number,
+      block.rights?.regNumber,
+      formData.rights?.registrationNumber,
+      formData.rights?.registration_number,
+      formData.rights?.regNumber,
+    );
+
+    return {
+      label,
+      name,
+      rightType: pick(
+        block.ownershipType,
+        block.rightType,
+        block.rights?.ownershipType,
+        block.rights?.rightType,
+        formData.rights?.ownershipType,
+        formData.rights?.rightType,
+      ),
+      share: pick(block.share, block.existingShare, block.rights?.share),
+      registrationDate,
+      registrationNumber,
+      documentGroups: normalizeMaternityDocumentGroups(block, formData),
+    };
+  })
+  .filter((holder) => holder.name || holder.label || holder.documentGroups.length);
+
+const rightsText = (formData = {}) => {
+  const blocks = getMaternityOwnerBlocks(formData);
+  if (!blocks.length) {
+    return '<p><strong>2.</strong> Сведения об основаниях права собственности заполняются по данным ЕГРН и представленным документам.</p>';
+  }
+
+  const ownerNames = joinDativeOwnerNames(blocks.map(ownerDativeNameFromBlock));
+  const rightType = normalizeRightTypeForText(pick(
+    ...blocks.map((block) =>
+      pick(
+        block.ownershipType,
+        block.rightType,
+        block.rights?.ownershipType,
+        block.rights?.rightType,
+      ),
+    ),
+    formData.rights?.ownershipType,
+    formData.rights?.rightType,
+  ));
+
+  const rightHolders = buildMaternityRightHolders(formData);
+  const rightsBlockHtml = buildPropertyRightsBlockHtml(rightHolders, {
+    escapeHtml,
+    formatDate: formatDateLongWithYearWord,
+  });
+
+  return [
+    `<p><strong>2.</strong> Указанное жилое помещение принадлежит ${escapeHtml(ownerNames || 'правообладателю')} на праве ${escapeHtml(rightType)} на основании:</p>`,
+    rightsBlockHtml,
+  ].filter(Boolean).join('\n');
 };
 
 const encumbranceText = (formData) => {
