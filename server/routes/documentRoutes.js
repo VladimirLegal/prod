@@ -88,7 +88,7 @@ const { buildMaternityCapitalSharesRenderData } = require('../services/documentT
 const { query } = require('../db');
 const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
-const { insertShareWord } = require('../services/documentTypes/rent/ownershipDocs');
+const { buildPropertyRightsBlockHtml } = require('../services/documentShared/propertyRights');
 const { buildGroupLabels } = require('../services/documentTypes/rent/groupLabels');
 const { numberToWordsRuTitleCase } = require('../utils/formatters');
 // === Helpers: dates/passports and representatives display ===
@@ -841,94 +841,28 @@ function buildLandlordsBasisHtml(data) {
   const landlords = Array.isArray(data?.landlords) ? data.landlords : [];
   if (!landlords.length) return '';
 
-  const many = landlords.length > 1;
-  const parts = [];
+  const rightHolders = landlords.map((landlord, index) => ({
+    label: `«Наймодателю ${index + 1}»`,
+    name: landlord?.fullName || landlord?.name || '',
+    rightType: landlord?.rightType || landlord?.ownershipType || '',
+    share: landlord?.share || '',
+    registrationDate: landlord?.regDate,
+    registrationNumber: landlord?.regNumber,
+    documentGroups: Array.isArray(landlord?.documents) ? landlord.documents.map(group => ({
+      ...group,
+      registrationDate: group?.regDate,
+      registrationNumber: group?.regNumber,
+      basisDocuments: Array.isArray(group?.basisDocuments) ? group.basisDocuments.map(document => ({
+        ...document,
+        date: document?.docDate,
+      })) : [],
+    })) : [],
+  }));
 
-  landlords.forEach((l, li) => {
-    const groups = Array.isArray(l.documents) ? l.documents : [];
-
-    // Заголовок поднаймодателя только если их больше одного
-    if (many) {
-      parts.push(`<p>— «Наймодателю ${li + 1}»:</p>`);
-    }
-
-    // --- Определяем режим "по группам" (для долей у одного наймодателя) ---
-    // Если один наймодатель и среди групп разные regDate/рег.№ -> ЕГРН после каждой группы
-    let distinctRegs = new Set();
-    for (const g of groups) {
-      const key = `${g?.regDate || ''}|${g?.regNumber || ''}`;
-      if (key !== '|') distinctRegs.add(key);
-    }
-    const oneLandlord = !many;
-    const perGroupEgrn = oneLandlord && distinctRegs.size > 1;
-
-    if (perGroupEgrn) {
-      // --- Режим "по группам" ---
-      groups.forEach((g, gi) => {
-        const docs = Array.isArray(g.basisDocuments) ? g.basisDocuments : [];
-
-        // 1) Документы группы
-        docs.forEach((b, di) => {
-          const isLastDocInGroup = di === docs.length - 1;
-          let line = '• ' + escapeHtml(insertShareWord(b?.title || ''));
-          if (b?.docDate) {
-            const dt = ensureGoda(formatDateLongLocal(b.docDate));
-            line += `, от ${escapeHtml(dt)}`;
-          }
-          const tail = isLastDocInGroup ? ',' : ';';
-          parts.push(`<p>${line}${tail}</p>`);
-        });
-
-        // 2) ЕГРН этой группы
-        if (g?.regDate || g?.regNumber) {
-          let eg = 'о чём в Едином государственном реестре недвижимости сделана запись о государственной регистрации права';
-          if (g.regDate) eg += ` от ${escapeHtml(ensureGoda(formatDateLongLocal(g.regDate)))}`;
-          if (g.regNumber) eg += `, номер записи: ${escapeHtml(g.regNumber)}`;
-          const isLastGroup = gi === groups.length - 1 && li === landlords.length - 1;
-          parts.push(`<p>${eg}${isLastGroup ? '.' : ';'}</p>`);
-        }
-      });
-
-      return; // к следующему наймодателю
-    }
-
-    // --- Обычный режим (как раньше): все документы, затем ОДНА ЕГРН-строка ---
-    const flat = [];
-    groups.forEach(g => {
-      const docs = Array.isArray(g.basisDocuments) ? g.basisDocuments : [];
-      docs.forEach(b => flat.push({ b, g }));
-    });
-
-    flat.forEach((it, idx) => {
-      const isLastDocOfLandlord = idx === flat.length - 1;
-      let line = '• ' + escapeHtml(insertShareWord(it.b?.title || ''));
-      if (it.b?.docDate) {
-        line += `, от ${escapeHtml(ensureGoda(formatDateLongLocal(it.b.docDate)))}`;
-      }
-      parts.push(`<p>${line}${isLastDocOfLandlord ? ',' : ';'}</p>`);
-    });
-
-    // ЕГРН на уровне наймодателя (или фолбэк из последней группы)
-    let regDate = l?.regDate;
-    let regNum  = l?.regNumber;
-    if (!regDate || !regNum) {
-      for (let i = groups.length - 1; i >= 0; i--) {
-        const g = groups[i];
-        if (!regDate && g?.regDate)   regDate = g.regDate;
-        if (!regNum  && g?.regNumber) regNum  = g.regNumber;
-        if (regDate || regNum) break;
-      }
-    }
-    if (regDate || regNum) {
-      let eg = 'о чём в Едином государственном реестре недвижимости сделана запись о государственной регистрации права';
-      if (regDate) eg += ` от ${escapeHtml(ensureGoda(formatDateLongLocal(regDate)))}`;
-      if (regNum)  eg += `, номер записи: ${escapeHtml(regNum)}`;
-      const isLastLandlord = li === landlords.length - 1;
-      parts.push(`<p>${eg}${isLastLandlord ? '.' : ';'}</p>`);
-    }
+  return buildPropertyRightsBlockHtml(rightHolders, {
+    escapeHtml,
+    formatDate: value => ensureGoda(formatDateLongLocal(value)),
   });
-
-  return parts.join('\n');
 }
 // === Обогащение участников для блока "Подписи" ===
 // добавляем: item.current.{ ...копия полей..., index, representative.attorneyDateFormatted }
