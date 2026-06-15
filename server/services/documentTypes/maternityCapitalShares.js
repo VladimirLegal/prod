@@ -614,6 +614,106 @@ const joinDativeOwnerNames = (names = []) => {
   return `${filtered.slice(0, -1).join(', ')} и ${filtered[filtered.length - 1]}`;
 };
 
+const ownerNameItemsFromBlocks = (blocks = []) =>
+  (Array.isArray(blocks) ? blocks : []).flatMap(ownerNameItemsFromBlock);
+
+const ownerDativeTextFromBlocks = (blocks = []) =>
+  joinDativeOwnerNames(blocks.map(ownerDativeNameFromBlock));
+
+const ownerNominativeTextFromBlocks = (blocks = []) =>
+  joinDativeOwnerNames(
+    ownerNameItemsFromBlocks(blocks)
+      .map(({ name }) => name)
+      .filter(Boolean),
+  );
+
+const purchaseVerbForOwners = (items = []) => {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (list.length !== 1) return 'приобрели';
+
+  const item = list[0];
+  const genderSource = item.owner && ownerHasExplicitGender(item.owner)
+    ? item.owner
+    : splitName(item.name);
+
+  return normalizeGender(genderSource) === 'female' ? 'приобрела' : 'приобрел';
+};
+
+const acquiredObjectAlias = (formData = {}) => {
+  const object = formData.object || {};
+  const raw = pick(
+    formData.distributionBase?.objectLabel,
+    formData.distributionBase?.acquisitionObjectLabel,
+    formData.distributionBase?.acquisitionTypeLabel,
+    formData.acquisition?.objectLabel,
+    formData.acquisition?.typeLabel,
+    object.acquiredObjectLabel,
+    object.residentialKind,
+    object.objectKindFromEgrn,
+  );
+
+  const code = text(
+    formData.distributionBase?.type ||
+      formData.acquisition?.type ||
+      object.residentialKind ||
+      object.objectKindFromEgrn,
+  ).toLowerCase();
+
+  if (/комнат/.test(raw) || /room|комнат/.test(code)) return 'Комната';
+  if (/дол/.test(raw) || /share|дол/.test(code)) return 'Доля';
+  if (/дом/.test(raw) || /house|дом/.test(code)) return 'Жилой дом';
+  return 'Квартира';
+};
+
+const objectReferencePhrase = (alias = '') => {
+  const value = text(alias) || 'Квартира';
+  const lower = value.toLowerCase();
+
+  if (/квартир|комнат|дол/.test(lower)) {
+    return `данную ${value}`;
+  }
+
+  if (/помещ/.test(lower)) {
+    return `данное ${value}`;
+  }
+
+  return `данный ${value}`;
+};
+
+const objectLocatedWord = (alias = '') => {
+  const lower = text(alias).toLowerCase();
+
+  if (/квартир|комнат|дол/.test(lower)) return 'находящуюся';
+  if (/помещ/.test(lower)) return 'находящееся';
+  return 'находящийся';
+};
+
+const buildObjectText = (formData = {}) => {
+  const object = formData.object || {};
+  const blocks = getMaternityOwnerBlocks(formData);
+  const ownerText = ownerDativeTextFromBlocks(blocks) || 'правообладателю';
+  const alias = acquiredObjectAlias(formData);
+  const objectKind = object.objectKindFromEgrn || object.residentialKind || 'Помещение';
+
+  return `<p><strong>1.</strong> ${escapeHtml(ownerText)} принадлежит жилое помещение (${escapeHtml(objectKind)}), приобретённое с использованием средств материнского капитала, находящееся по адресу: ${escapeHtml(object.address || '')}${object.area ? `, площадью ${escapeHtml(object.area)} кв. м` : ''}${object.floor ? `, этаж № ${escapeHtml(object.floor)}` : ''}${object.cadastralNumber ? `; кадастровый номер ${escapeHtml(object.cadastralNumber)}` : ''} (далее — «${escapeHtml(alias)}»).</p>`;
+};
+
+const buildPriceText = (formData = {}) => {
+  const object = formData.object || {};
+  const blocks = getMaternityOwnerBlocks(formData);
+  const ownerItems = ownerNameItemsFromBlocks(blocks);
+  const ownerNames = ownerNominativeTextFromBlocks(blocks) || 'Стороны';
+  const verb = purchaseVerbForOwners(ownerItems);
+  const alias = acquiredObjectAlias(formData);
+  const objectRef = objectReferencePhrase(alias);
+  const located = objectLocatedWord(alias);
+  const price = formData.shares?.purchasePriceForCalculation ||
+    formData.distributionBase?.purchasePriceForCalculation ||
+    object.purchasePrice;
+
+  return `<p><strong>3.</strong> ${escapeHtml(ownerNames)} ${verb} ${escapeHtml(objectRef)}, ${located} по адресу: ${escapeHtml(object.address || '')}, за сумму ${amountRu(price)}.</p>`;
+};
+
 const getDocumentTitle = (document = {}) =>
   pick(
     document.title,
@@ -996,29 +1096,79 @@ const rightsText = (formData = {}) => {
   ].filter(Boolean).join('\n');
 };
 
+const isRealEncumbrance = (item = {}) => {
+  const type = text(item.type).toLowerCase();
+  if (!type || ['none', 'absent', 'unknown'].includes(type)) return false;
+  return true;
+};
+
+const encumbranceKey = (item = {}) => [
+  item.type,
+  item.subtype,
+  item.description,
+  item.registrationNumber,
+  item.registration_number,
+  item.registrationDate,
+  item.registration_date,
+  item.mortgagee,
+  item.beneficiary,
+].map(text).join('|');
+
 const encumbranceText = (formData) => {
-  const all = [];
-  const e = formData.encumbrance || {};
-  if (text(e.type) && !['none', 'absent', 'unknown'].includes(text(e.type).toLowerCase())) all.push(e);
-  (formData.rights?.ownerBlocks || []).forEach((b) => {
-    const be = b.encumbrance || {};
-    if (text(be.type) && !['none', 'absent', 'unknown'].includes(text(be.type).toLowerCase())) all.push(be);
+  const collected = [];
+
+  const pushEncumbrance = (item = {}) => {
+    if (isRealEncumbrance(item)) collected.push(item);
+  };
+
+  pushEncumbrance(formData.encumbrance || {});
+
+  (formData.rights?.ownerBlocks || []).forEach((block) => {
+    pushEncumbrance(block.encumbrance || {});
   });
-  const hasMortgage = all.some((item) => /ипотек|mortgage/i.test([item.type, item.subtype, item.description, item.rawText].join(' ')));
+
+  const all = [];
+  const seen = new Set();
+
+  collected.forEach((item) => {
+    const key = encumbranceKey(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    all.push(item);
+  });
+
+  const hasMortgage = all.some((item) =>
+    /ипотек|mortgage/i.test([item.type, item.subtype, item.description, item.rawText].join(' ')),
+  );
+
   if (!all.length) {
     return {
       hasMortgage: false,
-      text: 'На момент заключения настоящего соглашения в отношении указанного жилого помещения отсутствуют зарегистрированные ограничения (обременения) права.',
+      text: '<p><strong>4. Обременения.</strong> На момент заключения настоящего соглашения в отношении указанного жилого помещения отсутствуют зарегистрированные ограничения (обременения) права.</p>',
       assurancesText: 'Стороны заявляют, что до подписания настоящего соглашения вышеуказанный объект никому не продан, не подарен, не обещан в дар, не заложен, в споре и под запрещением (арестом) не состоит, правами третьих лиц не обременён, зарегистрированные ограничения (обременения) права отсутствуют, иные лица, имеющие право на оформление вышеуказанных долей в общую собственность, отсутствуют.',
     };
   }
+
   const details = all.map((item) => {
-    const docs = item.basisDocuments?.length ? ` Основания государственной регистрации ограничения (обременения): ${escapeHtml(item.basisDocuments.map((d) => pick(d.name, d.type, d.title, d.description, d.rawText)).filter(Boolean).join('; '))}.` : '';
+    const docs = item.basisDocuments?.length
+      ? ` Основания государственной регистрации ограничения (обременения): ${escapeHtml(item.basisDocuments.map((document) => pick(document.name, document.type, document.title, document.description, document.rawText)).filter(Boolean).join('; '))}.`
+      : '';
+
     return `${escapeHtml(pick(item.subtype, item.type, item.description, 'обременение'))}${item.registrationNumber ? `, номер государственной регистрации ${escapeHtml(item.registrationNumber)}` : ''}${item.registrationDate ? ` от ${escapeHtml(item.registrationDate)}` : ''}${item.mortgagee || item.beneficiary ? `, залогодержатель: ${escapeHtml(item.mortgagee || item.beneficiary)}` : ''}${item.term ? `, срок обременения: ${escapeHtml(item.term)}` : ''}.${docs}`;
   }).join('<br>');
+
+  const intro = all.length === 1
+    ? 'На момент подписания Соглашения зарегистрировано следующее ограничение (обременение):'
+    : 'На момент подписания Соглашения зарегистрированы следующие ограничения (обременения):';
+
   return {
     hasMortgage,
-    text: `${details}${hasMortgage ? '<br>Сторонам известно о наличии указанного ограничения (обременения). При этом в соответствии с пунктом 3 статьи 7 Федерального закона от 16.07.1998 № 102-ФЗ “Об ипотеке (залоге недвижимости)” согласие залогодержателя на оформление жилого помещения, приобретённого с использованием средств материнского (семейного) капитала и являющегося предметом залога, в общую собственность лица, его супруга (супруги) и детей до момента погашения регистрационной записи об ипотеке не требуется.' : ''}`,
+    text: [
+      `<p><strong>4.</strong> ${intro} ${details}</p>`,
+      hasMortgage
+        ? '<p>Сторонам известно о наличии указанного ограничения (обременения). При этом в соответствии с пунктом 3 статьи 7 Федерального закона от 16.07.1998 № 102-ФЗ “Об ипотеке (залоге недвижимости)” согласие залогодержателя на оформление жилого помещения, приобретённого с использованием средств материнского (семейного) капитала и являющегося предметом залога, в общую собственность лица, его супруга (супруги) и детей до момента погашения регистрационной записи об ипотеке не требуется.</p>'
+        : '',
+    ].filter(Boolean).join('\n'),
     assurancesText: hasMortgage
       ? 'Сторонам известно о зарегистрированном ограничении (обременении) права в виде ипотеки, указанном в настоящем соглашении. Иные ограничения, аресты, судебные споры и притязания третьих лиц, кроме указанных в настоящем соглашении, сторонам не известны.'
       : 'Сторонам известны указанные в настоящем соглашении ограничения (обременения). Иные ограничения, аресты, судебные споры и притязания третьих лиц сторонам не известны.',
@@ -1088,12 +1238,10 @@ function buildMaternityCapitalSharesRenderData(formData = {}) {
   const participants = formData.participantsStep?.participants || formData.participants || [];
   const object = formData.object || {};
   const enc = encumbranceText(formData);
-  const ownerNames = (formData.rights?.ownerBlocks || []).map((b) => b.ownerFullName || b.fullName).filter(Boolean);
-  const ownerText = ownerNames.length === 1 ? escapeHtml(ownerNames[0]) : (ownerNames.length > 1 ? 'Участникам' : 'Сторонам');
-  const acquisitionType = formData.acquisition?.type || formData.distributionBase?.type || '';
-  const price = formData.shares?.purchasePriceForCalculation || formData.distributionBase?.purchasePriceForCalculation || object.purchasePrice;
-  const pluralOwners = ownerNames.length > 1;
-
+  const price = formData.shares?.purchasePriceForCalculation ||
+    formData.distributionBase?.purchasePriceForCalculation ||
+    object.purchasePrice;
+  
   return {
     agreement: formData.agreement || {},
     participants,
@@ -1107,9 +1255,9 @@ function buildMaternityCapitalSharesRenderData(formData = {}) {
     copies: { count: Math.max(1, participants.length) },
     calc: {},
     participantsText: participantsTitleHtml(formData, participants),
-    objectText: `${ownerText} принадлежит жилое помещение (${escapeHtml(object.objectKindFromEgrn || object.residentialKind || 'квартира')}), приобретённое с использованием средств материнского капитала, находящееся по адресу: ${escapeHtml(object.address || '')}${object.area ? `, площадью ${escapeHtml(object.area)} кв. м` : ''}${object.floor ? `, этаж № ${escapeHtml(object.floor)}` : ''}. ${object.cadastralNumber ? `Кадастровый номер ${escapeHtml(object.cadastralNumber)}.` : ''}`,
+    objectText: buildObjectText(formData),
     rightsText: rightsText(formData),
-    priceText: `${ownerNames.length ? escapeHtml(ownerNames.join(', ')) : 'Стороны'} ${pluralOwners ? 'приобрели' : 'приобрёл(а)'} ${/share|дол/i.test(acquisitionType) ? 'долю в праве собственности на указанное жилое помещение' : /room|комнат/i.test(acquisitionType) ? 'комнату / долю, соответствующую комнате' : 'указанное жилое помещение'} за сумму ${amountRu(price)}.`,
+    priceText: buildPriceText(formData),
     encumbranceText: enc.text,
     maternityCapitalText: buildMaternityCapitalText(formData),
     familyText: familyText(formData),
