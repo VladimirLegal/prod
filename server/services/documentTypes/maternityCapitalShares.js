@@ -1175,12 +1175,59 @@ const encumbranceText = (formData) => {
   };
 };
 
+const MATERNITY_USE_PURPOSE_TEXTS = {
+  purchase_price_part:
+    'на приобретение жилого помещения(п. 1 ч. 1 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  ddu_payment:
+    'на строительство жилого помещения(п. 1 ч. 1 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  self_construction:
+    'на строительство объекта индивидуального жилищного строительства без привлечения организации(п. 2 ч. 1 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  self_reconstruction:
+    'на реконструкцию объекта индивидуального жилищного строительства, реконструкцию дома блокированной застройки без привлечения организации(п. 2 ч. 1 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  escrow_contractor_ihs:
+    'на строительство объекта индивидуального жилищного строительства  с привлечением организации  по договорам строительного подряда с использованием счетов эскроу(п. 3 ч. 1 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  cost_compensation:
+    'на компенсацию затрат на построенный объект индивидуального жилищного строительства, реконструированный дом блокированной застройки(ч. 1.3 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  old_housing_obligations:
+    'на исполнение связанных с улучшением жилищных условий обязательств, возникших до даты приобретения права на дополнительные меры государственной поддержки(ч. 2 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  mortgage_initial_payment:
+    'на уплату первоначального взноса по кредитам или займам на приобретение (строительство) жилого помещения, включая ипотечные кредиты(ч. 6 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+  mortgage_debt_repayment:
+    'на погашение основного долга по кредитам или займам на приобретение (строительство) жилого помещения, включая ипотечные кредиты(ч. 6 ст. 10  ФЗ № 256-ФЗ от 29.12.2006)',
+  mortgage_interest_payment:
+    'на уплату процентов по кредитам или займам на приобретение (строительство) жилого помещения, включая ипотечные кредиты(ч. 6 ст. 10  ФЗ № 256-ФЗ от 29.12.2006).',
+};
+
+const maternityUsePurposeText = (m = {}) => {
+  const direct = pick(m.usePurposeText, m.usePurposeLegalText);
+  if (direct) return direct;
+
+  const mapped = MATERNITY_USE_PURPOSE_TEXTS[m.usePurpose];
+  if (mapped) return mapped;
+
+  const raw = text(m.usePurpose);
+  return /^[a-z0-9_]+$/i.test(raw) ? '' : raw;
+};
+
 const buildMaternityCapitalText = (formData) => {
   const m = formData.maternityCapital || {};
-  const holder = findParticipant(formData, m.certificateHolderParticipantId || formData.participantsStep?.certificateHolderParticipantId);
+  const holder = findParticipant(
+    formData,
+    m.certificateHolderParticipantId ||
+      formData.participantsStep?.certificateHolderParticipantId,
+  );
   const holderName = fullName(holder) || m.certificateHolderFullName;
-  const cert = join([m.certificateSeries && `серия ${escapeHtml(m.certificateSeries)}`, m.certificateNumber && `№ ${escapeHtml(m.certificateNumber)}`], ' ');
-  return `В соответствии со статьёй 10 Федерального закона № 256-ФЗ “О дополнительных мерах государственной поддержки семей, имеющих детей” на основании государственного сертификата на материнский (семейный) капитал ${cert || 'серия/номер сертификата не указаны'}, выданного ${escapeHtml(m.certificateIssueDate || '')} ${escapeHtml(m.certificateIssuedBy || '')} на имя ${escapeHtml(holderName)}, средства материнского (семейного) капитала в размере ${amountRu(m.amountUsed || formData.shares?.maternityCapitalAmount)} были использованы${m.usePurpose ? ` ${escapeHtml(m.usePurpose)}` : ''}${m.useDate ? ` ${escapeHtml(m.useDate)}` : ''}.`;
+  const cert = join(
+    [
+      m.certificateSeries && `серия ${escapeHtml(m.certificateSeries)}`,
+      m.certificateNumber && `№ ${escapeHtml(m.certificateNumber)}`,
+    ],
+    ' ',
+  );
+
+  const usePurposeText = maternityUsePurposeText(m).replace(/[.\s]+$/g, '');
+
+  return `В соответствии со статьёй 10 Федерального закона № 256-ФЗ “О дополнительных мерах государственной поддержки семей, имеющих детей” на основании государственного сертификата на материнский (семейный) капитал ${cert || 'серия/номер сертификата не указаны'}, выданного ${escapeHtml(m.certificateIssueDate || '')} ${escapeHtml(m.certificateIssuedBy || '')} на имя ${escapeHtml(holderName)}, средства материнского (семейного) капитала в размере ${amountRu(m.amountUsed || formData.shares?.maternityCapitalAmount)} были использованы${usePurposeText ? ` ${escapeHtml(usePurposeText)}` : ''}${m.useDate ? ` ${escapeHtml(m.useDate)}` : ''}.`;
 };
 
 const familyText = (formData) => {

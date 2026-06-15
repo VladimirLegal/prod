@@ -153,6 +153,7 @@ export const initialMaternityCapitalSharesForm = {
     amountUsed: "",
     amountUsedWords: "",
     usePurpose: "",
+    usePurposeText: "",
     useDate: "",
     relatedContractType: "",
     relatedContractNumber: "",
