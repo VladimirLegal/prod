@@ -688,6 +688,19 @@ const objectLocatedWord = (alias = '') => {
   return 'находящийся';
 };
 
+const objectGenitiveReference = (formData = {}) => {
+  const alias = acquiredObjectAlias(formData);
+  const lower = text(alias).toLowerCase();
+
+  if (/квартир/.test(lower)) return 'вышеуказанной квартиры';
+  if (/комнат/.test(lower)) return 'вышеуказанной комнаты';
+  if (/дол/.test(lower)) return 'вышеуказанной доли';
+  if (/дом/.test(lower)) return 'вышеуказанного жилого дома';
+  if (/помещ/.test(lower)) return 'вышеуказанного жилого помещения';
+
+  return 'вышеуказанного объекта';
+};
+
 const buildObjectText = (formData = {}) => {
   const object = formData.object || {};
   const blocks = getMaternityOwnerBlocks(formData);
@@ -1144,7 +1157,7 @@ const encumbranceText = (formData) => {
   if (!all.length) {
     return {
       hasMortgage: false,
-      text: '<p><strong>4. Обременения.</strong> На момент заключения настоящего соглашения в отношении указанного жилого помещения отсутствуют зарегистрированные ограничения (обременения) права.</p>',
+      text: '<p><strong>4.</strong> На момент заключения настоящего соглашения в отношении указанного жилого помещения отсутствуют зарегистрированные ограничения (обременения) права.</p>',
       assurancesText: 'Стороны заявляют, что до подписания настоящего соглашения вышеуказанный объект никому не продан, не подарен, не обещан в дар, не заложен, в споре и под запрещением (арестом) не состоит, правами третьих лиц не обременён, зарегистрированные ограничения (обременения) права отсутствуют, иные лица, имеющие право на оформление вышеуказанных долей в общую собственность, отсутствуют.',
     };
   }
@@ -1227,32 +1240,73 @@ const buildMaternityCapitalText = (formData) => {
 
   const usePurposeText = maternityUsePurposeText(m).replace(/[.\s]+$/g, '');
 
-  return `В соответствии со статьёй 10 Федерального закона № 256-ФЗ “О дополнительных мерах государственной поддержки семей, имеющих детей” на основании государственного сертификата на материнский (семейный) капитал ${cert || 'серия/номер сертификата не указаны'}, выданного ${escapeHtml(m.certificateIssueDate || '')} ${escapeHtml(m.certificateIssuedBy || '')} на имя ${escapeHtml(holderName)}, средства материнского (семейного) капитала в размере ${amountRu(m.amountUsed || formData.shares?.maternityCapitalAmount)} были использованы${usePurposeText ? ` ${escapeHtml(usePurposeText)}` : ''}${m.useDate ? ` ${escapeHtml(m.useDate)}` : ''}.`;
+  return `<p><strong>5.</strong> В соответствии со статьёй 10 Федерального закона № 256-ФЗ “О дополнительных мерах государственной поддержки семей, имеющих детей” на основании государственного сертификата на материнский (семейный) капитал ${cert || 'серия/номер сертификата не указаны'}, выданного ${escapeHtml(m.certificateIssueDate || '')} ${escapeHtml(m.certificateIssuedBy || '')} на имя ${escapeHtml(holderName)}, средства материнского (семейного) капитала в размере ${amountRu(m.amountUsed || formData.shares?.maternityCapitalAmount)} были использованы${usePurposeText ? ` ${escapeHtml(usePurposeText)}` : ''}.</>`;
+};
+
+const marriageCertificateText = (marriage = {}) => {
+  const series = text(marriage.certificateSeries);
+  const number = text(marriage.certificateNumber);
+  const issuedBy = text(marriage.issuedBy);
+  const issueDate = formatDateLongWithYearWord(marriage.issueDate);
+  const actRecordNumber = text(marriage.actRecordNumber);
+
+  if (!series && !number && !issuedBy && !issueDate && !actRecordNumber) {
+    return '';
+  }
+
+  return `свидетельство о заключении брака ${join([
+    series,
+    number && `№ ${number}`,
+  ], ' ')}, выдано ${issuedBy}${issueDate ? ` от ${issueDate}` : ''}${actRecordNumber ? `, запись акта о заключении брака №${actRecordNumber}` : ''}`;
+};
+
+const marriageContractText = (formData = {}, contract = {}) => {
+  const objectRef = objectGenitiveReference(formData);
+
+  if (contract.status === 'concluded') {
+    return `Между супругами заключён Брачный договор${contract.description ? `: ${escapeHtml(contract.description)}` : ', условия которого требуют ручной проверки Сторонами'}.`;
+  }
+
+  return `Супруги заверяют, что Брачный договор, изменяющий правовой режим совместной собственности в отношении ${objectRef}, между ними не заключался.`;
 };
 
 const familyText = (formData) => {
   const f = formData.family || {};
-  const holder = findParticipant(formData, f.certificateHolderParticipantId || formData.participantsStep?.certificateHolderParticipantId || formData.maternityCapital?.certificateHolderParticipantId);
+  const holder = findParticipant(
+    formData,
+    f.certificateHolderParticipantId ||
+      formData.participantsStep?.certificateHolderParticipantId ||
+      formData.maternityCapital?.certificateHolderParticipantId,
+  );
   const spouse = findParticipant(formData, f.spouseParticipantId);
-  const holderName = escapeHtml(fullName(holder) || formData.maternityCapital?.certificateHolderFullName || 'Владелец сертификата');
+
+  const holderName = escapeHtml(
+    fullName(holder) ||
+      formData.maternityCapital?.certificateHolderFullName ||
+      'Владелец сертификата',
+  );
   const spouseName = escapeHtml(fullName(spouse) || 'супруг(а)');
   const marriage = f.marriage || {};
   const divorce = f.divorce || {};
   const contract = f.marriageContract || {};
-  let out = '';
+  const objectRef = objectGenitiveReference(formData);
+  const marriageDate = formatDateLongWithYearWord(marriage.date);
+  const marriageCert = marriageCertificateText(marriage);
+
+  let firstParagraph = '';
+
   if (f.maritalStatusMode === 'former_marriage' || f.maritalStatusMode === 'divorced') {
-    out = `${holderName} и ${spouseName} состояли в зарегистрированном браке на момент приобретения объекта и/или использования средств материнского капитала; на дату заключения настоящего соглашения брак расторгнут${divorce.date ? ` ${escapeHtml(divorce.date)}` : ''}${divorce.actRecordNumber ? `, запись акта № ${escapeHtml(divorce.actRecordNumber)}` : ''}.`;
+    firstParagraph = `${holderName} и ${spouseName} состояли в зарегистрированном браке на момент приобретения ${objectRef} и/или использования средств материнского капитала; на дату заключения настоящего соглашения брак расторгнут${divorce.date ? ` ${escapeHtml(formatDateLongWithYearWord(divorce.date))}` : ''}${divorce.actRecordNumber ? `, запись акта №${escapeHtml(divorce.actRecordNumber)}` : ''}.`;
   } else if (f.maritalStatusMode) {
-    out = `${holderName} и ${spouseName} на момент приобретения вышеуказанного объекта и на момент заключения настоящего соглашения состояли и состоят в зарегистрированном браке${marriage.date ? ` с ${escapeHtml(marriage.date)}` : ''}${marriage.certificateNumber ? ` (свидетельство о заключении брака ${escapeHtml(marriage.certificateSeries || '')} № ${escapeHtml(marriage.certificateNumber)}, выдано ${escapeHtml(marriage.issuedBy || '')} от ${escapeHtml(marriage.issueDate || '')}${marriage.actRecordNumber ? `, запись акта о заключении брака № ${escapeHtml(marriage.actRecordNumber)}` : ''})` : ''}.`;
+    firstParagraph = `${holderName} и ${spouseName} на момент приобретения ${objectRef} и на момент заключения настоящего соглашения состояли и состоят в зарегистрированном браке${marriageDate ? ` с ${escapeHtml(marriageDate)}` : ''}${marriageCert ? ` (${escapeHtml(marriageCert)})` : ''}.`;
   } else {
-    out = 'Сведения о браке указаны Сторонами в данных настоящего соглашения.';
+    firstParagraph = 'Сведения о браке указаны Сторонами в данных настоящего соглашения.';
   }
-  if (contract.status === 'concluded') {
-    out += ` Между супругами заключён брачный договор${contract.description ? `: ${escapeHtml(contract.description)}` : ', условия которого требуют ручной проверки Сторонами'}.`;
-  } else {
-    out += ' Супруги заверяют, что брачный договор, изменяющий правовой режим совместной собственности в отношении вышеуказанного объекта, между ними не заключался.';
-  }
-  return out;
+
+  return [
+    `<p><strong>6.</strong> ${firstParagraph}</p>`,
+    `<p>${marriageContractText(formData, contract)}</p>`,
+  ].join('\n');
 };
 
 const sharesText = (formData) => {
