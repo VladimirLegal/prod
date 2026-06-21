@@ -197,7 +197,7 @@ export const initialMaternityCapitalSharesForm = {
     warnings: [],
   },
   shares: {
-    calculationMode: "cost_equal_rounded_fraction",
+    calculationMode: "area_recommended",
     showAdvancedCalculationModes: false,
     baseType: "",
     purchasePriceForCalculation: "",
@@ -217,9 +217,9 @@ export const initialMaternityCapitalSharesForm = {
     distributedShareTotal: "",
     remainderShare: "",
     overMskShare: "",
-    remainderMode: "keep_current_owners",
+    remainderMode: "title_owner",
     remainderDescription: "",
-    remainderLegalMode: "joint_spouses",
+    remainderLegalMode: "spouses_joint",
     riskLevel: "green",
     notaryRiskWarning: "",
     manualDistributionWarning: "",
@@ -279,13 +279,26 @@ export const hydrateMaternityCapitalSharesForm = (saved) => {
       hydrated.agreement.date || new Date().toLocaleDateString("ru-RU"),
     ),
   };
-  if (
-    ["minimum_by_maternity_capital", "equal_between_recipients"].includes(
-      hydrated.shares?.calculationMode,
-    )
-  ) {
-    hydrated.shares.calculationMode = "cost_equal_rounded_fraction";
-  }
+  const modeMap = {
+    minimum_by_maternity_capital: "area_recommended",
+    equal_between_recipients: "area_recommended",
+    area_equal_min_round: "area_recommended",
+    area_children_increased: "area_recommended",
+    area_total_rounded_meter: "area_recommended",
+    cost_equal_rounded_fraction: "area_recommended",
+    cost_total_percent: "percent_whole",
+    cost_children_increased: "percent_exact",
+    manual: "manual",
+  };
+  hydrated.shares.calculationMode = modeMap[hydrated.shares?.calculationMode] || hydrated.shares?.calculationMode || "area_recommended";
+  const remainderMap = {
+    keep_current_owners: "title_owner",
+    keep_title_owner: "title_owner",
+    joint_spouses: "spouses_joint",
+    manual: "fractional",
+    keep_title_owner_by_contract: "marriage_contract_current_logic",
+  };
+  hydrated.shares.remainderMode = remainderMap[hydrated.shares?.remainderMode] || hydrated.shares?.remainderMode || "title_owner";
   hydrated.participantsStep = normalizeParticipantsStepState(
     {
       ...hydrated.participantsStep,

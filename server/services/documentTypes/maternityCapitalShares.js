@@ -455,8 +455,13 @@ const participantSignatures = (formData, participants) => participants.map((part
     const repName = representativeName(formData, participant) || 'законный представитель';
     caption = `${escapeHtml(repName)}, ${normalizeGender(findParticipant(formData, participant.legalRepresentativeParticipantId) || participant.legalRepresentative || {}) === 'female' ? 'действующая' : 'действующий'} за ${gender === 'female' ? 'несовершеннолетнюю' : 'несовершеннолетнего'} ${escapeHtml(name)}`;
   } else if (age !== null && age >= 14 && age < 18) {
-    const repName = representativeName(formData, participant) || 'законного представителя';
-    caption = `${escapeHtml(name)}, ${gender === 'female' ? 'действующая' : 'действующий'} с согласия ${escapeHtml(repName)}`;
+    const consentProvider =
+      findParticipant(formData, participant.consentProviderParticipantId) ||
+      representativeParticipant(formData, participant);
+    const repName = consentProvider
+      ? inflectName(consentProvider, 'genitive')
+      : inflectName(representativeName(formData, participant), 'genitive') || 'законного представителя';
+    caption = `${escapeHtml(name)}, ${gender === 'female' ? 'действующая' : 'действующий'} с согласия законного представителя ${escapeHtml(repName)}`;
   }
   return `<div class="signature-block"><p>______________________________</p><p>(${caption})</p></div>`;
 }).join('\n');
@@ -1309,20 +1314,198 @@ const familyText = (formData) => {
   ].join('\n');
 };
 
+
+const normalizeNameForMatch = (value = '') => text(value).toUpperCase();
+
+const findTitleOwnerParticipants = (formData = {}, participants = []) => {
+  const rights = formData.rights || {};
+  const ownerNames = [
+    ...(rights.ownerBlocks || []).map((owner) => owner.fullName || owner.ownerFullName),
+    ...(rights.owners || []).map((owner) => owner.fullName || owner.ownerFullName),
+  ].map(normalizeNameForMatch).filter(Boolean);
+
+  const matched = ownerNames
+    .map((ownerName) => participants.find((participant) => normalizeNameForMatch(fullName(participant)) === ownerName))
+    .filter(Boolean);
+
+  if (matched.length) return matched;
+
+  const holderId = formData.participantsStep?.certificateHolderParticipantId ||
+    formData.maternityCapital?.certificateHolderParticipantId ||
+    formData.family?.certificateHolderParticipantId;
+  const holder = participants.find((participant) => String(participant.id) === String(holderId));
+  return holder ? [holder] : [];
+};
+
+const numberWordsBelowThousand = (number, feminine = false) => {
+  const ones = feminine
+    ? ['', 'одна', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять']
+    : ['', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять'];
+  const teens = ['', 'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать'];
+  const tens = ['', 'десять', 'двадцать', 'тридцать', 'сорок', 'пятьдесят', 'шестьдесят', 'семьдесят', 'восемьдесят', 'девяносто'];
+  const hundreds = ['', 'сто', 'двести', 'триста', 'четыреста', 'пятьсот', 'шестьсот', 'семьсот', 'восемьсот', 'девятьсот'];
+  const parts = [];
+  const h = Math.floor(number / 100);
+  const rest = number % 100;
+  if (h) parts.push(hundreds[h]);
+  if (rest > 10 && rest < 20) {
+    parts.push(teens[rest - 10]);
+  } else {
+    const t = Math.floor(rest / 10);
+    const o = rest % 10;
+    if (t) parts.push(tens[t]);
+    if (o) parts.push(ones[o]);
+  }
+  return parts.join(' ');
+};
+
+const thousandWord = (count) => {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'тысяч';
+  if (last === 1) return 'тысяча';
+  if (last >= 2 && last <= 4) return 'тысячи';
+  return 'тысяч';
+};
+
+const numberToWords = (number, feminine = false) => {
+  const value = Number(number);
+  if (!Number.isInteger(value) || value <= 0 || value > 999999) return '';
+  const thousands = Math.floor(value / 1000);
+  const rest = value % 1000;
+  const parts = [];
+  if (thousands) {
+    parts.push(numberWordsBelowThousand(thousands, true));
+    parts.push(thousandWord(thousands));
+  }
+  if (rest) parts.push(numberWordsBelowThousand(rest, feminine));
+  return parts.filter(Boolean).join(' ');
+};
+
+const denominatorOrdinalBelowThousand = (number) => {
+  const ordinals = {
+    1: 'первых', 2: 'вторых', 3: 'третьих', 4: 'четвёртых', 5: 'пятых',
+    6: 'шестых', 7: 'седьмых', 8: 'восьмых', 9: 'девятых', 10: 'десятых',
+    11: 'одиннадцатых', 12: 'двенадцатых', 13: 'тринадцатых', 14: 'четырнадцатых',
+    15: 'пятнадцатых', 16: 'шестнадцатых', 17: 'семнадцатых', 18: 'восемнадцатых',
+    19: 'девятнадцатых', 20: 'двадцатых', 30: 'тридцатых', 40: 'сороковых',
+    50: 'пятидесятых', 60: 'шестидесятых', 70: 'семидесятых', 80: 'восьмидесятых',
+    90: 'девяностых', 100: 'сотых', 200: 'двухсотых', 300: 'трёхсотых',
+    400: 'четырёхсотых', 500: 'пятисотых', 600: 'шестисотых', 700: 'семисотых',
+    800: 'восьмисотых', 900: 'девятисотых',
+  };
+  if (ordinals[number]) return ordinals[number];
+  const hundreds = Math.floor(number / 100) * 100;
+  const rest = number % 100;
+  return [numberWordsBelowThousand(hundreds), denominatorOrdinalBelowThousand(rest)].filter(Boolean).join(' ');
+};
+
+const denominatorToOrdinalWords = (number) => {
+  const value = Number(number);
+  if (!Number.isInteger(value) || value <= 0 || value > 999999) return '';
+  const thousands = Math.floor(value / 1000);
+  const rest = value % 1000;
+  const parts = [];
+  if (thousands) {
+    parts.push(numberWordsBelowThousand(thousands, true));
+    if (rest) {
+      parts.push(thousandWord(thousands));
+    } else {
+      parts.push(thousands === 1 ? 'тысячных' : 'тысячных');
+    }
+  }
+  if (rest) parts.push(denominatorOrdinalBelowThousand(rest));
+  return parts.filter(Boolean).join(' ');
+};
+
+const fractionWords = (fraction = '') => {
+  const match = text(fraction).match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (!match) return '';
+  const numerator = numberToWords(Number(match[1]), true);
+  const denominator = denominatorToOrdinalWords(Number(match[2]));
+  return numerator && denominator ? `${numerator} ${denominator}` : '';
+};
+
+const shareWithWords = (share = '') => {
+  const cleanShare = text(share);
+  if (!cleanShare) return '';
+  const words = fractionWords(cleanShare);
+  return words ? `${escapeHtml(cleanShare)} (${escapeHtml(words)})` : escapeHtml(cleanShare);
+};
+
+const titleOwnerSubjectText = (owners = []) => {
+  if (owners.length === 1) {
+    const owner = owners[0];
+    const pronoun = normalizeGender(owner) === 'female' ? 'ей' : 'ему';
+    return `${escapeHtml(fullName(owner))} выделяет доли из принадлежащей ${pronoun} на праве собственности квартиры`;
+  }
+  if (owners.length > 1) {
+    return 'титульные правообладатели выделяют доли из принадлежащей им на праве собственности квартиры';
+  }
+  return 'титульный правообладатель выделяет доли из принадлежащей ему на праве собственности квартиры';
+};
+
 const sharesText = (formData) => {
   const participants = formData.participantsStep?.participants || formData.participants || [];
   const rows = formData.shares?.rows || [];
-  const lines = rows.filter((row) => row.receivesShare === true && row.finalShare).map((row) => {
-    const p = participants.find((item) => String(item.id) === String(row.participantId)) || { fullName: row.fullName };
-    return `${escapeHtml(inflectName(p, 'dative'))} — ${escapeHtml(row.finalShare)} долей в праве общей долевой собственности на указанную квартиру`;
-  });
+  const titleOwners = findTitleOwnerParticipants(formData, participants);
+  const address = text(formData.object?.address) || 'адрес не указан';
+  const intro = `<p><strong>7.</strong> Во исполнение требований п. 4 ст. 10 Федерального закона от 29 декабря 2006 года № 256-ФЗ «О дополнительных мерах государственной поддержки семей, имеющих детей» ${titleOwnerSubjectText(titleOwners)} по адресу: ${escapeHtml(address)}:</p>`;
+
+  const lines = rows
+    .filter((row) => row.receivesShare === true && row.finalShare)
+    .map((row) => {
+      const p = participants.find((item) => String(item.id) === String(row.participantId)) || { fullName: row.fullName };
+      return `${escapeHtml(inflectName(p, 'dative'))} — ${shareWithWords(row.finalShare)} долей в праве общей долевой собственности на указанную квартиру`;
+    });
+
   const remainder = formData.shares?.remainderShare;
-  if (remainder && formData.shares?.remainderLegalMode === 'joint_spouses') {
-    const spouseRole = participants.filter((p) => ['certificateHolder', 'spouse'].includes(p.role));
-    const names = spouseRole.map((p) => escapeHtml(inflectName(p, 'genitive'))).join(' и ');
-    lines.push(`${escapeHtml(remainder)} долей в праве собственности на вышеуказанную квартиру остаются в общей совместной собственности ${names || 'супругов'}`);
+  const remainderLegalMode = formData.shares?.remainderLegalMode;
+  if (remainder && remainderLegalMode === 'title_owner') {
+    const ownerName = titleOwners[0] ? escapeHtml(inflectName(titleOwners[0], 'genitive')) : 'текущего титульного собственника';
+    lines.push(`Оставшаяся после выделения долей часть квартиры в размере ${shareWithWords(remainder)} долей в праве общей долевой собственности на вышеуказанную квартиру остаётся в собственности ${ownerName}, что не изменяет режим совместной собственности супругов согласно ст. 34 Семейного кодекса Российской Федерации`);
   }
-  return lines.length ? list(lines) : 'Распределение долей определяется расчётом, выбранным Сторонами в мастере документа.';
+  if (remainder && remainderLegalMode === 'spouses_joint') {
+    const spouses = participants.filter((p) => ['certificateHolder', 'spouse'].includes(p.role));
+    const names = spouses.map((p) => escapeHtml(inflectName(p, 'genitive'))).filter(Boolean).join(' и ') || 'супругов';
+    lines.push(`Оставшаяся после выделения долей часть квартиры в размере ${shareWithWords(remainder)} долей в праве общей долевой собственности на вышеуказанную квартиру поступает в общую совместную собственность супругов ${names} без определения долей`);
+  }
+  
+  if (!lines.length) return `${intro}<p>Распределение долей определяется расчётом, выбранным Сторонами в мастере документа.</p>`;
+
+  const body = lines.map((line, index) => paragraph(`- ${line}${index === lines.length - 1 ? '.' : ';'}`)).join('\n');
+  return `${intro}\n${body}`;
+};
+
+
+const titleOwnerAssuranceSubjects = (formData = {}, participants = []) => {
+  const rights = formData.rights || {};
+  const owners = [
+    ...(rights.ownerBlocks || []).map((owner) => ({ name: fullName(owner) || owner.fullName || owner.ownerFullName, raw: owner })),
+    ...(rights.owners || []).map((owner) => ({ name: fullName(owner) || owner.fullName || owner.ownerFullName, raw: owner })),
+  ].filter((owner) => text(owner.name));
+
+  const unique = [];
+  const seen = new Set();
+  owners.forEach((owner) => {
+    const key = normalizeNameForMatch(owner.name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    const participant = participants.find((item) => normalizeNameForMatch(fullName(item)) === key);
+    unique.push(participant || { ...owner.raw, fullName: owner.name });
+  });
+  return unique;
+};
+
+const buildAssurancesText = (formData = {}, participants = []) => {
+  const owners = titleOwnerAssuranceSubjects(formData, participants);
+  const subject = owners.length > 1
+    ? 'Титульные правообладатели заявляют'
+    : owners.length === 1
+      ? `${escapeHtml(fullName(owners[0]))} заявляет`
+      : 'Титульный собственник заявляет';
+
+  return `<strong>8.</strong> ${subject}, что до подписания настоящего соглашения вышеуказанная квартира никому не продана, не подарена, не обещана в дарение, не заложена, в споре и под запрещением (арестом) не состоит, правами третьих лиц не обременена, зарегистрированные ограничения (обременение) права отсутствуют, иные лица, имеющие право на оформление вышеуказанных долей квартиры в общую собственность, отсутствуют.`;
 };
 
 const copiesCountWords = (count) => {
@@ -1331,8 +1514,24 @@ const copiesCountWords = (count) => {
 };
 
 const copiesText = (formData, participants) => {
-  const count = Math.max(1, participants.length);
-  return `Настоящее соглашение подписано и составлено в ${count} (${copiesCountWords(count)}) экземплярах, имеющих одинаковую юридическую силу, по одному экземпляру для каждой из Сторон${participants.length ? `: ${escapeHtml(participants.map(fullName).filter(Boolean).join(', '))}` : ''}.`;
+  const hasSpousesJointRemainder = formData.shares?.remainderLegalMode === 'spouses_joint';
+  const count = Math.max(1, participants.length + (hasSpousesJointRemainder ? 1 : 0));
+  const participantNames = participants
+    .map((participant) => inflectName(participant, 'genitive'))
+    .map(escapeHtml)
+    .filter(Boolean);
+  const participantPart = participantNames.length
+    ? `, по экземпляру для ${participantNames.join(', ')}`
+    : '';
+  const spouses = participants.filter((participant) => ['certificateHolder', 'spouse'].includes(participant.role));
+  const spouseNames = spouses
+    .map((participant) => inflectName(participant, 'genitive'))
+    .map(escapeHtml)
+    .filter(Boolean);
+  const spousePart = hasSpousesJointRemainder && spouseNames.length
+    ? `, и один экземпляр для ${spouseNames.join(' и ')}`
+    : '';
+  return `Настоящее соглашение подписано и составлено в ${count} (${copiesCountWords(count)}) экземплярах${participantPart}${spousePart}.`;
 };
 
 function buildMaternityCapitalSharesRenderData(formData = {}) {
@@ -1363,7 +1562,7 @@ function buildMaternityCapitalSharesRenderData(formData = {}) {
     maternityCapitalText: buildMaternityCapitalText(formData),
     familyText: familyText(formData),
     sharesText: sharesText(formData),
-    assurancesText: enc.assurancesText,
+    assurancesText: buildAssurancesText(formData, participants),
     copiesText: copiesText(formData, participants),
     signaturesHtml: participantSignatures(formData, participants),
   };

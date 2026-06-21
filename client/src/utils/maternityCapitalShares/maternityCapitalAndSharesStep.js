@@ -1,6 +1,5 @@
 import {
   compareFractions,
-  formatFraction,
   parseFraction,
   parseMoney,
   sumFractions,
@@ -86,7 +85,13 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
     baseFraction &&
     compareFractions(finalSum, baseFraction) === 1
   ) {
-    errors.push("Сумма итоговых долей больше доступной базы.");
+    errors.push("Сумма итоговых долей больше доступной базы распределения. Уменьшите доли участников.");
+  }
+
+
+  const mskShare = parseFraction(shares.mskShare || shares.calculatedMaternityPartFraction);
+  if (finalSum && mskShare && compareFractions(finalSum, mskShare) === -1) {
+    errors.push("Сумма выделенных долей меньше части объекта, оплаченной средствами материнского капитала. Такое распределение может нарушать обязанность по оформлению жилого помещения в общую собственность членов семьи и повлечь риск оспаривания соглашения. Увеличьте доли участников либо выберите автоматический вариант расчёта.");
   }
 
   if (
@@ -115,20 +120,6 @@ export function validateMaternityCapitalAndSharesStep(formData = {}) {
     }
   });
 
-  recipientRows.forEach((row) => {
-    if (
-      row.recommendedShare &&
-      row.finalShare &&
-      compareFractions(row.finalShare, row.recommendedShare) === -1
-    ) {
-      warnings.push(
-        `Итоговая доля ${row.fullName || "участника"} меньше рекомендуемой (${formatFraction(parseFraction(row.recommendedShare))}).`,
-      );
-    }
-  });
-
-  if (shares.calculationMode === "manual")
-    warnings.push("Используется ручной расчёт.");
   if (
     !amountUsed &&
     (parseMoney(maternityCapital.assignedAmount) > 0 ||

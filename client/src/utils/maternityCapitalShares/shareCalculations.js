@@ -52,11 +52,26 @@ export const parseFraction = (value) => {
   return null;
 };
 
+export const createFraction = (n, d, { simplify = false } = {}) => {
+  const numerator = Number(n);
+  const denominator = Number(d);
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null;
+  const fraction = { n: Math.trunc(numerator), d: Math.trunc(denominator) };
+  return simplify ? simplifyFraction(fraction) : fraction;
+};
+
+export const formatRawFraction = (fraction) => {
+  if (!fraction || !Number.isFinite(fraction.n) || !Number.isFinite(fraction.d) || fraction.d === 0) return "";
+  const sign = fraction.d < 0 ? -1 : 1;
+  const n = Math.trunc(fraction.n) * sign;
+  const d = Math.abs(Math.trunc(fraction.d));
+  if (d === 1) return String(n);
+  return `${n}/${d}`;
+};
+
 export const formatFraction = (fraction) => {
   const simplified = simplifyFraction(fraction);
-  if (!simplified) return "";
-  if (simplified.d === 1) return String(simplified.n);
-  return `${simplified.n}/${simplified.d}`;
+  return formatRawFraction(simplified);
 };
 
 export const moneyToKopecks = (value) => Math.round(parseMoney(value) * 100);
