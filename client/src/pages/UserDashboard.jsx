@@ -819,7 +819,7 @@ export default function UserDashboard() {
   }, [refreshMe]);
 
 
-  const [tab, setTab] = useState('profile');
+  const [tab, setTab] = useState('workspace');
   
 
   return (
@@ -1048,7 +1048,7 @@ export default function UserDashboard() {
                     <h2 className="text-xl font-semibold mb-2">Купить/Продать</h2>
                     <p className="text-gray-600 text-center">Договоры купли-продажи и сопутствующие документы</p>
                   </Link>
-                  <Link to="/other" className="bg-white p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col items-center">
+                  <Link to="/other-documents" className="bg-white p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow flex flex-col items-center">
                     <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4"><FontAwesomeIcon icon={faFileContract} className="text-gray-500 text-2xl" /></div>
                     <h2 className="text-xl font-semibold mb-2">Прочие документы</h2>
                     <p className="text-gray-600 text-center">Доверенности, соглашения и др.</p>

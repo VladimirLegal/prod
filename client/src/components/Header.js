@@ -120,7 +120,7 @@ const Header = () => {
                 Войти
               </Link>
               <Link
-                to="/register"
+                to="/login"
                 className="hidden md:block bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded text-sm"
               >
                 Зарегистрироваться
@@ -199,7 +199,7 @@ const Header = () => {
                 Войти
               </Link>
               <Link
-                to="/register"
+                to="/login"
                 className="block py-2 text-gray-800 hover:bg-blue-50"
                 onClick={() => setMenuOpen(false)}
               >

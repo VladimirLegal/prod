@@ -218,7 +218,23 @@ export default function RegistrationWizard() {
     }
   }
 
-
+  if (!isReconsent) {
+    return (
+      <div className="max-w-2xl mx-auto p-6 space-y-4">
+        <h1 className="text-2xl font-semibold">Регистрация</h1>
+        <p className="text-gray-600">
+          Новая регистрация выполняется через Яндекс ID или VK ID.
+        </p>
+        <a
+          href={me ? '/cabinet' : '/login'}
+          className="inline-flex items-center justify-center px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+        >
+          {me ? 'Перейти в личный кабинет' : 'Перейти на вход / регистрацию'}
+        </a>
+      </div>
+    );
+  }
+  
   if (agreementsError) {
     return (
       <div className="max-w-2xl mx-auto p-6 space-y-4">

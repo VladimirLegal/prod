@@ -133,7 +133,7 @@ export default function MagicHandlerPage() {
         {apiError && (
             <div style={{ display: 'grid', gap: 8 }}>
             {apiError === 'user_not_found' && (
-                <a href="/register" style={{ color: '#2563eb', fontSize: 14, width: 'fit-content' }}>
+                <a href="/login" style={{ color: '#2563eb', fontSize: 14, width: 'fit-content' }}>
                     Зарегистрироваться
                 </a>
             )}

@@ -16,7 +16,6 @@ import AboutPage from './pages/AboutPage';
 import PropertyTypePage from './pages/PropertyTypePage';
 import RentApartmentWizard from './components/RentApartmentWizard';
 import RegistrationWizard from './pages/RegistrationWizard';
-import RegisterPage from './pages/RegisterPage';
 import UserDashboard from './pages/UserDashboard';
 import DocumentEditorPage from './pages/DocumentEditorPage';
 import DocumentDiffPage from './pages/DocumentDiffPage';
@@ -111,7 +110,7 @@ function AppRoutes() {
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegistrationWizard />} />
-      <Route path="/register/simple" element={<RegisterPage />} />
+      <Route path="/register/simple" element={<Navigate to="/login" replace />} />
       <Route path="/auth/magic" element={<MagicHandlerPage />} />
       <Route path="/agreement" element={<AgreementPage />} />
       <Route path="/about" element={<AboutPage />} />

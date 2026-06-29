@@ -4,6 +4,11 @@ const router = express.Router();
 const { query } = require('../db');
 const { createRateLimiter } = require('../utils/inMemoryRateLimiter');
 const { CURRENT_AGREEMENTS, AGREEMENT_DOC_TYPES } = require('../config/currentAgreements');
+const externalAuthService = require('../services/auth/externalAuthService');
+const yandexAuthService = require('../services/auth/yandexAuthService');
+const vkAuthService = require('../services/auth/vkAuthService');
+const { regenerateSession } = require('../services/auth/sessionUtils');
+const { isSafeReturnTo, successRedirect, failureRedirect } = require('../services/auth/oauthUtils');
 
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://legal-portal.pro';
 const MAGIC_TTL_MIN = 15; // время жизни токена, минут
@@ -196,6 +201,103 @@ async function createMagicTokenAndSend({ req, user, email, continueUrl }) {
 }
 
 
+
+async function finishExternalLogin(req, provider, profile) {
+  const user = await externalAuthService.findOrCreateUserForExternalProfile(profile);
+  await regenerateSession(req);
+  req.session.userId = user.id;
+  return user;
+}
+
+function externalErrorCode(err) {
+  return err?.code || err?.message || 'external_auth_failed';
+}
+
+// GET /api/auth/yandex/start
+router.get('/auth/yandex/start', async (req, res) => {
+  try {
+    if (!yandexAuthService.isConfigured()) {
+      return res.redirect(failureRedirect('provider_not_configured', 'yandex'));
+    }
+    const { state, codeVerifier, codeChallenge } = yandexAuthService.createStartParams();
+    req.session.yandexOAuthState = state;
+    req.session.yandexCodeVerifier = codeVerifier;
+    if (isSafeReturnTo(req.query.returnTo)) req.session.externalAuthReturnTo = req.query.returnTo;
+    return res.redirect(yandexAuthService.buildAuthorizeUrl({ state, codeChallenge }));
+  } catch (e) {
+    console.error('GET /auth/yandex/start', e.message);
+    return res.redirect(failureRedirect('external_auth_failed', 'yandex'));
+  }
+});
+
+// GET /api/auth/yandex/callback
+router.get('/auth/yandex/callback', async (req, res) => {
+  try {
+    if (req.query.error) return res.redirect(failureRedirect('yandex_auth_denied', 'yandex'));
+    const { code, state } = req.query;
+    if (!code) return res.redirect(failureRedirect('yandex_callback_missing_code', 'yandex'));
+    if (!state || state !== req.session.yandexOAuthState) return res.redirect(failureRedirect('state_mismatch', 'yandex'));
+    const codeVerifier = req.session.yandexCodeVerifier;
+    delete req.session.yandexOAuthState;
+    delete req.session.yandexCodeVerifier;
+    const token = await yandexAuthService.exchangeCodeForToken({ code, codeVerifier });
+    const rawProfile = await yandexAuthService.fetchProfile(token.access_token);
+    const profile = yandexAuthService.normalizeProfile(rawProfile);
+    await finishExternalLogin(req, 'yandex', profile);
+    return res.redirect(successRedirect(req));
+  } catch (e) {
+    const code = externalErrorCode(e);
+    console.error('GET /auth/yandex/callback', code);
+    return res.redirect(failureRedirect(code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed', 'yandex'));
+  }
+});
+
+// GET /api/auth/vk/config
+router.get('/auth/vk/config', (req, res) => {
+  if (!vkAuthService.isConfigured()) return res.json({ ok: false, error: 'provider_not_configured' });
+  const { state, scope } = vkAuthService.createConfig();
+  req.session.vkOAuthState = state;
+  if (isSafeReturnTo(req.query.returnTo)) req.session.externalAuthReturnTo = req.query.returnTo;
+  return res.json({ ok: true, clientId: process.env.VK_CLIENT_ID, redirectUri: process.env.VK_REDIRECT_URI, scope, state });
+});
+
+async function handleVkExchange(req, res, redirectMode = false) {
+  try {
+    if (!vkAuthService.isConfigured()) {
+      if (redirectMode) return res.redirect(failureRedirect('provider_not_configured', 'vk'));
+      return res.status(400).json({ ok: false, error: 'provider_not_configured' });
+    }
+    const source = redirectMode ? req.query : req.body;
+    const code = source.code;
+    const state = source.state;
+    const deviceId = source.device_id || source.deviceId;
+    const codeVerifier = source.code_verifier || source.codeVerifier;
+    if (!code || !state || !deviceId || !codeVerifier) {
+      if (redirectMode) return res.redirect(failureRedirect('vk_callback_missing_code', 'vk'));
+      return res.status(400).json({ ok: false, error: 'missing_required_params' });
+    }
+    if (!req.session.vkOAuthState || state !== req.session.vkOAuthState) {
+      if (redirectMode) return res.redirect(failureRedirect('state_mismatch', 'vk'));
+      return res.status(400).json({ ok: false, error: 'state_mismatch' });
+    }
+    delete req.session.vkOAuthState;
+    const token = await vkAuthService.exchangeCodeForToken({ code, codeVerifier, deviceId });
+    const rawProfile = await vkAuthService.fetchProfile(token.access_token);
+    const profile = vkAuthService.normalizeProfile(rawProfile);
+    await finishExternalLogin(req, 'vk', profile);
+    if (redirectMode) return res.redirect(successRedirect(req));
+    return res.json({ ok: true, redirectTo: successRedirect(req) });
+  } catch (e) {
+    const code = externalErrorCode(e);
+    console.error('VK external auth failed', code);
+    if (redirectMode) return res.redirect(failureRedirect(code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed', 'vk'));
+    return res.status(code === 'external_identity_not_linked_existing_email' ? 409 : 500).json({ ok: false, error: code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed' });
+  }
+}
+
+router.post('/auth/vk/exchange', (req, res) => handleVkExchange(req, res, false));
+router.get('/auth/vk/callback', (req, res) => handleVkExchange(req, res, true));
+
 // POST /api/auth/magic/request
 router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
   try {
@@ -228,6 +330,11 @@ router.post('/auth/magic/request', magicRequestLimiter, async (req, res) => {
 // POST /api/auth/register/magic/request
 router.post('/auth/register/magic/request', magicRequestLimiter, async (req, res) => {
   try {
+    return res.status(410).json({
+      ok: false,
+      error: 'registration_disabled',
+      message: 'Регистрация по email отключена. Используйте Яндекс ID или VK ID.',
+    });
     const { continueUrl, full_name, phone, birth_date } = req.body || {};
     const profile_role = normalizeProfileRole(req.body?.profile_role || req.body?.role);
     const email = normalizeEmail(req.body?.email);
@@ -427,6 +534,14 @@ router.get('/me', async (req, res) => {
       [uid, AGREEMENT_DOC_TYPES]
     );
 
+    const identities = await query(
+      `SELECT provider, created_at, last_login_at
+         FROM user_auth_identities
+        WHERE user_id = $1
+        ORDER BY created_at ASC`,
+      [uid]
+    );
+
     const latestByType = latest.rows.reduce((acc, row) => {
       acc[row.doc_type] = row;
       return acc;
@@ -473,6 +588,12 @@ router.get('/me', async (req, res) => {
           signed_at: agreements.pdn.signedAt,
         } : null,
         pdnActive,
+        authProviders: identities.rows.map((identity) => identity.provider),
+        authIdentities: identities.rows.map((identity) => ({
+          provider: identity.provider,
+          created_at: identity.created_at,
+          last_login_at: identity.last_login_at,
+        })),
       },
     });
   } catch (e) {
