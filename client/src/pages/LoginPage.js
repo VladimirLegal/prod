@@ -14,22 +14,6 @@ const AUTH_ERRORS = {
   vk_callback_missing_code: 'Вход через VK ID не был завершён.',
 };
 
-function base64Url(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function randomToken(bytes = 32) {
-  const array = new Uint8Array(bytes);
-  window.crypto.getRandomValues(array);
-  return base64Url(array);
-}
-
-async function pkceChallenge(verifier) {
-  const encoded = new TextEncoder().encode(verifier);
-  const digest = await window.crypto.subtle.digest('SHA-256', encoded);
-  return base64Url(digest);
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
@@ -83,52 +67,13 @@ export default function LoginPage() {
     window.location.href = `${API_ORIGIN}/api/auth/yandex/start?returnTo=${returnTo}`;
   }
 
-  async function handleVkLogin() {
+  function handleVkLogin() {
     setError('');
     setErrorCode('');
     setVkLoading(true);
-    try {
-      const configRes = await fetch(`${API_ORIGIN}/api/auth/vk/config?returnTo=${encodeURIComponent(continueUrl || '/cabinet')}`, { credentials: 'include' });
-      const config = await safeJson(configRes);
-      if (!configRes.ok || !config.ok) throw new Error(AUTH_ERRORS[config.error] || AUTH_ERRORS.external_auth_failed);
 
-      const VKID = await import('@vkid/sdk');
-      const codeVerifier = randomToken(64);
-      const codeChallenge = await pkceChallenge(codeVerifier);
-      sessionStorage.setItem('vkid_code_verifier', codeVerifier);
-
-      VKID.Config.init({
-        app: Number(config.clientId),
-        redirectUrl: config.redirectUri,
-        state: config.state,
-        codeChallenge,
-        scope: config.scope,
-        mode: VKID.ConfigAuthMode.InNewTab,
-      });
-
-      const oneTap = new VKID.OneTap();
-      const container = document.createElement('div');
-      document.body.appendChild(container);
-      oneTap.render({ container, scheme: VKID.Scheme.LIGHT, lang: VKID.Languages.RUS });
-      const result = await VKID.Auth.login();
-      const code = result.code;
-      const state = result.state || config.state;
-      const deviceId = result.device_id || result.deviceId;
-      const exchangeRes = await fetch(`${API_ORIGIN}/api/auth/vk/exchange`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ code, state, device_id: deviceId, code_verifier: codeVerifier }),
-      });
-      const exchange = await safeJson(exchangeRes);
-      if (!exchangeRes.ok || !exchange.ok) throw new Error(AUTH_ERRORS[exchange.error] || AUTH_ERRORS.external_auth_failed);
-      sessionStorage.removeItem('vkid_code_verifier');
-      window.location.href = exchange.redirectTo || '/cabinet';
-    } catch (e) {
-      setError(e.message || AUTH_ERRORS.external_auth_failed);
-    } finally {
-      setVkLoading(false);
-    }
+    const returnTo = encodeURIComponent(continueUrl || '/cabinet');
+    window.location.href = `${API_ORIGIN}/api/auth/vk/start?returnTo=${returnTo}`;
   }
 
   return (

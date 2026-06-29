@@ -252,6 +252,29 @@ router.get('/auth/yandex/callback', async (req, res) => {
   }
 });
 
+// GET /api/auth/vk/start
+router.get('/auth/vk/start', async (req, res) => {
+  try {
+    if (!vkAuthService.isConfigured()) {
+      return res.redirect(failureRedirect('provider_not_configured', 'vk'));
+    }
+
+    const { state, codeVerifier, codeChallenge } = vkAuthService.createStartParams();
+
+    req.session.vkOAuthState = state;
+    req.session.vkCodeVerifier = codeVerifier;
+
+    if (isSafeReturnTo(req.query.returnTo)) {
+      req.session.externalAuthReturnTo = req.query.returnTo;
+    }
+
+    return res.redirect(vkAuthService.buildAuthorizeUrl({ state, codeChallenge }));
+  } catch (e) {
+    console.error('GET /auth/vk/start', e.message);
+    return res.redirect(failureRedirect('external_auth_failed', 'vk'));
+  }
+});
+
 // GET /api/auth/vk/config
 router.get('/auth/vk/config', (req, res) => {
   if (!vkAuthService.isConfigured()) return res.json({ ok: false, error: 'provider_not_configured' });
@@ -271,7 +294,9 @@ async function handleVkExchange(req, res, redirectMode = false) {
     const code = source.code;
     const state = source.state;
     const deviceId = source.device_id || source.deviceId;
-    const codeVerifier = source.code_verifier || source.codeVerifier;
+    const codeVerifier = redirectMode
+      ? req.session.vkCodeVerifier
+      : (source.code_verifier || source.codeVerifier);
     if (!code || !state || !deviceId || !codeVerifier) {
       if (redirectMode) return res.redirect(failureRedirect('vk_callback_missing_code', 'vk'));
       return res.status(400).json({ ok: false, error: 'missing_required_params' });
@@ -281,6 +306,8 @@ async function handleVkExchange(req, res, redirectMode = false) {
       return res.status(400).json({ ok: false, error: 'state_mismatch' });
     }
     delete req.session.vkOAuthState;
+    if (redirectMode) delete req.session.vkCodeVerifier;
+
     const token = await vkAuthService.exchangeCodeForToken({ code, codeVerifier, deviceId });
     const rawProfile = await vkAuthService.fetchProfile(token.access_token);
     const profile = vkAuthService.normalizeProfile(rawProfile);

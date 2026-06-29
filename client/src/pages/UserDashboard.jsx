@@ -1020,7 +1020,11 @@ export default function UserDashboard() {
         {/* Рабочая зона */}
         {tab==='workspace' && (
           <div className="mt-4">
-            {(me?.agreementsRequired || !me?.pdnActive) ? (
+            {!me ? (
+              <div className="bg-white border border-gray-200 rounded-xl p-6 text-gray-600">
+                Загружаем профиль…
+              </div>
+            ) : (me.agreementsRequired || !me.pdnActive) ? (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-yellow-900">
                 <div className="font-semibold mb-2">Доступ ограничен</div>
                 <p className="mb-3">

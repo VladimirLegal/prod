@@ -1,7 +1,8 @@
-const { randomToken } = require('./oauthUtils');
+const { randomToken, pkceChallenge } = require('./oauthUtils');
 
 const VK_TOKEN_URL = 'https://id.vk.ru/oauth2/auth';
 const VK_USER_INFO_URL = 'https://id.vk.ru/oauth2/user_info';
+const VK_AUTHORIZE_URL = 'https://id.vk.ru/authorize';
 const VK_SCOPE = process.env.VK_SCOPE || 'vkid.personal_info email';
 
 function isConfigured() {
@@ -10,6 +11,32 @@ function isConfigured() {
 
 function createConfig() {
   return { state: randomToken(32), scope: VK_SCOPE };
+}
+
+function createStartParams() {
+  const state = randomToken(32);
+  const codeVerifier = randomToken(64);
+
+  return {
+    state,
+    codeVerifier,
+    codeChallenge: pkceChallenge(codeVerifier),
+    scope: VK_SCOPE,
+  };
+}
+
+function buildAuthorizeUrl({ state, codeChallenge }) {
+  const url = new URL(VK_AUTHORIZE_URL);
+
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', process.env.VK_CLIENT_ID);
+  url.searchParams.set('redirect_uri', process.env.VK_REDIRECT_URI);
+  url.searchParams.set('state', state);
+  url.searchParams.set('code_challenge', codeChallenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('scope', VK_SCOPE);
+
+  return url.toString();
 }
 
 async function exchangeCodeForToken({ code, codeVerifier, deviceId }) {
@@ -52,4 +79,15 @@ function normalizeProfile(raw) {
   };
 }
 
-module.exports = { VK_TOKEN_URL, VK_USER_INFO_URL, isConfigured, createConfig, exchangeCodeForToken, fetchProfile, normalizeProfile };
+module.exports = {
+  VK_TOKEN_URL,
+  VK_USER_INFO_URL,
+  VK_AUTHORIZE_URL,
+  isConfigured,
+  createConfig,
+  createStartParams,
+  buildAuthorizeUrl,
+  exchangeCodeForToken,
+  fetchProfile,
+  normalizeProfile,
+};
