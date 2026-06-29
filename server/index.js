@@ -155,7 +155,7 @@ app.use(session({
   store: sessionStore,
   cookie: {
     httpOnly: true,
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
   },
 
