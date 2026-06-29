@@ -213,6 +213,39 @@ function externalErrorCode(err) {
   return err?.code || err?.message || 'external_auth_failed';
 }
 
+function linkFailureRedirect(req, error, provider) {
+  const base = isSafeReturnTo(req.session?.externalAuthReturnTo)
+    ? req.session.externalAuthReturnTo
+    : '/cabinet';
+
+  delete req.session.externalAuthReturnTo;
+
+  const params = new URLSearchParams({ auth_error: error });
+
+  if (provider) {
+    params.set('provider', provider);
+  }
+
+  return `${base}${base.includes('?') ? '&' : '?'}${params.toString()}`;
+}
+
+function publicExternalError(code) {
+  const allowed = new Set([
+    'external_identity_not_linked_existing_email',
+    'external_identity_already_linked',
+    'external_provider_already_linked',
+    'external_email_required',
+    'external_email_mismatch',
+    'account_email_required',
+    'login_required',
+    'state_mismatch',
+    'vk_callback_missing_code',
+    'provider_not_configured',
+  ]);
+
+  return allowed.has(code) ? code : 'external_auth_failed';
+}
+
 // GET /api/auth/yandex/start
 router.get('/auth/yandex/start', async (req, res) => {
   try {
@@ -275,6 +308,33 @@ router.get('/auth/vk/start', async (req, res) => {
   }
 });
 
+// GET /api/auth/vk/link/start
+router.get('/auth/vk/link/start', async (req, res) => {
+  try {
+    if (!req.userId) {
+      return res.redirect(linkFailureRedirect(req, 'login_required', 'vk'));
+    }
+
+    if (!vkAuthService.isConfigured()) {
+      return res.redirect(linkFailureRedirect(req, 'provider_not_configured', 'vk'));
+    }
+
+    const { state, codeVerifier, codeChallenge } = vkAuthService.createStartParams();
+
+    req.session.vkOAuthState = state;
+    req.session.vkCodeVerifier = codeVerifier;
+    req.session.vkOAuthMode = 'link';
+    req.session.externalAuthReturnTo = isSafeReturnTo(req.query.returnTo)
+      ? req.query.returnTo
+      : '/cabinet';
+
+    return res.redirect(vkAuthService.buildAuthorizeUrl({ state, codeChallenge }));
+  } catch (e) {
+    console.error('GET /auth/vk/link/start', e.message);
+    return res.redirect(linkFailureRedirect(req, 'external_auth_failed', 'vk'));
+  }
+});
+
 // GET /api/auth/vk/config
 router.get('/auth/vk/config', (req, res) => {
   if (!vkAuthService.isConfigured()) return res.json({ ok: false, error: 'provider_not_configured' });
@@ -286,10 +346,20 @@ router.get('/auth/vk/config', (req, res) => {
 
 async function handleVkExchange(req, res, redirectMode = false) {
   try {
+    const isLinkMode = redirectMode && req.session.vkOAuthMode === 'link';
+
     if (!vkAuthService.isConfigured()) {
-      if (redirectMode) return res.redirect(failureRedirect('provider_not_configured', 'vk'));
+      if (redirectMode && isLinkMode) {
+        return res.redirect(linkFailureRedirect(req, 'provider_not_configured', 'vk'));
+      }
+
+      if (redirectMode) {
+        return res.redirect(failureRedirect('provider_not_configured', 'vk'));
+      }
+
       return res.status(400).json({ ok: false, error: 'provider_not_configured' });
     }
+
     const source = redirectMode ? req.query : req.body;
     const code = source.code;
     const state = source.state;
@@ -297,28 +367,94 @@ async function handleVkExchange(req, res, redirectMode = false) {
     const codeVerifier = redirectMode
       ? req.session.vkCodeVerifier
       : (source.code_verifier || source.codeVerifier);
+
     if (!code || !state || !deviceId || !codeVerifier) {
-      if (redirectMode) return res.redirect(failureRedirect('vk_callback_missing_code', 'vk'));
+      if (redirectMode && isLinkMode) {
+        delete req.session.vkOAuthState;
+        delete req.session.vkCodeVerifier;
+        delete req.session.vkOAuthMode;
+        return res.redirect(linkFailureRedirect(req, 'vk_callback_missing_code', 'vk'));
+      }
+
+      if (redirectMode) {
+        return res.redirect(failureRedirect('vk_callback_missing_code', 'vk'));
+      }
+
       return res.status(400).json({ ok: false, error: 'missing_required_params' });
     }
+
     if (!req.session.vkOAuthState || state !== req.session.vkOAuthState) {
-      if (redirectMode) return res.redirect(failureRedirect('state_mismatch', 'vk'));
+      if (redirectMode && isLinkMode) {
+        delete req.session.vkOAuthState;
+        delete req.session.vkCodeVerifier;
+        delete req.session.vkOAuthMode;
+        return res.redirect(linkFailureRedirect(req, 'state_mismatch', 'vk'));
+      }
+
+      if (redirectMode) {
+        return res.redirect(failureRedirect('state_mismatch', 'vk'));
+      }
+
       return res.status(400).json({ ok: false, error: 'state_mismatch' });
     }
+
     delete req.session.vkOAuthState;
-    if (redirectMode) delete req.session.vkCodeVerifier;
+
+    if (redirectMode) {
+      delete req.session.vkCodeVerifier;
+    }
 
     const token = await vkAuthService.exchangeCodeForToken({ code, codeVerifier, deviceId });
     const rawProfile = await vkAuthService.fetchProfile(token.access_token);
     const profile = vkAuthService.normalizeProfile(rawProfile);
+
+    if (redirectMode && isLinkMode) {
+      if (!req.userId) {
+        throw new Error('login_required');
+      }
+
+      await externalAuthService.linkExternalIdentityToUser(req.userId, profile);
+
+      delete req.session.vkOAuthMode;
+
+      const redirectTo = successRedirect(req);
+      return res.redirect(`${redirectTo}${redirectTo.includes('?') ? '&' : '?'}auth_linked=vk`);
+    }
+
+    delete req.session.vkOAuthMode;
+
     await finishExternalLogin(req, 'vk', profile);
-    if (redirectMode) return res.redirect(successRedirect(req));
+
+    if (redirectMode) {
+      return res.redirect(successRedirect(req));
+    }
+
     return res.json({ ok: true, redirectTo: successRedirect(req) });
   } catch (e) {
-    const code = externalErrorCode(e);
+    const code = publicExternalError(externalErrorCode(e));
+    const isLinkMode = redirectMode && req.session.vkOAuthMode === 'link';
+
     console.error('VK external auth failed', code);
-    if (redirectMode) return res.redirect(failureRedirect(code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed', 'vk'));
-    return res.status(code === 'external_identity_not_linked_existing_email' ? 409 : 500).json({ ok: false, error: code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed' });
+
+    if (redirectMode && isLinkMode) {
+      delete req.session.vkOAuthState;
+      delete req.session.vkCodeVerifier;
+      delete req.session.vkOAuthMode;
+
+      return res.redirect(linkFailureRedirect(req, code, 'vk'));
+    }
+
+    if (redirectMode) {
+      return res.redirect(failureRedirect(
+        code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed',
+        'vk'
+      ));
+    }
+
+    return res.status(code === 'external_identity_not_linked_existing_email' ? 409 : 500).json({
+      ok: false,
+      error: code === 'external_identity_not_linked_existing_email' ? code : 'external_auth_failed',
+    });
   }
 }
 

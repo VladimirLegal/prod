@@ -663,6 +663,42 @@ function formatPhoneRu(phone) {
   return phone;
 }
 
+const authLinkMessages = {
+  external_identity_already_linked: 'Этот VK ID уже привязан к другому аккаунту.',
+  external_provider_already_linked: 'К этому аккаунту уже привязан другой VK ID.',
+  external_email_required: 'VK ID не вернул e-mail. Проверьте, что доступ к e-mail включён в настройках VK ID.',
+  external_email_mismatch: 'E-mail VK ID не совпадает с e-mail текущего аккаунта. Для безопасности привязка не выполнена.',
+  account_email_required: 'У текущего аккаунта не указан e-mail. Сначала заполните e-mail в профиле.',
+  login_required: 'Сессия истекла. Войдите в аккаунт и попробуйте снова.',
+  state_mismatch: 'Не удалось подтвердить безопасность привязки. Попробуйте ещё раз.',
+  vk_callback_missing_code: 'VK ID не завершил привязку. Попробуйте ещё раз.',
+  provider_not_configured: 'Привязка VK ID временно не настроена.',
+  external_auth_failed: 'Не удалось привязать VK ID. Попробуйте ещё раз.',
+};
+
+function getAuthLinkNotice() {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get('auth_linked') === 'vk') {
+    return {
+      type: 'success',
+      text: 'VK ID успешно привязан к вашему аккаунту.',
+    };
+  }
+
+  const provider = params.get('provider');
+  const code = params.get('auth_error');
+
+  if (provider !== 'vk' || !code) {
+    return null;
+  }
+
+  return {
+    type: 'error',
+    text: authLinkMessages[code] || authLinkMessages.external_auth_failed,
+  };
+}
+
 // ========== СТРАНИЦА ==========
 export default function UserDashboard() {
     // ⬇️ Очистка гостевых маркеров, чтобы после логина не срабатывал кулдаун гостя
@@ -818,10 +854,17 @@ export default function UserDashboard() {
     refreshMe ();
   }, [refreshMe]);
 
-
   const [tab, setTab] = useState('workspace');
-  
+  const authLinkNotice = useMemo(() => getAuthLinkNotice(), []);
+  const authProviders = Array.isArray(me?.authProviders) ? me.authProviders : [];
+  const yandexLinked = authProviders.includes('yandex');
+  const vkLinked = authProviders.includes('vk');
 
+  function handleLinkVk() {
+    const returnTo = encodeURIComponent('/cabinet');
+    window.location.href = `${API_ORIGIN}/api/auth/vk/link/start?returnTo=${returnTo}`;
+  }
+  
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-4">
@@ -953,6 +996,59 @@ export default function UserDashboard() {
                     >
                       Открыть текст версии ({me?.consentVersion || '—'})
                     </a>
+                  </div>
+                </div>
+                                {/* Способы входа */}
+                <div className="mt-6 pt-4 border-t">
+                  <div className="font-medium mb-3">Способы входа:</div>
+
+                  {authLinkNotice && (
+                    <div className={`mb-4 rounded-md p-3 text-sm ${
+                      authLinkNotice.type === 'success'
+                        ? 'bg-green-50 text-green-700 border border-green-200'
+                        : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}>
+                      {authLinkNotice.text}
+                    </div>
+                  )}
+
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-lg p-3">
+                      <div>
+                        <div className="font-medium">Яндекс ID</div>
+                        <div className="text-gray-500">
+                          {yandexLinked ? 'Привязан к аккаунту' : 'Не привязан'}
+                        </div>
+                      </div>
+                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                        yandexLinked ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {yandexLinked ? 'Привязан' : 'Не привязан'}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-lg p-3">
+                      <div>
+                        <div className="font-medium">VK ID</div>
+                        <div className="text-gray-500">
+                          {vkLinked ? 'Привязан к аккаунту' : 'Можно привязать к текущему аккаунту'}
+                        </div>
+                      </div>
+
+                      {vkLinked ? (
+                        <span className="inline-flex px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          Привязан
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={`${BTN.base} ${BTN.secondary} w-full sm:w-auto`}
+                          onClick={handleLinkVk}
+                        >
+                          Привязать VK ID
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {/* Кнопки действий */}
