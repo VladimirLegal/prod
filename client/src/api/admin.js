@@ -37,6 +37,8 @@ const AdminAPI = {
   updateUser: (id, payload) => request(`/users/${id}`, { method: 'PATCH', body: payload }),
   blockUser: (id) => request(`/users/${id}/block`, { method: 'POST' }),
   unblockUser: (id) => request(`/users/${id}/unblock`, { method: 'POST' }),
+  deleteUser: (id) => request(`/users/${id}/delete`, { method: 'POST' }),
+  restoreUser: (id) => request(`/users/${id}/restore`, { method: 'POST' }),
   userActivity: (id, params = {}) => {
     const query = new URLSearchParams(params).toString();
     return request(`/users/${id}/activity${query ? `?${query}` : ''}`);

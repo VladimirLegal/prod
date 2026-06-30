@@ -23,6 +23,59 @@ const STATUS_OPTIONS = [
   { value: 'blocked', label: 'Заблокирован' },
   { value: 'deleted', label: 'Удалён' },
 ];
+const PROVIDER_LABELS = {
+  yandex: 'Яндекс ID',
+  vk: 'VK ID',
+};
+
+function getUserDisplayName(user) {
+  return user.display_name || user.full_name || '—';
+}
+
+function getUserEmailLabel(user) {
+  return user.email || 'Email не указан';
+}
+
+function getAuthProviders(user) {
+  const providers = Array.isArray(user.authProviders)
+    ? user.authProviders
+    : Array.isArray(user.auth_providers)
+      ? user.auth_providers
+      : [];
+
+  const result = [];
+
+  if (user.email) {
+    result.push('email');
+  }
+
+  for (const provider of providers) {
+    if (provider && !result.includes(provider)) {
+      result.push(provider);
+    }
+  }
+
+  return result;
+}
+
+function renderAuthProviderBadge(provider) {
+  const label = provider === 'email' ? 'Email' : (PROVIDER_LABELS[provider] || provider);
+
+  const classes = provider === 'vk'
+    ? 'bg-blue-100 text-blue-700'
+    : provider === 'yandex'
+      ? 'bg-yellow-100 text-yellow-800'
+      : 'bg-gray-100 text-gray-700';
+
+  return (
+    <span
+      key={provider}
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${classes}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 function useUsersData(filters) {
   const [state, setState] = React.useState({ loading: true, error: null, items: [], total: 0 });
@@ -216,6 +269,33 @@ function Users() {
     }
   };
 
+  const handleDeleteUser = async (user) => {
+    if (String(user.id) === String(sessionUser?.id)) {
+      alert('Нельзя удалить самого себя.');
+      return;
+    }
+
+    if (!window.confirm('Удалить пользователя? Это мягкое удаление: пользователь не сможет войти, но история сохранится.')) {
+      return;
+    }
+
+    try {
+      await AdminAPI.deleteUser(user.id);
+      refresh();
+    } catch (err) {
+      alert(err.message || 'Не удалось удалить пользователя');
+    }
+  };
+
+  const handleRestoreUser = async (user) => {
+    try {
+      await AdminAPI.restoreUser(user.id);
+      refresh();
+    } catch (err) {
+      alert(err.message || 'Не удалось восстановить пользователя');
+    }
+  };
+
   return (
     <div>
       <div className="mb-6">
@@ -226,7 +306,7 @@ function Users() {
       <FiltersBar>
         <input
           type="search"
-          placeholder="Поиск по email или имени"
+          placeholder="Поиск по email, имени или телефону"
           value={filters.query}
           onChange={(e) => setFilters((prev) => ({ ...prev, query: e.target.value, offset: 0 }))}
           className="w-64 rounded-lg border border-gray-300 px-3 py-2"
@@ -263,12 +343,26 @@ function Users() {
         <>
           <DataTable
             columns={[
-              { key: 'email', label: 'Email', sortable: true },
+              {
+                key: 'email',
+                label: 'Email',
+                sortable: true,
+                render: (user) => (
+                  <span className={user.email ? 'text-gray-800' : 'text-gray-400 italic'}>
+                    {getUserEmailLabel(user)}
+                  </span>
+                ),
+              },
               {
                 key: 'display_name',
-                label: 'Имя',
+                label: 'ФИО / имя',
                 sortable: true,
-                render: (user) => user.display_name || '—',
+                render: (user) => getUserDisplayName(user),
+              },
+              {
+                key: 'phone',
+                label: 'Телефон',
+                render: (user) => user.phone || '—',
               },
               {
                 key: 'role',
@@ -281,6 +375,23 @@ function Users() {
                 label: 'Статус',
                 sortable: true,
                 render: (user) => <StatusPill value={user.status} kind="status" />, 
+              },
+              {
+                key: 'authProviders',
+                label: 'Способы входа',
+                render: (user) => {
+                  const providers = getAuthProviders(user);
+
+                  if (!providers.length) {
+                    return <span className="text-gray-400">—</span>;
+                  }
+
+                  return (
+                    <div className="flex flex-wrap gap-1">
+                      {providers.map(renderAuthProviderBadge)}
+                    </div>
+                  );
+                },
               },
               {
                 key: 'created_at',
@@ -297,33 +408,67 @@ function Users() {
               {
                 key: 'actions',
                 label: '',
-                render: (user) => (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingUser(user)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleBlockToggle(user)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
-                    >
-                      {user.status === 'blocked' ? (
-                        <>
-                          <Unlock className="h-3.5 w-3.5" /> Разблокировать
-                        </>
+                render: (user) => {
+                  const isSelf = String(user.id) === String(sessionUser?.id);
+
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(user)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Редактировать
+                      </button>
+
+                      {user.status === 'deleted' ? (
+                        isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreUser(user)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-200 px-3 py-1 text-xs text-green-700 hover:bg-green-50"
+                          >
+                            <Unlock className="h-3.5 w-3.5" />
+                            Восстановить
+                          </button>
+                        )
                       ) : (
                         <>
-                          <Lock className="h-3.5 w-3.5" /> Заблокировать
+                          <button
+                            type="button"
+                            onClick={() => handleBlockToggle(user)}
+                            disabled={isSelf}
+                            title={isSelf ? 'Нельзя заблокировать самого себя' : ''}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {user.status === 'blocked' ? (
+                              <>
+                                <Unlock className="h-3.5 w-3.5" /> Разблокировать
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="h-3.5 w-3.5" /> Заблокировать
+                              </>
+                            )}
+                          </button>
+
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(user)}
+                              disabled={isSelf}
+                              title={isSelf ? 'Нельзя удалить самого себя' : ''}
+                              className="inline-flex items-center rounded-lg border border-red-200 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Удалить
+                            </button>
+                          )}
                         </>
                       )}
-                    </button>
-                  </div>
-                ),
+                    </div>
+                  );
+                },
               },
             ]}
             data={items}

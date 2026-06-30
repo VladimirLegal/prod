@@ -216,49 +216,86 @@ router.get('/users', requireRole('manager', 'admin'), async (req, res) => {
     const search = String(req.query.query || '').trim();
     const roleFilter = String(req.query.role || '').trim();
     const statusFilter = String(req.query.status || '').trim();
+
     const sortSql = buildSort(req.query.sort, {
-      default: 'created_at DESC',
+      default: 'u.created_at DESC',
       fields: {
-        created_at: 'created_at',
-        email: 'email',
-        last_login_at: 'last_login_at',
+        created_at: 'u.created_at',
+        email: 'u.email',
+        display_name: 'COALESCE(u.display_name, u.full_name)',
+        role: 'u.role',
+        status: 'u.status',
+        last_login_at: 'u.last_login_at',
       },
     });
 
     const conditions = [];
     const params = [];
     let idx = 1;
+
     if (search) {
-      conditions.push(`(email ILIKE $${idx} OR display_name ILIKE $${idx})`);
+      conditions.push(`(
+        COALESCE(u.email, '') ILIKE $${idx}
+        OR COALESCE(u.display_name, '') ILIKE $${idx}
+        OR COALESCE(u.full_name, '') ILIKE $${idx}
+        OR COALESCE(u.phone, '') ILIKE $${idx}
+      )`);
       params.push(`%${search}%`);
       idx += 1;
     }
+
     if (roleFilter && VALID_ROLES.includes(roleFilter)) {
-      conditions.push(`role = $${idx}`);
+      conditions.push(`u.role = $${idx}`);
       params.push(roleFilter);
       idx += 1;
     }
+
     if (statusFilter && VALID_USER_STATUS.includes(statusFilter)) {
-      conditions.push(`status = $${idx}`);
+      conditions.push(`u.status = $${idx}`);
       params.push(statusFilter);
       idx += 1;
     }
+
     const whereSql = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const totalSql = `SELECT COUNT(*) AS cnt FROM users ${whereSql}`;
+    const totalSql = `SELECT COUNT(*) AS cnt FROM users u ${whereSql}`;
     const totalRes = await query(totalSql, params);
     const total = Number(totalRes.rows[0]?.cnt || 0);
 
     const itemsSql = `
-      SELECT id, email, display_name, role, status, created_at, last_login_at
-      FROM users
+      WITH identity_summary AS (
+        SELECT
+          user_id,
+          array_agg(provider ORDER BY provider) AS auth_providers
+        FROM user_auth_identities
+        GROUP BY user_id
+      )
+      SELECT
+        u.id,
+        u.email,
+        u.display_name,
+        u.full_name,
+        u.phone,
+        u.role,
+        u.status,
+        u.created_at,
+        u.last_login_at,
+        COALESCE(i.auth_providers, ARRAY[]::text[]) AS auth_providers
+      FROM users u
+      LEFT JOIN identity_summary i ON i.user_id = u.id
       ${whereSql}
       ORDER BY ${sortSql}
       LIMIT $${idx} OFFSET $${idx + 1}
     `;
+
     const listRes = await query(itemsSql, [...params, limit, offset]);
 
-    return res.json({ ok: true, total, items: listRes.rows });
+    const items = listRes.rows.map((row) => ({
+      ...row,
+      authProviders: Array.isArray(row.auth_providers) ? row.auth_providers : [],
+    }));
+
+    return res.json({ ok: true, total, items });
   } catch (err) {
     console.error('GET /api/admin/users error', err);
     return res.status(500).json({ ok: false, error: 'users_list_failed' });
@@ -342,6 +379,12 @@ router.patch('/users/:id', requireRole('manager', 'admin'), async (req, res) => 
 async function updateUserStatus(req, res, targetStatus, action) {
   try {
     const targetId = req.params.id;
+    if (
+      String(targetId) === String(req.user?.id)
+      && ['blocked', 'deleted'].includes(targetStatus)
+    ) {
+      return res.status(400).json({ ok: false, error: 'self_status_change_forbidden' });
+    }
     if (!VALID_USER_STATUS.includes(targetStatus)) {
       return res.status(400).json({ ok: false, error: 'invalid_status' });
     }
@@ -368,8 +411,17 @@ async function updateUserStatus(req, res, targetStatus, action) {
 router.post('/users/:id/block', requireRole('manager', 'admin'), (req, res) =>
   updateUserStatus(req, res, 'blocked', 'user.block')
 );
+
 router.post('/users/:id/unblock', requireRole('manager', 'admin'), (req, res) =>
   updateUserStatus(req, res, 'active', 'user.unblock')
+);
+
+router.post('/users/:id/delete', requireRole('admin'), (req, res) =>
+  updateUserStatus(req, res, 'deleted', 'user.delete')
+);
+
+router.post('/users/:id/restore', requireRole('admin'), (req, res) =>
+  updateUserStatus(req, res, 'active', 'user.restore')
 );
 
 router.get('/users/:id/activity', requireRole('manager', 'admin'), async (req, res) => {
