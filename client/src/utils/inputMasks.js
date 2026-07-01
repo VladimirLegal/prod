@@ -3,7 +3,6 @@ export const formatDateInput = (value = "") => {
   const dd = digits.slice(0, 2);
   const mm = digits.slice(2, 4);
   const yyyy = digits.slice(4, 8);
-
   return [dd, mm, yyyy].filter(Boolean).join(".");
 };
 

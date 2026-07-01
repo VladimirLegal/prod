@@ -3,28 +3,38 @@ import { Link, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
-  faFileContract,
+  faCheckCircle,
+  faEnvelope,
+  faFileSignature,
   faHome,
+  faRubleSign,
+  faUpload,
+  faUserTie,
+  faUsers,
 } from "@fortawesome/free-solid-svg-icons";
-import FreeTextImportModal from "../components/common/FreeTextImportModal";
+import PersonPassportFields from "../components/common/PersonPassportFields";
 import { extractEGRNDataFromPdf } from "../utils/extractEGRNDataFromPdf";
 import { extractEGRNFromZip } from "../utils/extractEGRNFromZip";
-import { parseFreeTextPerson } from "../utils/freeTextParser";
+import { amountRu } from "../utils/formatters";
+import { formatDateInput } from "../utils/inputMasks";
 import {
+  createCoOwnerDeliveryPayload,
+  createDeliveryAddresses,
   hydrateShareSaleNoticeForm,
   initialShareSaleNoticeForm,
   SHARE_SALE_NOTICE_STORAGE_KEY,
+  updateObjectAddressDeliveryAddresses,
 } from "../utils/shareSaleNotice/initialState";
 import { normalizeEgrnForShareSaleNotice } from "../utils/shareSaleNotice/normalizeEgrnForShareSaleNotice";
 
 const steps = [
   "Источник данных",
-  "Объект и право",
-  "Продавец",
-  "Условия продажи",
+  "Объект, продавец и условия продажи",
   "Сособственники и адреса",
   "Проверка и формирование пакета",
 ];
+
+const stepIcons = [faUpload, faFileSignature, faUsers, faCheckCircle];
 
 const PILL = {
   base: "inline-flex items-center justify-center h-11 px-5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2",
@@ -33,6 +43,7 @@ const PILL = {
   danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-400",
 };
 const cardClass = "bg-white rounded-xl shadow-md p-6";
+const blockClass = "bg-white rounded-xl shadow-md p-6 space-y-4";
 const inputClass =
   "w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400";
 const labelClass = "block text-sm font-medium text-gray-700 mb-1";
@@ -48,14 +59,22 @@ const loadDraft = () => {
   }
 };
 
-const Field = ({ label, value, onChange, placeholder = "", type = "text" }) => (
+const Field = ({
+  label,
+  value,
+  onChange,
+  placeholder = "",
+  type = "text",
+  readOnly = false,
+}) => (
   <label className="block">
     <span className={labelClass}>{label}</span>
     <input
       type={type}
       value={value || ""}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
       placeholder={placeholder}
+      readOnly={readOnly}
       className={inputClass}
     />
   </label>
@@ -66,12 +85,22 @@ const TextAreaField = ({ label, value, onChange, placeholder = "" }) => (
     <span className={labelClass}>{label}</span>
     <textarea
       value={value || ""}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
       placeholder={placeholder}
       rows={3}
       className={inputClass}
     />
   </label>
+);
+
+const SectionTitle = ({ icon, children, hint = "" }) => (
+  <div>
+    <h3 className="flex items-center text-lg font-semibold text-gray-900">
+      <FontAwesomeIcon icon={icon} className="mr-2 text-blue-600" />
+      {children}
+    </h3>
+    {hint ? <p className="mt-1 text-sm text-gray-600">{hint}</p> : null}
+  </div>
 );
 
 const SummaryRow = ({ label, value }) => (
@@ -105,6 +134,7 @@ const mapOwnerToSeller = (owner = {}, index = null) => {
     issueDate: owner.passport?.issueDate || "",
     departmentCode: owner.passport?.deptCode || "",
     registration: owner.registration || owner.address || "",
+    registrationType: owner.registrationType || "",
     phone: owner.phone || "",
     email: owner.email || "",
     egrnShare: share,
@@ -112,18 +142,46 @@ const mapOwnerToSeller = (owner = {}, index = null) => {
   };
 };
 
+const getSelectedDeliveryCount = (coOwners = []) =>
+  coOwners.reduce(
+    (total, owner) =>
+      total +
+      (owner.deliveryAddresses || []).filter(
+        (address) => address.selected && String(address.address || "").trim(),
+      ).length,
+    0,
+  );
+
+const ensureCoOwnerDeliveryAddresses = (coOwner = {}, objectAddress = "") => ({
+  ...coOwner,
+  ...(!Array.isArray(coOwner.deliveryAddresses)
+    ? createCoOwnerDeliveryPayload(objectAddress)
+    : {
+        deliveryAddresses: createDeliveryAddresses(
+          objectAddress,
+          coOwner.deliveryAddresses,
+        ),
+        noticeAddress:
+          createDeliveryAddresses(objectAddress, coOwner.deliveryAddresses)[0]
+            ?.address || objectAddress,
+      }),
+});
+
 const ShareSaleNoticeWizard = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState(loadDraft);
   const [parsedEgrn, setParsedEgrn] = useState(formData.egrn.parsed || null);
   const [message, setMessage] = useState("");
-  const [isPassportModalOpen, setIsPassportModalOpen] = useState(false);
   const hydratedRef = useRef(false);
   const currentStep = formData.ui.currentStep || 0;
 
   const owners = useMemo(
     () => parsedEgrn?.owners || formData.egrn.parsed?.owners || [],
     [parsedEgrn, formData.egrn.parsed],
+  );
+  const postageCount = useMemo(
+    () => getSelectedDeliveryCount(formData.coOwners),
+    [formData.coOwners],
   );
 
   useEffect(() => {
@@ -146,21 +204,41 @@ const ShareSaleNoticeWizard = () => {
 
   const updateUi = (patch) =>
     setFormData((prev) => ({ ...prev, ui: { ...prev.ui, ...patch } }));
+
   const updateObject = (key, value) =>
     setFormData((prev) => ({
       ...prev,
       object: { ...prev.object, [key]: value },
+      coOwners:
+        key === "address"
+          ? prev.coOwners.map((coOwner) => ({
+              ...coOwner,
+              noticeAddress: value,
+              deliveryAddresses: updateObjectAddressDeliveryAddresses(
+                coOwner.deliveryAddresses,
+                value,
+              ),
+            }))
+          : prev.coOwners,
     }));
+
   const updateSeller = (key, value) =>
     setFormData((prev) => ({
       ...prev,
       seller: { ...prev.seller, [key]: value },
     }));
+
   const updateSaleTerms = (key, value) =>
-    setFormData((prev) => ({
-      ...prev,
-      saleTerms: { ...prev.saleTerms, [key]: value },
-    }));
+    setFormData((prev) => {
+      const saleTerms = { ...prev.saleTerms, [key]: value };
+      if (key === "price") {
+        saleTerms.priceWords = amountRu(value);
+      }
+      if (key === "date") {
+        saleTerms.date = formatDateInput(value);
+      }
+      return { ...prev, saleTerms };
+    });
 
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
@@ -245,9 +323,11 @@ const ShareSaleNoticeWizard = () => {
       ...prev,
       object: { ...prev.object, ...normalized.object },
       seller: seller ? { ...prev.seller, ...seller } : prev.seller,
-      coOwners: normalized.coOwners.filter(
-        (owner) => owner.ownerIndex !== selectedIndex,
-      ),
+      coOwners: normalized.coOwners
+        .filter((owner) => owner.ownerIndex !== selectedIndex)
+        .map((owner) =>
+          ensureCoOwnerDeliveryAddresses(owner, normalized.object.address),
+        ),
       saleTerms: {
         ...prev.saleTerms,
         place: prev.saleTerms.place || normalized.object.city,
@@ -274,36 +354,54 @@ const ShareSaleNoticeWizard = () => {
     setMessage("Черновик очищен.");
   };
 
-  const applyPassportText = (rawText) => {
-    const parsed = parseFreeTextPerson(rawText || "");
-    setFormData((prev) => ({
-      ...prev,
-      seller: {
-        ...prev.seller,
-        source: "manual",
-        fullName: parsed.fullName || prev.seller.fullName,
-        gender: parsed.gender || prev.seller.gender,
-        birthDate: parsed.birthDate || prev.seller.birthDate,
-        birthPlace: parsed.birthPlace || prev.seller.birthPlace,
-        passport: parsed.passport || prev.seller.passport,
-        passportIssued: parsed.passportIssued || prev.seller.passportIssued,
-        issueDate: parsed.issueDate || prev.seller.issueDate,
-        departmentCode: parsed.departmentCode || prev.seller.departmentCode,
-        registration: parsed.registration || prev.seller.registration,
-        phone: parsed.phone || prev.seller.phone,
-        email: parsed.email || prev.seller.email,
-      },
-    }));
-    setIsPassportModalOpen(false);
-    setMessage("Паспортные данные продавца заполнены из текста.");
-  };
-
   const updateCoOwner = (index, key, value) => {
     setFormData((prev) => ({
       ...prev,
       coOwners: prev.coOwners.map((owner, ownerIndex) =>
         ownerIndex === index ? { ...owner, [key]: value } : owner,
       ),
+    }));
+  };
+
+  const updateCoOwnerDeliveryAddress = (coOwnerIndex, addressIndex, patch) => {
+    setFormData((prev) => ({
+      ...prev,
+      coOwners: prev.coOwners.map((owner, ownerIndex) => {
+        if (ownerIndex !== coOwnerIndex) return owner;
+        const deliveryAddresses = createDeliveryAddresses(
+          prev.object.address,
+          owner.deliveryAddresses,
+        ).map((address, currentAddressIndex) =>
+          currentAddressIndex === addressIndex
+            ? {
+                ...address,
+                ...patch,
+                touched: patch.address !== undefined ? true : address.touched,
+              }
+            : address,
+        );
+        return {
+          ...owner,
+          noticeAddress: deliveryAddresses[0]?.address || prev.object.address,
+          deliveryAddresses,
+        };
+      }),
+    }));
+  };
+
+  const addManualCoOwner = () => {
+    setFormData((prev) => ({
+      ...prev,
+      coOwners: [
+        ...prev.coOwners,
+        {
+          source: "manual",
+          fullName: "",
+          share: "",
+          registration: "",
+          ...createCoOwnerDeliveryPayload(prev.object.address),
+        },
+      ],
     }));
   };
 
@@ -351,23 +449,42 @@ const ShareSaleNoticeWizard = () => {
         </Link>
       </div>
 
-      <div className="flex justify-between mb-8 border-b overflow-x-auto">
-        {steps.map((stepName, index) => (
-          <button
-            key={stepName}
-            type="button"
-            onClick={() => updateUi({ currentStep: index })}
-            className={`pb-2 px-4 whitespace-nowrap relative ${
-              currentStep === index
-                ? "text-blue-600 font-medium border-b-2 border-blue-600"
-                : "text-gray-600"
-            }`}
-          >
-            <FontAwesomeIcon icon={faFileContract} className="mr-2" />
-            <span className="hidden sm:inline">Шаг {index + 1}. </span>
-            {stepName}
-          </button>
-        ))}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+        {steps.map((stepName, index) => {
+          const isActive = currentStep === index;
+          return (
+            <button
+              key={stepName}
+              type="button"
+              onClick={() => updateUi({ currentStep: index })}
+              className={`rounded-xl border p-4 text-left transition-colors ${
+                isActive
+                  ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    isActive
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  <FontAwesomeIcon icon={stepIcons[index]} />
+                </span>
+                <span>
+                  <span className="block text-xs font-semibold uppercase tracking-wide">
+                    Шаг {index + 1}
+                  </span>
+                  <span className="block text-sm font-medium leading-snug mt-1">
+                    {stepName}
+                  </span>
+                </span>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
       {currentStep === 0 && (
@@ -505,244 +622,217 @@ const ShareSaleNoticeWizard = () => {
       {currentStep === 1 && (
         <div className={`${cardClass} space-y-6`}>
           <h2 className="text-xl font-semibold text-gray-900">
-            Шаг 2. Объект и право
+            Шаг 2. Объект, продавец и условия продажи
           </h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            <TextAreaField
-              label="Адрес объекта"
-              value={formData.object.address}
-              onChange={(value) => updateObject("address", value)}
+
+          <section className={blockClass}>
+            <SectionTitle
+              icon={faHome}
+              hint="Проверьте объект, вид права и долю, которая будет продаваться."
+            >
+              Объект и право
+            </SectionTitle>
+            <div className="grid md:grid-cols-2 gap-4">
+              <TextAreaField
+                label="Адрес объекта"
+                value={formData.object.address}
+                onChange={(value) => updateObject("address", value)}
+              />
+              <Field
+                label="Кадастровый номер"
+                value={formData.object.cadastralNumber}
+                onChange={(value) => updateObject("cadastralNumber", value)}
+              />
+              <Field
+                label="Вид объекта"
+                value={formData.object.objectKindFromEgrn}
+                onChange={(value) => updateObject("objectKindFromEgrn", value)}
+                placeholder="Квартира, комната, жилой дом…"
+              />
+              <Field
+                label="Площадь"
+                value={formData.object.area}
+                onChange={(value) => updateObject("area", value)}
+              />
+              <Field
+                label="Этаж"
+                value={formData.object.floor}
+                onChange={(value) => updateObject("floor", value)}
+              />
+              <Field
+                label="Тип права по ЕГРН"
+                value={formData.egrn.parsed?.rights?.ownershipType || ""}
+                placeholder="Заполнится из ЕГРН"
+                readOnly
+              />
+              <Field
+                label="Доля по ЕГРН / доля в праве"
+                value={formData.seller.egrnShare}
+                onChange={(value) => updateSeller("egrnShare", value)}
+                placeholder="например, 1/2"
+              />
+              <Field
+                label="Продаваемая доля"
+                value={formData.seller.saleShare}
+                onChange={(value) => updateSeller("saleShare", value)}
+                placeholder="например, 1/2"
+              />
+            </div>
+          </section>
+
+          <section className={blockClass}>
+            <PersonPassportFields
+              title="Продавец"
+              titleIcon={faUserTie}
+              person={formData.seller}
+              onChange={(field, value) => updateSeller(field, value)}
+              freeTextTitle="Вставьте текст с паспортными данными продавца"
             />
-            <Field
-              label="Кадастровый номер"
-              value={formData.object.cadastralNumber}
-              onChange={(value) => updateObject("cadastralNumber", value)}
-            />
-            <Field
-              label="Вид объекта"
-              value={formData.object.objectKindFromEgrn}
-              onChange={(value) => updateObject("objectKindFromEgrn", value)}
-              placeholder="Квартира, комната, жилой дом…"
-            />
-            <Field
-              label="Площадь (необязательно)"
-              value={formData.object.area}
-              onChange={(value) => updateObject("area", value)}
-            />
-            <Field
-              label="Этаж (необязательно)"
-              value={formData.object.floor}
-              onChange={(value) => updateObject("floor", value)}
-            />
-            <Field
-              label="Город составления"
-              value={formData.object.city}
-              onChange={(value) => updateObject("city", value)}
-            />
-          </div>
-          {formData.egrn.parsed?.rights?.ownershipType && (
-            <SummaryRow
-              label="Тип права по ЕГРН"
-              value={formData.egrn.parsed.rights.ownershipType}
-            />
-          )}
+          </section>
+
+          <section className={blockClass}>
+            <SectionTitle
+              icon={faRubleSign}
+              hint="Укажите место, дату и цену продажи доли."
+            >
+              Условия продажи
+            </SectionTitle>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Field
+                label="Место составления"
+                value={formData.saleTerms.place}
+                onChange={(value) => updateSaleTerms("place", value)}
+              />
+              <Field
+                label="Дата уведомления"
+                value={formData.saleTerms.date}
+                onChange={(value) => updateSaleTerms("date", value)}
+                placeholder="ДД.ММ.ГГГГ"
+              />
+              <Field
+                label="Цена продажи"
+                value={formData.saleTerms.price}
+                onChange={(value) => updateSaleTerms("price", value)}
+              />
+              <TextAreaField
+                label="Цена прописью"
+                value={formData.saleTerms.priceWords}
+                onChange={(value) => updateSaleTerms("priceWords", value)}
+              />
+            </div>
+            <label className="inline-flex items-center gap-3 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={formData.saleTerms.noInstallmentClause}
+                onChange={(event) =>
+                  updateSaleTerms("noInstallmentClause", event.target.checked)
+                }
+              />
+              Добавить условие: без отсрочки, снижения цены и рассрочки платежа
+            </label>
+          </section>
         </div>
       )}
 
       {currentStep === 2 && (
         <div className={`${cardClass} space-y-6`}>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
             <h2 className="text-xl font-semibold text-gray-900">
-              Шаг 3. Продавец
+              Шаг 3. Сособственники и адреса
             </h2>
-            <button
-              type="button"
-              onClick={() => setIsPassportModalOpen(true)}
-              className={`${PILL.base} ${PILL.subtle}`}
-            >
-              Вставить паспортные данные текстом
-            </button>
+            <p className="text-sm text-gray-600 mt-2">
+              Выберите адреса, по которым нужно направить извещение каждому
+              сособственнику. Один выбранный адрес = одно почтовое отправление.
+              По умолчанию выбран адрес места нахождения имущества.
+            </p>
           </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <Field
-              label="ФИО"
-              value={formData.seller.fullName}
-              onChange={(value) => updateSeller("fullName", value)}
-            />
-            <Field
-              label="Пол"
-              value={formData.seller.gender}
-              onChange={(value) => updateSeller("gender", value)}
-              placeholder="мужской / женский"
-            />
-            <Field
-              label="Дата рождения"
-              value={formData.seller.birthDate}
-              onChange={(value) => updateSeller("birthDate", value)}
-              placeholder="ДД.ММ.ГГГГ"
-            />
-            <Field
-              label="Место рождения"
-              value={formData.seller.birthPlace}
-              onChange={(value) => updateSeller("birthPlace", value)}
-            />
-            <Field
-              label="Паспорт серия и номер"
-              value={formData.seller.passport}
-              onChange={(value) => updateSeller("passport", value)}
-            />
-            <Field
-              label="Кем выдан"
-              value={formData.seller.passportIssued}
-              onChange={(value) => updateSeller("passportIssued", value)}
-            />
-            <Field
-              label="Дата выдачи"
-              value={formData.seller.issueDate}
-              onChange={(value) => updateSeller("issueDate", value)}
-              placeholder="ДД.ММ.ГГГГ"
-            />
-            <Field
-              label="Код подразделения"
-              value={formData.seller.departmentCode}
-              onChange={(value) => updateSeller("departmentCode", value)}
-            />
-            <TextAreaField
-              label="Адрес регистрации"
-              value={formData.seller.registration}
-              onChange={(value) => updateSeller("registration", value)}
-            />
-            <Field
-              label="Телефон (необязательно)"
-              value={formData.seller.phone}
-              onChange={(value) => updateSeller("phone", value)}
-            />
-            <Field
-              label="Email (необязательно)"
-              value={formData.seller.email}
-              onChange={(value) => updateSeller("email", value)}
-            />
-            <Field
-              label="Доля по ЕГРН / доля в праве"
-              value={formData.seller.egrnShare}
-              onChange={(value) => updateSeller("egrnShare", value)}
-              placeholder="например, 1/2"
-            />
-            <Field
-              label="Продаваемая доля"
-              value={formData.seller.saleShare}
-              onChange={(value) => updateSeller("saleShare", value)}
-              placeholder="например, 1/2"
-            />
-          </div>
-        </div>
-      )}
-
-      {currentStep === 3 && (
-        <div className={`${cardClass} space-y-6`}>
-          <h2 className="text-xl font-semibold text-gray-900">
-            Шаг 4. Условия продажи
-          </h2>
-          <div className="grid md:grid-cols-2 gap-4">
-            <Field
-              label="Место составления"
-              value={formData.saleTerms.place}
-              onChange={(value) => updateSaleTerms("place", value)}
-            />
-            <Field
-              label="Дата уведомления"
-              value={formData.saleTerms.date}
-              onChange={(value) => updateSaleTerms("date", value)}
-              placeholder="ДД.ММ.ГГГГ"
-            />
-            <Field
-              label="Цена продажи"
-              value={formData.saleTerms.price}
-              onChange={(value) => updateSaleTerms("price", value)}
-            />
-            <Field
-              label="Цена прописью"
-              value={formData.saleTerms.priceWords}
-              onChange={(value) => updateSaleTerms("priceWords", value)}
-            />
-          </div>
-          <label className="inline-flex items-center gap-3 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={formData.saleTerms.noInstallmentClause}
-              onChange={(event) =>
-                updateSaleTerms("noInstallmentClause", event.target.checked)
-              }
-            />
-            Добавить условие об отсутствии рассрочки платежа
-          </label>
-        </div>
-      )}
-
-      {currentStep === 4 && (
-        <div className={`${cardClass} space-y-6`}>
-          <h2 className="text-xl font-semibold text-gray-900">
-            Шаг 5. Сособственники и адреса
-          </h2>
           {formData.coOwners.length === 0 && (
             <p className="text-gray-600">
               Сособственники пока не добавлены. При загрузке ЕГРН они будут
               заполнены автоматически, кроме выбранного продавца.
             </p>
           )}
-          {formData.coOwners.map((owner, index) => (
-            <div
-              key={`${owner.fullName}-${index}`}
-              className="rounded-xl border border-gray-200 p-4 space-y-4"
-            >
-              <h3 className="font-semibold text-gray-900">
-                Сособственник {index + 1}
-              </h3>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Field
-                  label="ФИО"
-                  value={owner.fullName}
-                  onChange={(value) => updateCoOwner(index, "fullName", value)}
-                />
-                <Field
-                  label="Доля"
-                  value={owner.share}
-                  onChange={(value) => updateCoOwner(index, "share", value)}
-                />
-                <TextAreaField
-                  label="Адрес для уведомления"
-                  value={owner.noticeAddress}
-                  onChange={(value) =>
-                    updateCoOwner(index, "noticeAddress", value)
-                  }
-                />
-                <TextAreaField
-                  label="Адрес регистрации"
-                  value={owner.registration}
-                  onChange={(value) =>
-                    updateCoOwner(index, "registration", value)
-                  }
-                />
+          {formData.coOwners.map((owner, index) => {
+            const deliveryAddresses = createDeliveryAddresses(
+              formData.object.address,
+              owner.deliveryAddresses,
+            );
+            return (
+              <div
+                key={`${owner.fullName}-${index}`}
+                className="rounded-xl border border-gray-200 p-4 space-y-4"
+              >
+                <h3 className="font-semibold text-gray-900">
+                  Сособственник {index + 1}
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Field
+                    label="ФИО"
+                    value={owner.fullName}
+                    onChange={(value) =>
+                      updateCoOwner(index, "fullName", value)
+                    }
+                  />
+                  <Field
+                    label="Доля"
+                    value={owner.share}
+                    onChange={(value) => updateCoOwner(index, "share", value)}
+                  />
+                </div>
+
+                <div>
+                  <h4 className="flex items-center text-sm font-semibold text-gray-800 mb-3">
+                    <FontAwesomeIcon
+                      icon={faEnvelope}
+                      className="mr-2 text-blue-600"
+                    />
+                    Адреса направления извещения
+                  </h4>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {deliveryAddresses.map((address, addressIndex) => (
+                      <div
+                        key={address.type}
+                        className="rounded-lg bg-gray-50 border border-gray-200 p-4 space-y-3"
+                      >
+                        <label className="inline-flex items-center gap-3 text-sm font-medium text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={address.selected}
+                            onChange={(event) =>
+                              updateCoOwnerDeliveryAddress(
+                                index,
+                                addressIndex,
+                                {
+                                  selected: event.target.checked,
+                                },
+                              )
+                            }
+                          />
+                          {address.label}
+                        </label>
+                        <TextAreaField
+                          label={
+                            address.type === "object_address"
+                              ? "Адрес места нахождения имущества"
+                              : "Адрес регистрации / места жительства / места пребывания"
+                          }
+                          value={address.address}
+                          onChange={(value) =>
+                            updateCoOwnerDeliveryAddress(index, addressIndex, {
+                              address: value,
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <button
             type="button"
-            onClick={() =>
-              setFormData((prev) => ({
-                ...prev,
-                coOwners: [
-                  ...prev.coOwners,
-                  {
-                    source: "manual",
-                    fullName: "",
-                    share: "",
-                    registration: "",
-                    noticeAddress: "",
-                  },
-                ],
-              }))
-            }
+            onClick={addManualCoOwner}
             className={`${PILL.base} ${PILL.subtle}`}
           >
             Добавить сособственника вручную
@@ -750,14 +840,13 @@ const ShareSaleNoticeWizard = () => {
         </div>
       )}
 
-      {currentStep === 5 && (
+      {currentStep === 3 && (
         <div className={`${cardClass} space-y-6`}>
           <h2 className="text-xl font-semibold text-gray-900">
-            Шаг 6. Проверка и формирование пакета
+            Шаг 4. Проверка и формирование пакета
           </h2>
           <p className="text-gray-600">
-            Каркас проверки готов. Формирование пакета документов будет
-            добавлено следующим этапом.
+            Формирование пакета документов будет добавлено следующим этапом.
           </p>
           <dl>
             <SummaryRow label="Объект" value={formData.object.address} />
@@ -767,13 +856,25 @@ const ShareSaleNoticeWizard = () => {
             />
             <SummaryRow label="Продавец" value={formData.seller.fullName} />
             <SummaryRow
+              label="Доля по ЕГРН / доля в праве"
+              value={formData.seller.egrnShare}
+            />
+            <SummaryRow
               label="Продаваемая доля"
               value={formData.seller.saleShare}
             />
             <SummaryRow label="Цена" value={formData.saleTerms.price} />
             <SummaryRow
+              label="Цена прописью"
+              value={formData.saleTerms.priceWords}
+            />
+            <SummaryRow
               label="Сособственников"
               value={String(formData.coOwners.length)}
+            />
+            <SummaryRow
+              label="Почтовых отправлений"
+              value={String(postageCount)}
             />
           </dl>
         </div>
@@ -812,13 +913,6 @@ const ShareSaleNoticeWizard = () => {
           </button>
         </div>
       </div>
-
-      <FreeTextImportModal
-        open={isPassportModalOpen}
-        title="Вставить паспортные данные продавца"
-        onClose={() => setIsPassportModalOpen(false)}
-        onApply={applyPassportText}
-      />
     </div>
   );
 };

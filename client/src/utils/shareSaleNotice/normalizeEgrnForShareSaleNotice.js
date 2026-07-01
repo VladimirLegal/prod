@@ -3,6 +3,7 @@ import {
   matchRecipientToOwner,
   toUiRightsPayload,
 } from "../egrnUiAdapter";
+import { createCoOwnerDeliveryPayload } from "./initialState";
 
 const firstNonEmpty = (...values) =>
   values.find(
@@ -46,19 +47,24 @@ const ownerToPerson = (owner = {}, index = null) => ({
   saleShare: getShare(owner),
 });
 
-const ownerToCoOwner = (owner = {}, index = null) => ({
-  source: "egrn",
-  ownerIndex: index,
-  fullName: owner.fullName || owner.name || "",
-  birthDate: owner.birthDate || "",
-  birthPlace: owner.birthPlace || "",
-  registration: owner.registration || owner.address || "",
-  phone: owner.phone || "",
-  email: owner.email || "",
-  ownershipType: owner.ownershipType || owner.rights?.[0]?.ownershipType || "",
-  share: getShare(owner),
-  noticeAddress: owner.registration || owner.address || "",
-});
+const ownerToCoOwner = (owner = {}, index = null, objectAddress = "") => {
+  const registrationAddress = owner.registration || owner.address || "";
+
+  return {
+    source: "egrn",
+    ownerIndex: index,
+    fullName: owner.fullName || owner.name || "",
+    birthDate: owner.birthDate || "",
+    birthPlace: owner.birthPlace || "",
+    registration: registrationAddress,
+    phone: owner.phone || "",
+    email: owner.email || "",
+    ownershipType:
+      owner.ownershipType || owner.rights?.[0]?.ownershipType || "",
+    share: getShare(owner),
+    ...createCoOwnerDeliveryPayload(objectAddress, registrationAddress),
+  };
+};
 
 const detectCityFromAddress = (address = "") => {
   const text = String(address || "");
@@ -148,7 +154,7 @@ export const normalizeEgrnForShareSaleNotice = (parsedEgrn = {}) => {
       ? ownerToPerson(sellerOwner, sellerIndex)
       : null,
     coOwners: owners
-      .map((owner, index) => ownerToCoOwner(owner, index))
+      .map((owner, index) => ownerToCoOwner(owner, index, address))
       .filter((owner) => owner.ownerIndex !== sellerIndex),
     warnings,
     raw: parsedEgrn,
