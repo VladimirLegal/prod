@@ -89,7 +89,7 @@ const cleanPriceWords = (value) => text(value).replace(/\s+00\s+копеек\.?$
 const formatPriceForNotice = (saleTerms = {}) => `${formatPriceNumber(saleTerms.price)} (${cleanPriceWords(saleTerms.priceWords)}) рублей 00 копеек`;
 const formatSaleShare = (seller = {}) => `${text(seller.saleShare)} (${text(seller.saleShareWords)})`;
 
-const statementTextLines = (formData = {}, shipment = {}) => {
+const buildStatementParts = (formData = {}, shipment = {}) => {
   const seller = formData.seller || {};
   const saleTerms = formData.saleTerms || {};
   const object = formData.object || {};
@@ -97,30 +97,44 @@ const statementTextLines = (formData = {}, shipment = {}) => {
   const objectKind = text(object.objectKindFromEgrn) || 'квартиру';
   const registeredWord = gender === 'female' ? 'зарегистрированной' : 'зарегистрированного';
   const consentWord = gender === 'female' ? 'согласна' : 'согласен';
-  return [
-    `гр. ${formatRecipientDative(shipment.coOwner)},`,
-    `по адресу: ${text(shipment.deliveryAddress?.address)}`,
-    '',
-    `от ${formatSellerTitleGenitive(seller)}, ${formatDateLongWithYearWord(seller.birthDate)} рождения, место рождения: ${text(seller.birthPlace)}, гражданство: Российская Федерация, пол: ${gender === 'female' ? 'женский' : 'мужской'}, паспорт ${formatPassport(seller)}, выданный ${text(seller.passportIssued)} ${formatDateLongWithYearWord(seller.issueDate)}, код подразделения ${text(seller.departmentCode)}, ${registeredWord} по адресу: ${text(seller.registration)}.`,
-    '.',
-    '',
-    'З АЯВЛЕНИЕ',
-    '',
+  
+  const recipientLine = `гр. ${formatRecipientDative(shipment.coOwner)},`;
+  const addressLine = `по адресу: ${text(shipment.deliveryAddress?.address)}`;
+  const fromLine = `от ${formatSellerTitleGenitive(seller)}, ${formatDateLongWithYearWord(seller.birthDate)} рождения, место рождения: ${text(seller.birthPlace)}, гражданство: Российская Федерация, пол: ${gender === 'female' ? 'женский' : 'мужской'}, паспорт ${formatPassport(seller)}, выданный ${text(seller.passportIssued)} ${formatDateLongWithYearWord(seller.issueDate)}, код подразделения ${text(seller.departmentCode)}, ${registeredWord} по адресу: ${text(seller.registration)}.`;
+
+  const bodyParagraphs = [
     `Настоящим довожу до Вашего сведения, что продаю принадлежащие мне ${formatSaleShare(seller)} долей в праве общей долевой собственности на ${objectKind} по адресу: ${text(object.address)}., кадастровый номер: ${text(object.cadastralNumber)}, за ${formatPriceForNotice(saleTerms)}.`,
-    '',
     'Согласно ст. 250 Гражданского кодекса РФ Вы имеете преимущественное право покупки указанной доли квартиры как участник общей долевой собственности, поэтому прошу Вас не позднее одного месяца со дня вручения Вам настоящего заявления сообщить мне о своем желании или об отказе (нотариально удостоверенным) приобрести указанную долю квартиры за вышеуказанную сумму.',
-    '',
     'В случае неполучения ответа по истечении указанного срока принадлежащая мне доля квартиры будет продана.',
-    '',
     `Отсрочить продажу, снизить цену или принять платеж в рассрочку не ${consentWord}.`,
-    '',
     `${text(saleTerms.place)}, ${formatDateWordsForSignatureLine(saleTerms.date)}.`,
-    '___________________________________________________________________________________',
   ];
+  
+  return { recipientLine, addressLine, fromLine, bodyParagraphs };
+};
+
+const statementTextLines = (formData = {}, shipment = {}) => {
+  const { recipientLine, addressLine, fromLine, bodyParagraphs } = buildStatementParts(formData, shipment);
+  return [recipientLine, addressLine, fromLine, 'ЗАЯВЛЕНИЕ', ...bodyParagraphs];
 };
 
 const linesToHtml = (lines) => lines.map((line) => line ? `<p>${escapeHtml(line)}</p>` : '<p>&nbsp;</p>').join('');
-const buildStatementHtml = (formData, shipment) => `<section class="statement">${linesToHtml(statementTextLines(formData, shipment)).replace('<p>З АЯВЛЕНИЕ</p>', '<p class="statement-title">З АЯВЛЕНИЕ</p>')}</section>`;
+const buildStatementHtml = (formData, shipment) => {
+  const { recipientLine, addressLine, fromLine, bodyParagraphs } = buildStatementParts(formData, shipment);
+  return `
+<section class="statement">
+  <div class="statement-header">
+    <p>${escapeHtml(recipientLine)}</p>
+    <p>${escapeHtml(addressLine)}</p>
+    <p class="statement-from">${escapeHtml(fromLine)}</p>
+  </div>
+  <p class="statement-title">ЗАЯВЛЕНИЕ</p>
+  <div class="statement-body">
+    ${bodyParagraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('')}
+  </div>
+  <div class="signature-line"></div>
+</section>`;
+};
 const buildStatementPlainText = (formData, shipment) => statementTextLines(formData, shipment).join('\n');
 
 const buildInventory107Html = (formData, statementPlainText) => `

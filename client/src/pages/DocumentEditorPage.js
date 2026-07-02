@@ -274,6 +274,11 @@ export default function DocumentEditorPage() {
   const exportDocxFileName = documentTypeConfig.docxFileName;
   const fallbackTemplateId = documentTypeConfig.fallbackTemplateId;
   const templateQuery = `docType=${encodeURIComponent(effectiveDocType)}`;
+  const relatedDocuments = formData?.relatedDocuments || {};
+  const relatedStatementsDocId = relatedDocuments.statementsDocId || null;
+  const relatedInventory107DocId = relatedDocuments.inventory107DocId || null;
+  const canOpenRelatedStatements = effectiveDocType === 'share_sale_notice_inventory107' && relatedStatementsDocId;
+  const canOpenRelatedInventory107 = effectiveDocType === 'share_sale_notice_statements' && relatedInventory107DocId;
 
   const [savedAt, setSavedAt] = useState(null); // если такого состояния у тебя ещё нет
 
@@ -1628,6 +1633,16 @@ export default function DocumentEditorPage() {
   // UI warning if formData is missing
   const formDataMissing = formData && Object.keys(formData).length === 0;
   
+  const openRelatedStatements = () => {
+    if (!relatedStatementsDocId) return;
+    navigate(`/document-editor?docId=${encodeURIComponent(relatedStatementsDocId)}&docType=share_sale_notice_statements`);
+  };
+
+  const openRelatedInventory107 = () => {
+    if (!relatedInventory107DocId) return;
+    navigate(`/document-editor?docId=${encodeURIComponent(relatedInventory107DocId)}&docType=share_sale_notice_inventory107`);
+  };
+
   function handleBackToWizard() {
     // НИЧЕГО не сохраняем отсюда — мастер сам управляет кэшем формы и таблиц
     try {
@@ -1686,6 +1701,16 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faFileWord} className="fa-icon" />
                   DOCX
                 </button>
+                {canOpenRelatedInventory107 && (
+                  <button onClick={openRelatedInventory107} className="doc-btn restore">
+                    Открыть описи ф.107
+                  </button>
+                )}
+                {canOpenRelatedStatements && (
+                  <button onClick={openRelatedStatements} className="doc-btn restore">
+                    Открыть заявления
+                  </button>
+                )}
                 <div className="tt-group">
                 <button
                   type="button"

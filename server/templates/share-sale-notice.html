@@ -7,7 +7,13 @@
     body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; color: #111; }
     p { margin: 0 0 8pt; text-align: justify; }
     h2 { text-align: center; font-size: 14pt; margin: 0 0 18pt; }
-    .statement-title { text-align: center; font-weight: bold; letter-spacing: 0.18em; margin: 18pt 0 12pt; }
+    .statement { page-break-after: always; break-after: page; }
+    .statement:last-child { page-break-after: auto; break-after: auto; }
+    .statement-header { width: 72%; margin-left: auto; margin-right: 0; }
+    .statement-header p { text-align: right; margin: 0 0 6pt; }
+    .statement-title { text-align: center; font-weight: bold; margin: 14pt 0 12pt; }
+    .statement-body p { text-align: justify; margin: 0 0 8pt; }
+    .signature-line { width: 82%; border-bottom: 1px solid #111; height: 20pt; margin-top: 18pt; }
     .page-break { page-break-before: always; break-before: page; }
     table.inventory-107 { width: 100%; border-collapse: collapse; font-size: 10pt; }
     table.inventory-107 td, table.inventory-107 th { border: 1px solid #111; padding: 3pt; vertical-align: top; }
