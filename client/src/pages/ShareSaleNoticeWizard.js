@@ -485,37 +485,77 @@ const ShareSaleNoticeWizard = () => {
         })),
       };
 
-      const title = preparedFormData.object?.address
-        ? `Заявления о продаже доли: ${preparedFormData.object.address}`
+      const address = preparedFormData.object?.address || "";
+
+      const statementsTitle = address
+        ? `Заявления о продаже доли: ${address}`
         : "Заявления о продаже доли";
 
-      const createRes = await fetch("/api/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          type: "share_sale_notice",
-          title,
-          status: "draft",
-          html: "",
-        }),
-      });
-      const created = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || !created?.id) {
-        throw new Error(created?.error || "Не удалось создать документ");
-      }
+      const inventoryTitle = address
+        ? `Описи вложения ф.107: ${address}`
+        : "Описи вложения ф.107";
 
-      await fetch(`/api/documents/${encodeURIComponent(created.id)}/form`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          json: preparedFormData,
-          consentId: localStorage.getItem("consent_id") || null,
-        }),
+      const createDocument = async ({ type, title }) => {
+        const createRes = await fetch("/api/documents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            type,
+            title,
+            status: "draft",
+            html: "",
+          }),
+        });
+
+        const created = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || !created?.id) {
+          throw new Error(created?.error || "Не удалось создать документ");
+        }
+
+        return created;
+      };
+
+      const statementsDoc = await createDocument({
+        type: "share_sale_notice_statements",
+        title: statementsTitle,
+      });
+      
+      const inventoryDoc = await createDocument({
+        type: "share_sale_notice_inventory107",
+        title: inventoryTitle,
       });
 
-      navigate(`/document-editor?docId=${encodeURIComponent(created.id)}&docType=share_sale_notice`);
+      const relatedDocuments = {
+        statementsDocId: statementsDoc.id,
+        inventory107DocId: inventoryDoc.id,
+      };
+
+      const saveDocumentForm = async (docId, documentType) => {
+        const saveRes = await fetch(`/api/documents/${encodeURIComponent(docId)}/form`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            json: {
+              ...preparedFormData,
+              documentType,
+              relatedDocuments,
+            },
+            consentId: localStorage.getItem("consent_id") || null,
+          }),
+        });
+
+        if (!saveRes.ok) {
+          const errorData = await saveRes.json().catch(() => ({}));
+          throw new Error(errorData?.error || "Не удалось сохранить данные документа");
+        }
+      };
+
+      await saveDocumentForm(statementsDoc.id, "share_sale_notice_statements");
+      await saveDocumentForm(inventoryDoc.id, "share_sale_notice_inventory107");
+
+      navigate(`/document-editor?docId=${encodeURIComponent(statementsDoc.id)}&docType=share_sale_notice_statements`);
     } catch (error) {
       console.error("Share sale notice generation failed:", error);
       setMessage(error?.message || "Не удалось сформировать заявления и описи.");

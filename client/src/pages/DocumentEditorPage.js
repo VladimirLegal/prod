@@ -171,6 +171,42 @@ async function fetchMe() {
 }
 
 
+
+function buildDefaultDocumentTitle(docType, data = {}) {
+  const address =
+    data?.object?.address ||
+    data?.terms?.objectAddress ||
+    '';
+
+  if (docType === 'maternity_capital_shares') {
+    return address
+      ? `Соглашение о выделении долей: ${address}`
+      : 'Соглашение о выделении долей по материнскому капиталу';
+  }
+
+  if (docType === 'share_sale_notice_statements') {
+    return address
+      ? `Заявления о продаже доли: ${address}`
+      : 'Заявления о продаже доли';
+  }
+
+  if (docType === 'share_sale_notice_inventory107') {
+    return address
+      ? `Описи вложения ф.107: ${address}`
+      : 'Описи вложения ф.107';
+  }
+
+  if (docType === 'share_sale_notice') {
+    return address
+      ? `Заявления и описи ф.107: ${address}`
+      : 'Заявления и описи ф.107';
+  }
+
+  return data?.terms?.objectAddress
+    ? `Договор найма: ${data.terms.objectAddress}`
+    : 'Договор найма';
+}
+
 export default function DocumentEditorPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -192,13 +228,51 @@ export default function DocumentEditorPage() {
   // ID для /api/docs/:id (шаблоны) — допускаем UUID или 1 как базовый шаблон
   const currentDocId = docUUID || 1;
 
-  const terms = formData?.terms || {};
-  const normalizeDocType = (value) => value === 'maternity_capital_shares_agreement' ? 'maternity_capital_shares' : (value || 'rent');
+  const DOCUMENT_TYPE_CONFIG = {
+    rent: {
+      titleLabel: 'Договор найма',
+      storageHtmlKey: 'leaseDocumentHtml',
+      docxFileName: 'lease.docx',
+      fallbackTemplateId: 1,
+    },
+    maternity_capital_shares: {
+      titleLabel: 'Соглашение о выделении долей',
+      storageHtmlKey: 'maternityCapitalSharesDocumentHtml',
+      docxFileName: 'soglashenie-o-vydelenii-doley-matkapital.docx',
+      fallbackTemplateId: 'maternity_capital_shares',
+    },
+    share_sale_notice: {
+      titleLabel: 'Заявления и описи ф.107',
+      storageHtmlKey: 'shareSaleNoticeDocumentHtml',
+      docxFileName: 'uvedomlenie-o-prodazhe-doli.docx',
+      fallbackTemplateId: 'share_sale_notice',
+    },
+    share_sale_notice_statements: {
+      titleLabel: 'Заявления о продаже доли',
+      storageHtmlKey: 'shareSaleNoticeStatementsHtml',
+      docxFileName: 'zayavleniya-o-prodazhe-doli.docx',
+      fallbackTemplateId: 'share_sale_notice_statements',
+    },
+    share_sale_notice_inventory107: {
+      titleLabel: 'Описи вложения ф.107',
+      storageHtmlKey: 'shareSaleNoticeInventory107Html',
+      docxFileName: 'opisi-vlozheniya-f107.docx',
+      fallbackTemplateId: 'share_sale_notice_inventory107',
+    },
+  };
+  const normalizeDocType = (value) => {
+    if (value === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
+    if (value === 'share_sale_notice_package') return 'share_sale_notice';
+    if (value === 'share_sale_notice_statements_package') return 'share_sale_notice_statements';
+    if (value === 'share_sale_notice_inventory107_package') return 'share_sale_notice_inventory107';
+    return value || 'rent';
+  };
   const effectiveDocType = normalizeDocType(docTypeFromUrl || loadedDocument?.type || formData?.documentType || 'rent');
-  const isMaternityCapitalShares = effectiveDocType === 'maternity_capital_shares';
-  const documentTitleLabel = isMaternityCapitalShares ? 'Соглашение о выделении долей' : 'Договор найма';
-  const storageHtmlKey = isMaternityCapitalShares ? 'maternityCapitalSharesDocumentHtml' : 'leaseDocumentHtml';
-  const exportDocxFileName = isMaternityCapitalShares ? 'soglashenie-o-vydelenii-doley-matkapital.docx' : 'lease.docx';
+  const documentTypeConfig = DOCUMENT_TYPE_CONFIG[effectiveDocType] || DOCUMENT_TYPE_CONFIG.rent;
+  const documentTitleLabel = documentTypeConfig.titleLabel;
+  const storageHtmlKey = documentTypeConfig.storageHtmlKey;
+  const exportDocxFileName = documentTypeConfig.docxFileName;
+  const fallbackTemplateId = documentTypeConfig.fallbackTemplateId;
   const templateQuery = `docType=${encodeURIComponent(effectiveDocType)}`;
 
   const [savedAt, setSavedAt] = useState(null); // если такого состояния у тебя ещё нет
@@ -913,7 +987,7 @@ export default function DocumentEditorPage() {
     }
     (async () => {
       try {
-        await restoreFromTemplate(docUUID || 1);
+        await restoreFromTemplate(docUUID || fallbackTemplateId);
       } catch (e) {
         console.warn('[auto-render] restoreFromTemplate failed, fallback to handleRenderServer', e);
         try {
@@ -1096,7 +1170,7 @@ export default function DocumentEditorPage() {
     isRenderingRef.current = true;
     try {
       // 0) выбираем id: docIdFromUrl (открытый документ) || documentId (только что созданный) || 1 (базовый шаблон)
-      const id = docIdFromUrl || documentId || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1);
+      const id = docIdFromUrl || documentId || fallbackTemplateId;
 
       // 1) берём свежий шаблон именно для выбранного id
       const templateHtml = await fetch(
@@ -1177,9 +1251,7 @@ export default function DocumentEditorPage() {
           credentials: 'include', // <= ДОБАВЛЕНО
           body: JSON.stringify({
             type: effectiveDocType,
-            title: isMaternityCapitalShares
-              ? (formData?.object?.address ? `Соглашение о выделении долей: ${formData.object.address}` : 'Соглашение о выделении долей по материнскому капиталу')
-              : (terms?.objectAddress ? `Договор найма: ${terms.objectAddress}` : 'Договор найма'),
+            title: buildDefaultDocumentTitle(effectiveDocType, formData),
             status: 'draft',
             html
           }),
@@ -1454,7 +1526,7 @@ export default function DocumentEditorPage() {
       if (isRenderingRef.current) return;
       isRenderingRef.current = true;
       // 1) ID: UUID для существующих, иначе 1
-      const id = docIdArg || docUUID || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1);
+      const id = docIdArg || docUUID || fallbackTemplateId;
 
       // 2) Шаблон (для /api/docs/… допускается 1)
       const templateHtml = await fetch(
@@ -1606,7 +1678,7 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faFilePdf} className="fa-icon" />
                   PDF
                 </button>
-                <button onClick={() => restoreFromTemplate(docUUID || (isMaternityCapitalShares ? 'maternity_capital_shares' : 1))} className="doc-btn restore">
+                <button onClick={() => restoreFromTemplate(docUUID || fallbackTemplateId)} className="doc-btn restore">
                   <FontAwesomeIcon icon={faUndoAlt} className="fa-icon" />
                   Восстановить
                 </button>

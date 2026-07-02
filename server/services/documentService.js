@@ -8,6 +8,8 @@ const { diff_match_patch } = require('diff-match-patch');
 const leaseTemplatePath = path.join(__dirname, '../templates/lease.html');
 const maternityCapitalSharesTemplatePath = path.join(__dirname, '../templates/maternity-capital-shares.html');
 const shareSaleNoticeTemplatePath = path.join(__dirname, '../templates/share-sale-notice.html');
+const shareSaleNoticeStatementsTemplatePath = path.join(__dirname, '../templates/share-sale-notice-statements.html');
+const shareSaleNoticeInventory107TemplatePath = path.join(__dirname, '../templates/share-sale-notice-inventory107.html');
 
 // читаем файл всегда свежим
 function readLeaseTemplateFile() {
@@ -24,21 +26,21 @@ function getLeaseTemplateInfo() {
 }
 
 // публичная функция: отдать свежий шаблон и залогировать инфо
+function getTemplatePathByType(docType = 'rent') {
+  if (docType === 'maternity_capital_shares') return maternityCapitalSharesTemplatePath;
+  if (docType === 'share_sale_notice') return shareSaleNoticeTemplatePath;
+  if (docType === 'share_sale_notice_statements') return shareSaleNoticeStatementsTemplatePath;
+  if (docType === 'share_sale_notice_inventory107') return shareSaleNoticeInventory107TemplatePath;
+  return leaseTemplatePath;
+}
+  
 function readTemplateFileByType(docType = 'rent') {
-  const templatePath = docType === 'maternity_capital_shares'
-    ? maternityCapitalSharesTemplatePath
-    : docType === 'share_sale_notice'
-      ? shareSaleNoticeTemplatePath
-      : leaseTemplatePath;
+  const templatePath = getTemplatePathByType(docType);
   return fs.readFileSync(templatePath, 'utf8');
 }
 
 function getTemplateInfoByType(docType = 'rent') {
-  const templatePath = docType === 'maternity_capital_shares'
-    ? maternityCapitalSharesTemplatePath
-    : docType === 'share_sale_notice'
-      ? shareSaleNoticeTemplatePath
-      : leaseTemplatePath;
+  const templatePath = getTemplatePathByType(docType);
   const resolved = path.resolve(templatePath);
   const stat = fs.statSync(resolved);
   const raw = fs.readFileSync(resolved, 'utf8');

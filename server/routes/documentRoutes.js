@@ -43,6 +43,16 @@ const DOCUMENT_TYPE_META = {
     templateType: 'share_sale_notice',
     pdfFileName: 'uvedomlenie-o-prodazhe-doli.pdf',
     docxFileName: 'uvedomlenie-o-prodazhe-doli.docx'
+  },
+  share_sale_notice_statements: {
+    templateType: 'share_sale_notice_statements',
+    pdfFileName: 'zayavleniya-o-prodazhe-doli.pdf',
+    docxFileName: 'zayavleniya-o-prodazhe-doli.docx'
+  },
+  share_sale_notice_inventory107: {
+    templateType: 'share_sale_notice_inventory107',
+    pdfFileName: 'opisi-vlozheniya-f107.pdf',
+    docxFileName: 'opisi-vlozheniya-f107.docx'
   }
 };
 
@@ -52,12 +62,16 @@ async function resolveDocumentType(req, fallbackData = {}) {
   const explicit = req.query?.docType || req.body?.docType || fallbackData?.documentType || fallbackData?.type;
   if (explicit === 'maternity_capital_shares' || explicit === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
   if (explicit === 'share_sale_notice' || explicit === 'share_sale_notice_package') return 'share_sale_notice';
+  if (explicit === 'share_sale_notice_statements' || explicit === 'share_sale_notice_statements_package') return 'share_sale_notice_statements';
+  if (explicit === 'share_sale_notice_inventory107' || explicit === 'share_sale_notice_inventory107_package') return 'share_sale_notice_inventory107';
   if (explicit === 'rent') return 'rent';
   if (isUuidValue(req.params?.id)) {
     try {
       const { rows } = await query('select type from documents where id = $1 limit 1', [req.params.id]);
       if (rows[0]?.type === 'maternity_capital_shares') return 'maternity_capital_shares';
       if (rows[0]?.type === 'share_sale_notice') return 'share_sale_notice';
+      if (rows[0]?.type === 'share_sale_notice_statements') return 'share_sale_notice_statements';
+      if (rows[0]?.type === 'share_sale_notice_inventory107') return 'share_sale_notice_inventory107';
     } catch (e) {
       console.warn('[resolveDocumentType] failed:', e.message);
     }
@@ -68,6 +82,8 @@ async function resolveDocumentType(req, fallbackData = {}) {
 function normalizeDocumentType(type) {
   if (type === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
   if (type === 'share_sale_notice_package') return 'share_sale_notice';
+  if (type === 'share_sale_notice_statements_package') return 'share_sale_notice_statements';
+  if (type === 'share_sale_notice_inventory107_package') return 'share_sale_notice_inventory107';
   return type || 'rent';
 }
 
@@ -1097,7 +1113,11 @@ router.post('/docs/:id/render', async (req, res) => {
       return res.json({ ok: true, html: finalHtml, data: renderData });
     }
 
-    if (docType === 'share_sale_notice') {
+    if (
+      docType === 'share_sale_notice' ||
+      docType === 'share_sale_notice_statements' ||
+      docType === 'share_sale_notice_inventory107'
+    ) {
       const renderData = buildShareSaleNoticeRenderData({ ...data, documentType: docType });
       const finalHtml = renderFinalHtml(htmlInput, renderData);
       return res.json({ ok: true, html: finalHtml, data: renderData });

@@ -150,6 +150,14 @@ ${statements.map((item, index) => `${index ? '<div class="page-break"></div>' : 
 <h2>Раздел 2. Описи вложения ф. 107</h2>
 ${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}`;
 
+const buildStatementsOnlyHtml = (statements) => `
+${statements.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}
+`;
+
+const buildInventoriesOnlyHtml = (inventories) => `
+${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}
+`;
+
 const buildShareSaleNoticeRenderData = (formData = {}) => {
   const shipments = collectShipments(formData.coOwners || []);
   const statements = shipments.map((shipment) => {
@@ -163,8 +171,10 @@ const buildShareSaleNoticeRenderData = (formData = {}) => {
     }
   });
   return {
-    documentType: 'share_sale_notice',
+    documentType: formData.documentType || 'share_sale_notice',
     packageHtml: buildShareSaleNoticePackageHtml(formData, statements, inventories),
+    statementsHtml: buildStatementsOnlyHtml(statements),
+    inventoriesHtml: buildInventoriesOnlyHtml(inventories),
     statements,
     inventories,
     shipments,
