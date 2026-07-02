@@ -38,6 +38,11 @@ const DOCUMENT_TYPE_META = {
     templateType: 'maternity_capital_shares',
     pdfFileName: 'soglashenie-o-vydelenii-doley-matkapital.pdf',
     docxFileName: 'soglashenie-o-vydelenii-doley-matkapital.docx'
+  },
+  share_sale_notice: {
+    templateType: 'share_sale_notice',
+    pdfFileName: 'uvedomlenie-o-prodazhe-doli.pdf',
+    docxFileName: 'uvedomlenie-o-prodazhe-doli.docx'
   }
 };
 
@@ -46,11 +51,13 @@ const isUuidValue = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab]
 async function resolveDocumentType(req, fallbackData = {}) {
   const explicit = req.query?.docType || req.body?.docType || fallbackData?.documentType || fallbackData?.type;
   if (explicit === 'maternity_capital_shares' || explicit === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
+  if (explicit === 'share_sale_notice' || explicit === 'share_sale_notice_package') return 'share_sale_notice';
   if (explicit === 'rent') return 'rent';
   if (isUuidValue(req.params?.id)) {
     try {
       const { rows } = await query('select type from documents where id = $1 limit 1', [req.params.id]);
       if (rows[0]?.type === 'maternity_capital_shares') return 'maternity_capital_shares';
+      if (rows[0]?.type === 'share_sale_notice') return 'share_sale_notice';
     } catch (e) {
       console.warn('[resolveDocumentType] failed:', e.message);
     }
@@ -59,7 +66,9 @@ async function resolveDocumentType(req, fallbackData = {}) {
 }
 
 function normalizeDocumentType(type) {
-  return type === 'maternity_capital_shares_agreement' ? 'maternity_capital_shares' : (type || 'rent');
+  if (type === 'maternity_capital_shares_agreement') return 'maternity_capital_shares';
+  if (type === 'share_sale_notice_package') return 'share_sale_notice';
+  return type || 'rent';
 }
 
 function getGuestKey(req) {
@@ -85,6 +94,7 @@ function checkAndSetCooldown(req) {
 
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
+const { buildShareSaleNoticeRenderData } = require('../services/documentTypes/shareSaleNotice');
 const { query } = require('../db');
 const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
@@ -1083,6 +1093,12 @@ router.post('/docs/:id/render', async (req, res) => {
     const docType = normalizeDocumentType(await resolveDocumentType(req, data));
     if (docType === 'maternity_capital_shares') {
       const renderData = buildMaternityCapitalSharesRenderData({ ...data, documentType: docType });
+      const finalHtml = renderFinalHtml(htmlInput, renderData);
+      return res.json({ ok: true, html: finalHtml, data: renderData });
+    }
+
+    if (docType === 'share_sale_notice') {
+      const renderData = buildShareSaleNoticeRenderData({ ...data, documentType: docType });
       const finalHtml = renderFinalHtml(htmlInput, renderData);
       return res.json({ ok: true, html: finalHtml, data: renderData });
     }

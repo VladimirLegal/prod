@@ -139,6 +139,7 @@ const mapOwnerToSeller = (owner = {}, index = null) => {
     email: owner.email || "",
     egrnShare: share,
     saleShare: share,
+    saleShareWords: "",
   };
 };
 
@@ -172,6 +173,7 @@ const ShareSaleNoticeWizard = () => {
   const [formData, setFormData] = useState(loadDraft);
   const [parsedEgrn, setParsedEgrn] = useState(formData.egrn.parsed || null);
   const [message, setMessage] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const hydratedRef = useRef(false);
   const currentStep = formData.ui.currentStep || 0;
 
@@ -413,11 +415,118 @@ const ShareSaleNoticeWizard = () => {
     updateUi({ currentStep: currentStep - 1 });
   };
 
+  const validateShareSaleNoticePackage = () => {
+    const errors = [];
+    const required = [
+      [formData.seller.fullName, "Укажите ФИО продавца."],
+      [formData.seller.gender, "Укажите пол продавца."],
+      [formData.seller.birthDate, "Укажите дату рождения продавца."],
+      [formData.seller.birthPlace, "Укажите место рождения продавца."],
+      [formData.seller.passport, "Укажите серию и номер паспорта продавца."],
+      [formData.seller.passportIssued, "Укажите, кем выдан паспорт продавца."],
+      [formData.seller.issueDate, "Укажите дату выдачи паспорта продавца."],
+      [formData.seller.departmentCode, "Укажите код подразделения паспорта продавца."],
+      [formData.seller.registration, "Укажите адрес регистрации продавца."],
+      [formData.object.address, "Укажите адрес объекта."],
+      [formData.object.cadastralNumber, "Укажите кадастровый номер объекта."],
+      [formData.seller.saleShare, "Укажите продаваемую долю."],
+      [formData.seller.saleShareWords, "Укажите продаваемую долю прописью."],
+      [formData.saleTerms.price, "Укажите цену продажи."],
+      [formData.saleTerms.priceWords, "Укажите цену продажи прописью."],
+      [formData.saleTerms.place, "Укажите место составления."],
+      [formData.saleTerms.date, "Укажите дату уведомления."],
+    ];
+
+    required.forEach(([value, error]) => {
+      if (!String(value || "").trim()) errors.push(error);
+    });
+
+    if (!formData.coOwners.length) {
+      errors.push("Добавьте хотя бы одного сособственника.");
+    }
+
+    const selectedShipments = [];
+    formData.coOwners.forEach((owner, ownerIndex) => {
+      const selectedAddresses = (owner.deliveryAddresses || []).filter(
+        (address) => address.selected && String(address.address || "").trim(),
+      );
+      if (selectedAddresses.length > 0 && !String(owner.fullName || "").trim()) {
+        errors.push(`Укажите ФИО сособственника №${ownerIndex + 1}.`);
+      }
+      selectedShipments.push(...selectedAddresses);
+    });
+
+    if (selectedShipments.length === 0) {
+      errors.push("Выберите хотя бы один адрес направления извещения.");
+    }
+
+    return errors;
+  };
+
+  const handleGenerateShareSaleNoticePackage = async () => {
+    const errors = validateShareSaleNoticePackage();
+    if (errors.length) {
+      setMessage(errors.join("\n"));
+      return;
+    }
+
+    setIsGenerating(true);
+    setMessage("");
+    try {
+      const preparedFormData = {
+        ...formData,
+        documentType: "share_sale_notice",
+        coOwners: formData.coOwners.map((owner) => ({
+          ...owner,
+          deliveryAddresses: createDeliveryAddresses(
+            formData.object.address,
+            owner.deliveryAddresses,
+          ),
+        })),
+      };
+
+      const title = preparedFormData.object?.address
+        ? `Заявления о продаже доли: ${preparedFormData.object.address}`
+        : "Заявления о продаже доли";
+
+      const createRes = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          type: "share_sale_notice",
+          title,
+          status: "draft",
+          html: "",
+        }),
+      });
+      const created = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || !created?.id) {
+        throw new Error(created?.error || "Не удалось создать документ");
+      }
+
+      await fetch(`/api/documents/${encodeURIComponent(created.id)}/form`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          json: preparedFormData,
+          consentId: localStorage.getItem("consent_id") || null,
+        }),
+      });
+
+      navigate(`/document-editor?docId=${encodeURIComponent(created.id)}&docType=share_sale_notice`);
+    } catch (error) {
+      console.error("Share sale notice generation failed:", error);
+      setMessage(error?.message || "Не удалось сформировать заявления и описи.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const goNext = () => {
     if (currentStep >= steps.length - 1) {
-      setMessage(
-        "Формирование пакета будет добавлено следующим пакетом работ. Черновик данных уже сохранён.",
-      );
+      handleGenerateShareSaleNoticePackage();
       return;
     }
     updateUi({ currentStep: currentStep + 1 });
@@ -677,6 +786,12 @@ const ShareSaleNoticeWizard = () => {
                 onChange={(value) => updateSeller("saleShare", value)}
                 placeholder="например, 1/2"
               />
+              <TextAreaField
+                label="Продаваемая доля прописью"
+                value={formData.seller.saleShareWords}
+                onChange={(value) => updateSeller("saleShareWords", value)}
+                placeholder="например, одна вторая"
+              />
             </div>
           </section>
 
@@ -846,7 +961,8 @@ const ShareSaleNoticeWizard = () => {
             Шаг 4. Проверка и формирование пакета
           </h2>
           <p className="text-gray-600">
-            Формирование пакета документов будет добавлено следующим этапом.
+            Проверьте данные. После нажатия кнопки будет создан документ-пакет
+            для редактирования, PDF и DOCX экспорта.
           </p>
           <dl>
             <SummaryRow label="Объект" value={formData.object.address} />
@@ -862,6 +978,10 @@ const ShareSaleNoticeWizard = () => {
             <SummaryRow
               label="Продаваемая доля"
               value={formData.seller.saleShare}
+            />
+            <SummaryRow
+              label="Продаваемая доля прописью"
+              value={formData.seller.saleShareWords}
             />
             <SummaryRow label="Цена" value={formData.saleTerms.price} />
             <SummaryRow
@@ -906,10 +1026,15 @@ const ShareSaleNoticeWizard = () => {
           <button
             type="button"
             onClick={goNext}
-            className={`${PILL.base} ${PILL.primary}`}
+            disabled={isGenerating}
+            className={`${PILL.base} ${PILL.primary} ${isGenerating ? "opacity-60 cursor-not-allowed" : ""}`}
           >
-            Далее
-            <i className="ml-2">›</i>
+            {currentStep >= steps.length - 1
+              ? isGenerating
+                ? "Формируем…"
+                : "Сформировать заявления и описи"
+              : "Далее"}
+            {currentStep < steps.length - 1 && <i className="ml-2">›</i>}
           </button>
         </div>
       </div>

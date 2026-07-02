@@ -7,6 +7,7 @@ const { diff_match_patch } = require('diff-match-patch');
 
 const leaseTemplatePath = path.join(__dirname, '../templates/lease.html');
 const maternityCapitalSharesTemplatePath = path.join(__dirname, '../templates/maternity-capital-shares.html');
+const shareSaleNoticeTemplatePath = path.join(__dirname, '../templates/share-sale-notice.html');
 
 // читаем файл всегда свежим
 function readLeaseTemplateFile() {
@@ -24,12 +25,20 @@ function getLeaseTemplateInfo() {
 
 // публичная функция: отдать свежий шаблон и залогировать инфо
 function readTemplateFileByType(docType = 'rent') {
-  const templatePath = docType === 'maternity_capital_shares' ? maternityCapitalSharesTemplatePath : leaseTemplatePath;
+  const templatePath = docType === 'maternity_capital_shares'
+    ? maternityCapitalSharesTemplatePath
+    : docType === 'share_sale_notice'
+      ? shareSaleNoticeTemplatePath
+      : leaseTemplatePath;
   return fs.readFileSync(templatePath, 'utf8');
 }
 
 function getTemplateInfoByType(docType = 'rent') {
-  const templatePath = docType === 'maternity_capital_shares' ? maternityCapitalSharesTemplatePath : leaseTemplatePath;
+  const templatePath = docType === 'maternity_capital_shares'
+    ? maternityCapitalSharesTemplatePath
+    : docType === 'share_sale_notice'
+      ? shareSaleNoticeTemplatePath
+      : leaseTemplatePath;
   const resolved = path.resolve(templatePath);
   const stat = fs.statSync(resolved);
   const raw = fs.readFileSync(resolved, 'utf8');
