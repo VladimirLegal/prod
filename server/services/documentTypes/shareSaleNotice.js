@@ -85,9 +85,31 @@ const formatPriceNumber = (value) => {
   if (!Number.isFinite(numeric)) return text(value);
   return numeric.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\u00a0/g, ' ');
 };
-const cleanPriceWords = (value) => text(value).replace(/\s+00\s+копеек\.?$/i, '').replace(/\s+руб(?:ль|ля|лей)\.?$/i, '');
-const formatPriceForNotice = (saleTerms = {}) => `${formatPriceNumber(saleTerms.price)} (${cleanPriceWords(saleTerms.priceWords)}) рублей 00 копеек`;
+const cleanPriceWords = (value) => {
+  const raw = text(value)
+    .replace(/\s+00\s+копеек\.?$/i, '')
+    .replace(/\s+руб(?:ль|ля|лей)\.?$/i, '')
+    .trim();
+
+  const bracketMatch = raw.match(/\(([^()]+)\)/);
+  if (bracketMatch?.[1]) {
+    return bracketMatch[1].trim();
+  }
+
+  return raw;
+};
+
+const formatPriceForNotice = (saleTerms = {}) =>
+  `${formatPriceNumber(saleTerms.price)} (${cleanPriceWords(saleTerms.priceWords)}) рублей 00 копеек`;
 const formatSaleShare = (seller = {}) => `${text(seller.saleShare)} (${text(seller.saleShareWords)})`;
+const PAGE_BREAK_MARKER = '__LEGAL_PORTAL_PAGE_BREAK__';
+
+const PAGE_BREAK_HTML = `<p style="page-break-before: always; break-before: page; mso-break-before: page; font-size:0; line-height:0; height:0; margin:0; color:transparent; overflow:hidden;">${PAGE_BREAK_MARKER}</p>`;
+
+const paragraphHtml = (content, style = '') =>
+  `<p${style ? ` style="${style}"` : ''}>${escapeHtml(content)}</p>`;
+const emptyLineHtml = () =>
+  '<p style="margin:0; line-height:1;">&nbsp;</p>';
 
 const buildStatementParts = (formData = {}, shipment = {}) => {
   const seller = formData.seller || {};
@@ -119,22 +141,33 @@ const statementTextLines = (formData = {}, shipment = {}) => {
 };
 
 const linesToHtml = (lines) => lines.map((line) => line ? `<p>${escapeHtml(line)}</p>` : '<p>&nbsp;</p>').join('');
+
 const buildStatementHtml = (formData, shipment) => {
   const { recipientLine, addressLine, fromLine, bodyParagraphs } = buildStatementParts(formData, shipment);
-  return `
-<section class="statement">
-  <div class="statement-header">
-    <p>${escapeHtml(recipientLine)}</p>
-    <p>${escapeHtml(addressLine)}</p>
-    <p class="statement-from">${escapeHtml(fromLine)}</p>
-  </div>
-  <p class="statement-title">ЗАЯВЛЕНИЕ</p>
-  <div class="statement-body">
-    ${bodyParagraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`).join('')}
-  </div>
-  <div class="signature-line"></div>
-</section>`;
+
+  const headerStyle = 'text-align:right; margin:0 0 4pt 28%;';
+  const headerFromStyle = 'text-align:right; margin:0 0 12pt 28%;';
+  const titleStyle = 'text-align:center; font-weight:bold; margin:0 0 12pt;';
+  const bodyStyle = 'text-align:justify; margin:0 0 8pt;';
+  const signatureStyle = 'text-align:left; margin:0;';
+
+  return [
+    paragraphHtml(recipientLine, headerStyle),
+    paragraphHtml(addressLine, headerStyle),
+    paragraphHtml(fromLine, headerFromStyle),
+
+    emptyLineHtml(),
+    emptyLineHtml(),
+    paragraphHtml('ЗАЯВЛЕНИЕ', titleStyle),
+
+    ...bodyParagraphs.map((paragraph) => paragraphHtml(paragraph, bodyStyle)),
+
+    emptyLineHtml(),
+    emptyLineHtml(),
+    `<p style="${signatureStyle}">________________________________________________________________________________</p>`,
+  ].join('');
 };
+
 const buildStatementPlainText = (formData, shipment) => statementTextLines(formData, shipment).join('\n');
 
 const buildInventory107Html = (formData, statementPlainText) => `
@@ -159,14 +192,15 @@ const collectShipments = (coOwners = []) => {
 
 const buildShareSaleNoticePackageHtml = (formData, statements, inventories) => `
 <h2>Раздел 1. Заявления сособственникам</h2>
-${statements.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}
-<div class="page-break"></div>
+${statements.map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`).join('')}
+${PAGE_BREAK_HTML}
 <h2>Раздел 2. Описи вложения ф. 107</h2>
 ${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}`;
 
-const buildStatementsOnlyHtml = (statements) => `
-${statements.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}
-`;
+const buildStatementsOnlyHtml = (statements) =>
+  statements
+    .map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`)
+    .join('');
 
 const buildInventoriesOnlyHtml = (inventories) => `
 ${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}

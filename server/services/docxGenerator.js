@@ -12,6 +12,22 @@ const PAGE_BREAK_PATTERNS = [
   'расписка о плучении денежных средств',
 ];
 
+const EXPLICIT_PAGE_BREAK_MARKER = '__LEGAL_PORTAL_PAGE_BREAK__';
+
+function replaceExplicitPageBreakMarkers(xml) {
+  if (!xml || typeof xml !== 'string') return xml;
+
+  const paragraphRegex = /<w:p\b[\s\S]*?<\/w:p>/gi;
+
+  return xml.replace(paragraphRegex, paragraphXml => {
+    if (!paragraphXml.includes(EXPLICIT_PAGE_BREAK_MARKER)) {
+      return paragraphXml;
+    }
+
+    return PAGE_BREAK_XML;
+  });
+}
+
 const DEFAULT_FONT_FAMILY = "'Times New Roman', Times, serif";
 const DEFAULT_FONT_SIZE = '12pt';
 const DEFAULT_LINE_HEIGHT = '1';
@@ -111,14 +127,35 @@ function normalizeForDocx(html) {
     h.setAttribute('align', 'center');
   });
 
-  // 4) Абзацы — justify + шрифт/кегль/интерлиньяж/отступ (ИНЛАЙН + align)
+  // 4) Абзацы — шрифт/кегль/интерлиньяж/отступ.
+  // Важно: если у абзаца уже задан text-align:right/center/justify,
+  // не перетираем его на justify. Это нужно для заявлений о продаже доли.
   Array.from(doc.querySelectorAll('p')).forEach(p => {
     const prev = p.getAttribute('style') || '';
+
+    const alignMatch = prev.match(/text-align\s*:\s*(left|right|center|justify)/i);
+    const existingAlign = alignMatch ? alignMatch[1].toLowerCase() : null;
+    const finalAlign = existingAlign || 'justify';
+
+    const hasFontFamily = /font-family\s*:/i.test(prev);
+    const hasFontSize = /font-size\s*:/i.test(prev);
+    const hasLineHeight = /line-height\s*:/i.test(prev);
+    const hasMargin = /margin\s*:/i.test(prev);
+
+    const additions = [
+      existingAlign ? '' : `text-align:${finalAlign}`,
+      hasFontFamily ? '' : `font-family:${DEFAULT_FONT_FAMILY}`,
+      hasFontSize ? '' : `font-size:${DEFAULT_FONT_SIZE}`,
+      hasLineHeight ? '' : `line-height:${DEFAULT_LINE_HEIGHT}`,
+      hasMargin ? '' : 'margin:6pt 0',
+    ].filter(Boolean).join(';');
+
     p.setAttribute(
       'style',
-      `${prev};text-align:justify;font-family:${DEFAULT_FONT_FAMILY};font-size:${DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};margin:6pt 0;`.replace(/;;+/g,';')
+      `${prev};${additions};`.replace(/;;+/g, ';')
     );
-    p.setAttribute('align', 'justify');
+
+    p.setAttribute('align', finalAlign);
   });
 
   // 5) Списки — шрифт/кегль
@@ -515,6 +552,9 @@ async function enforceDocxPostProcessing(buffer) {
 
     // 1) Поля/межстрочный/выравнивание
     updatedXml = ensureDocxMargins(updatedXml);
+
+    // 1.1) Явные разрывы страниц из HTML-маркеров
+    updatedXml = replaceExplicitPageBreakMarkers(updatedXml);
 
     // 2) Границы таблиц (убираем глобально, кроме ваших исключений — если в enforceTableBorders это уже учтено)
     updatedXml = enforceTableBorders(updatedXml);
