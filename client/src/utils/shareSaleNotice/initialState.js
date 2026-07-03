@@ -123,8 +123,6 @@ export const initialShareSaleNoticeForm = {
     email: "",
     egrnShare: "",
     saleShare: "",
-    saleShareWords: "",
-    saleShareWordsTouched: false,
   },
 
   saleTerms: {

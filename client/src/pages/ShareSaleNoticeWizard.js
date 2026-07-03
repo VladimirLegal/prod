@@ -16,7 +16,6 @@ import PersonPassportFields from "../components/common/PersonPassportFields";
 import { extractEGRNDataFromPdf } from "../utils/extractEGRNDataFromPdf";
 import { extractEGRNFromZip } from "../utils/extractEGRNFromZip";
 import { amountRu } from "../utils/formatters";
-import { fractionToRussianWords } from "../utils/fractionWordsRu";
 import { formatDateInput } from "../utils/inputMasks";
 import {
   createCoOwnerDeliveryPayload,
@@ -140,8 +139,7 @@ const mapOwnerToSeller = (owner = {}, index = null) => {
     email: owner.email || "",
     egrnShare: share,
     saleShare: share,
-    saleShareWords: "",
-    saleShareWordsTouched: false,
+    
   };
 };
 
@@ -227,22 +225,10 @@ const ShareSaleNoticeWizard = () => {
     }));
 
   const updateSeller = (key, value) =>
-    setFormData((prev) => {
-      const seller = { ...prev.seller, [key]: value };
-
-      if (key === "saleShare") {
-        const autoWords = fractionToRussianWords(value);
-        if (!seller.saleShareWordsTouched) {
-          seller.saleShareWords = autoWords;
-        }
-      }
-
-      if (key === "saleShareWords") {
-        seller.saleShareWordsTouched = Boolean(String(value || "").trim());
-      }
-
-      return { ...prev, seller };
-    });
+  setFormData((prev) => ({
+    ...prev,
+    seller: { ...prev.seller, [key]: value },
+  }));
 
   const updateSaleTerms = (key, value) =>
     setFormData((prev) => {
@@ -444,7 +430,6 @@ const ShareSaleNoticeWizard = () => {
       [formData.object.address, "Укажите адрес объекта."],
       [formData.object.cadastralNumber, "Укажите кадастровый номер объекта."],
       [formData.seller.saleShare, "Укажите продаваемую долю."],
-      [formData.seller.saleShareWords, "Укажите продаваемую долю прописью."],
       [formData.saleTerms.price, "Укажите цену продажи."],
       [formData.saleTerms.priceWords, "Укажите цену продажи прописью."],
       [formData.saleTerms.place, "Укажите место составления."],
@@ -840,12 +825,6 @@ const ShareSaleNoticeWizard = () => {
                 onChange={(value) => updateSeller("saleShare", value)}
                 placeholder="например, 1/2"
               />
-              <TextAreaField
-                label="Продаваемая доля прописью"
-                value={formData.seller.saleShareWords}
-                onChange={(value) => updateSeller("saleShareWords", value)}
-                placeholder="например, одна вторая"
-              />
             </div>
           </section>
 
@@ -1032,10 +1011,6 @@ const ShareSaleNoticeWizard = () => {
             <SummaryRow
               label="Продаваемая доля"
               value={formData.seller.saleShare}
-            />
-            <SummaryRow
-              label="Продаваемая доля прописью"
-              value={formData.seller.saleShareWords}
             />
             <SummaryRow label="Цена" value={formData.saleTerms.price} />
             <SummaryRow
