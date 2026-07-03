@@ -1,4 +1,5 @@
 const path = require('path');
+const { fractionToRussianWords } = require('../../utils/fractionWordsRu');
 
 let petrovich = null;
 try {
@@ -101,7 +102,14 @@ const cleanPriceWords = (value) => {
 
 const formatPriceForNotice = (saleTerms = {}) =>
   `${formatPriceNumber(saleTerms.price)} (${cleanPriceWords(saleTerms.priceWords)}) рублей 00 копеек`;
-const formatSaleShare = (seller = {}) => `${text(seller.saleShare)} (${text(seller.saleShareWords)})`;
+const formatSaleShare = (seller = {}) => {
+  const share = text(seller.saleShare);
+  const manualWords = text(seller.saleShareWords);
+  const autoWords = fractionToRussianWords(share);
+  const words = manualWords && manualWords !== share ? manualWords : autoWords;
+
+  return words ? `${share} (${words})` : share;
+};
 const PAGE_BREAK_MARKER = '__LEGAL_PORTAL_PAGE_BREAK__';
 
 const PAGE_BREAK_HTML = `<p style="page-break-before: always; break-before: page; mso-break-before: page; font-size:0; line-height:0; height:0; margin:0; color:transparent; overflow:hidden;">${PAGE_BREAK_MARKER}</p>`;

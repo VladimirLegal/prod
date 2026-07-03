@@ -16,6 +16,7 @@ import PersonPassportFields from "../components/common/PersonPassportFields";
 import { extractEGRNDataFromPdf } from "../utils/extractEGRNDataFromPdf";
 import { extractEGRNFromZip } from "../utils/extractEGRNFromZip";
 import { amountRu } from "../utils/formatters";
+import { fractionToRussianWords } from "../utils/fractionWordsRu";
 import { formatDateInput } from "../utils/inputMasks";
 import {
   createCoOwnerDeliveryPayload,
@@ -140,6 +141,7 @@ const mapOwnerToSeller = (owner = {}, index = null) => {
     egrnShare: share,
     saleShare: share,
     saleShareWords: "",
+    saleShareWordsTouched: false,
   };
 };
 
@@ -225,10 +227,22 @@ const ShareSaleNoticeWizard = () => {
     }));
 
   const updateSeller = (key, value) =>
-    setFormData((prev) => ({
-      ...prev,
-      seller: { ...prev.seller, [key]: value },
-    }));
+    setFormData((prev) => {
+      const seller = { ...prev.seller, [key]: value };
+
+      if (key === "saleShare") {
+        const autoWords = fractionToRussianWords(value);
+        if (!seller.saleShareWordsTouched) {
+          seller.saleShareWords = autoWords;
+        }
+      }
+
+      if (key === "saleShareWords") {
+        seller.saleShareWordsTouched = Boolean(String(value || "").trim());
+      }
+
+      return { ...prev, seller };
+    });
 
   const updateSaleTerms = (key, value) =>
     setFormData((prev) => {

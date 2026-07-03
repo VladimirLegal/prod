@@ -124,6 +124,7 @@ export const initialShareSaleNoticeForm = {
     egrnShare: "",
     saleShare: "",
     saleShareWords: "",
+    saleShareWordsTouched: false,
   },
 
   saleTerms: {
