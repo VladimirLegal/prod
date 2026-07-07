@@ -23,6 +23,22 @@
     .ok { color: #15803d; font-weight: 600; }
     .empty { color: #6b7280; }
     .error { color: #b91c1c; font-weight: 600; }
+    .report-source-link {
+      color: #2563eb;
+      text-decoration: underline;
+      font-weight: 700;
+    }
+
+    .report-source-link:visited {
+      color: #1d4ed8;
+    }
+
+    @media print {
+      .report-source-link {
+        color: #1d4ed8;
+        text-decoration: underline;
+      }
+    }
     .skipped-source-note {
       margin-top: 10px;
       padding: 10px 12px;
@@ -2553,7 +2569,7 @@
                         <td>{{#if fullName}}{{fullName}}{{else}}—{{/if}}</td>
                         <td>
                           {{#if imageUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Открыть</span>{{else}}<a class="screen-only" href="{{imageUrl}}" target="_blank" rel="noreferrer">Открыть</a>{{/if}}
+                            <a class="report-source-link" href="{{imageUrl}}" target="_blank" rel="noopener noreferrer">Открыть</a>
                           {{else}}
                             —
                           {{/if}}
@@ -3307,7 +3323,7 @@
                       <ul class="list">
                         {{#each domains}}
                           <li>
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">{{this}}</span>{{else}}<a class="screen-only" href="{{this}}" target="_blank" rel="noreferrer">{{this}}</a>{{/if}}
+                            <a class="report-source-link" href="{{this}}" target="_blank" rel="noopener noreferrer">{{this}}</a>
                           </li>
                         {{/each}}
                       </ul>
@@ -3924,13 +3940,13 @@
                       <td>
                         <div class="arb-link-stack">
                           {{#if kadUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">КАД</span>{{else}}<a class="screen-only" href="{{kadUrl}}" target="_blank" rel="noreferrer">КАД</a>{{/if}}
+                            <a class="report-source-link" href="{{kadUrl}}" target="_blank" rel="noopener noreferrer">КАД</a>
                           {{else}}
                             <span class="empty">КАД: —</span>
                           {{/if}}
 
                           {{#if rasUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">РАС / PDF</span>{{else}}<a class="screen-only" href="{{rasUrl}}" target="_blank" rel="noreferrer">РАС / PDF</a>{{/if}}
+                            <a class="report-source-link" href="{{rasUrl}}" target="_blank" rel="noopener noreferrer">РАС / PDF</a>
                           {{else}}
                             <span class="empty">РАС: —</span>
                           {{/if}}
@@ -4923,13 +4939,13 @@
                       <td>
                         <div class="arb-link-stack">
                           {{#if kadUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">КАД</span>{{else}}<a class="screen-only" href="{{kadUrl}}" target="_blank" rel="noreferrer">КАД</a>{{/if}}
+                            <a class="report-source-link" href="{{kadUrl}}" target="_blank" rel="noopener noreferrer">КАД</a>
                           {{else}}
                             <span class="empty">КАД: —</span>
                           {{/if}}
 
                           {{#if actUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Акт</span>{{else}}<a class="screen-only" href="{{actUrl}}" target="_blank" rel="noreferrer">Акт</a>{{/if}}
+                            <a class="report-source-link" href="{{actUrl}}" target="_blank" rel="noopener noreferrer">Акт</a>
                           {{else}}
                             <span class="empty">Акт: —</span>
                           {{/if}}
@@ -5254,7 +5270,7 @@
                         <td>{{#if tableActsCount}}{{tableActsCount}}{{else}}Нет{{/if}}</td>
                         <td>
                           {{#if tableUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Открыть</span>{{else}}<a class="screen-only" href="{{tableUrl}}" target="_blank" rel="noreferrer">Открыть</a>{{/if}}
+                            <a class="report-source-link" href="{{tableUrl}}" target="_blank" rel="noopener noreferrer">Открыть</a>
                           {{else}}
                             —
                           {{/if}}
@@ -5358,7 +5374,7 @@
                     </td>
                     <td>
                       {{#if sourceUrl}}
-                        {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Открыть</span>{{else}}<a class="screen-only" href="{{sourceUrl}}" target="_blank" rel="noreferrer">Открыть</a>{{/if}}
+                        <a class="report-source-link" href="{{sourceUrl}}" target="_blank" rel="noopener noreferrer">Открыть</a>
                       {{else}}
                         —
                       {{/if}}
@@ -6132,13 +6148,13 @@
 
                         <td class="commercial-link-stack">
                           {{#if caseUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Картотека</span>{{else}}<a class="screen-only" href="{{caseUrl}}" target="_blank" rel="noreferrer">Картотека</a>{{/if}}
+                            <a class="report-source-link" href="{{caseUrl}}" target="_blank" rel="noopener noreferrer">Картотека</a>
                           {{else}}
                             —
                           {{/if}}
 
                           {{#if decisionUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">{{decisionLabel}}</span>{{else}}<a class="screen-only" href="{{decisionUrl}}" target="_blank" rel="noreferrer">{{decisionLabel}}</a>{{/if}}
+                            <a class="report-source-link" href="{{decisionUrl}}" target="_blank" rel="noopener noreferrer">{{decisionLabel}}</a>
                           {{/if}}
                         </td>
 
@@ -6287,7 +6303,7 @@
                         <th>Ссылка</th>
                         <td>
                           {{#if sourceUrl}}
-                            {{#if @root.disableExternalLinks}}<span class="report-link-disabled">Открыть дело на Федресурсе</span>{{else}}<a class="screen-only" href="{{sourceUrl}}" target="_blank" rel="noreferrer">Открыть дело на Федресурсе</a>{{/if}}
+                            <a class="report-source-link" href="{{sourceUrl}}" target="_blank" rel="noopener noreferrer">Открыть дело на Федресурсе</a>
                           {{else}}
                             —
                           {{/if}}

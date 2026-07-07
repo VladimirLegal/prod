@@ -3874,7 +3874,7 @@ function prepareCounterpartyReportViewModel({ entry, query = {}, output = 'html'
     isPdf,
     isMasked,
     isFull: privacyMode === PRIVACY_FULL,
-    disableExternalLinks: isPdf,
+    disableExternalLinks: false,
     printProtectionEnabled: !isPdf && privacyMode === PRIVACY_FULL,
   };
 
@@ -3895,7 +3895,7 @@ function prepareCounterpartyReportViewModel({ entry, query = {}, output = 'html'
     isPdf,
     isMasked,
     isFull: false,
-    disableExternalLinks: isPdf,
+    disableExternalLinks: false,
     printProtectionEnabled: false,
     reportMode: output,
     reportQueryString,
