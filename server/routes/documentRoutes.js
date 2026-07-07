@@ -2081,10 +2081,14 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     console.log('[DOCX] data keys:', Object.keys(data));
 
     const finalHtml = renderFinalHtml(htmlInput, data);
-    let alignedHtml = enforceInlineAlignment(finalHtml);
+    let alignedHtml = finalHtml;
 
-    // ⬇️ ДОБАВИЛИ разрывы страниц перед приложениями (только для DOCX)
-    alignedHtml = insertDocxPageBreaks(alignedHtml);
+    if (docType !== 'share_sale_notice_inventory107') {
+      alignedHtml = enforceInlineAlignment(finalHtml);
+
+      // ⬇️ ДОБАВИЛИ разрывы страниц перед приложениями (только для DOCX)
+      alignedHtml = insertDocxPageBreaks(alignedHtml);
+    }
 
     console.log('[DOCX] finalHtml length:', alignedHtml.length);
 

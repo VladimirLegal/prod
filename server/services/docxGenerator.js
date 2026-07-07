@@ -84,12 +84,116 @@ function splitBrIntoParagraphs(container, document) {
   pushCurrent();
 }
 
+function appendTextCell(document, row, text, colSpan = 1, className = '') {
+  const cell = document.createElement('td');
+  if (colSpan > 1) cell.setAttribute('colspan', String(colSpan));
+  if (className) cell.setAttribute('class', className);
+  const paragraph = document.createElement('p');
+  paragraph.textContent = String(text || '').replace(/\s+/g, ' ').trim();
+  cell.appendChild(paragraph);
+  row.appendChild(cell);
+  return cell;
+}
+
+function extractF107CopyData(copy) {
+  const inventoryRows = Array.from(copy.querySelectorAll('table.inventory-107 tr'));
+  const itemCells = Array.from(inventoryRows[1]?.querySelectorAll('td,th') || []);
+  const totalCells = Array.from(inventoryRows[2]?.querySelectorAll('td,th') || []);
+  const signatureText = Array.from(copy.querySelectorAll('.f107-signatures p'))
+    .map(node => (node.textContent || '').trim())
+    .filter(Boolean)
+    .join('\n');
+
+  return {
+    header: Array.from(copy.querySelectorAll('.f107-header p, .f107-logo'))
+      .map(node => (node.textContent || '').trim())
+      .filter(Boolean)
+      .join('\n') || 'ПОЧТА РОССИИ\nф. 107\nИзменения не допускаются',
+    title: copy.querySelector('.f107-title')?.textContent || 'ОПИСЬ',
+    mailId: copy.querySelector('.f107-mail-id')?.textContent || 'Идентификатор почтового отправления',
+    itemName: itemCells[1]?.textContent || '',
+    itemCount: itemCells[2]?.textContent || '1',
+    itemValue: itemCells[3]?.textContent || '1(один)',
+    totalLabel: totalCells[0]?.textContent || 'Общий итог предметов и объявленной ценности',
+    totalCount: totalCells[1]?.textContent || '1',
+    totalValue: totalCells[2]?.textContent || '1(один)',
+    signatureText,
+  };
+}
+
+function buildF107DocxFlatSheet(document, sheet) {
+  const copies = Array.from(sheet.querySelectorAll('.f107-copy')).slice(0, 2).map(extractF107CopyData);
+  if (copies.length !== 2) return null;
+
+  const table = document.createElement('table');
+  table.setAttribute('class', 'f107-docx-flat-table');
+  table.setAttribute('data-f107-docx-flat-table', 'true');
+
+  const addDualWideRow = (leftText, rightText, className = '') => {
+    const row = document.createElement('tr');
+    appendTextCell(document, row, leftText, 4, className);
+    appendTextCell(document, row, rightText, 4, className);
+    table.appendChild(row);
+  };
+
+  addDualWideRow(
+    `${copies[0].header}\n${copies[0].title}\n${copies[0].mailId}`,
+    `${copies[1].header}\n${copies[1].title}\n${copies[1].mailId}`,
+    'f107-docx-heading'
+  );
+
+  const headerRow = document.createElement('tr');
+  ['№ п/п', 'Наименование предметов', 'Кол-во предметов', 'Объявленная ценность, руб']
+    .concat(['№ п/п', 'Наименование предметов', 'Кол-во предметов', 'Объявленная ценность, руб'])
+    .forEach(text => appendTextCell(document, headerRow, text, 1, 'f107-docx-table-header'));
+  table.appendChild(headerRow);
+
+  const itemRow = document.createElement('tr');
+  [copies[0], copies[1]].forEach(copy => {
+    appendTextCell(document, itemRow, '1', 1, 'f107-docx-num');
+    appendTextCell(document, itemRow, copy.itemName, 1, 'f107-docx-name');
+    appendTextCell(document, itemRow, copy.itemCount, 1, 'f107-docx-count');
+    appendTextCell(document, itemRow, copy.itemValue, 1, 'f107-docx-value');
+  });
+  table.appendChild(itemRow);
+
+  const totalRow = document.createElement('tr');
+  [copies[0], copies[1]].forEach(copy => {
+    appendTextCell(document, totalRow, copy.totalLabel, 2, 'f107-docx-total');
+    appendTextCell(document, totalRow, copy.totalCount, 1, 'f107-docx-count');
+    appendTextCell(document, totalRow, copy.totalValue, 1, 'f107-docx-value');
+  });
+  table.appendChild(totalRow);
+
+  addDualWideRow(copies[0].signatureText, copies[1].signatureText, 'f107-docx-signatures');
+
+  return table;
+}
+
+function flattenF107SheetsForDocx(document) {
+  const sheets = Array.from(document.querySelectorAll('.f107-sheet'));
+  sheets.forEach((sheet, index) => {
+    const flatTable = buildF107DocxFlatSheet(document, sheet);
+    if (!flatTable) return;
+    if (index < sheets.length - 1) {
+      const breakParagraph = document.createElement('p');
+      breakParagraph.textContent = EXPLICIT_PAGE_BREAK_MARKER;
+      sheet.replaceWith(flatTable, breakParagraph);
+      return;
+    }
+    sheet.replaceWith(flatTable);
+  });
+}
+
 function normalizeForDocx(html, options = {}) {
   const dom = new JSDOM(`<!DOCTYPE html><html><body>${html || ''}</body></html>`);
   const doc = dom.window.document;
 
   // 0) Удалим лишние атрибуты редактора
   doc.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+  if (isInventory107Doc(options)) {
+    flattenF107SheetsForDocx(doc);
+  }
 
   // 1) Превратим одиночные текстовые DIV/SECTION в <p>
   Array.from(doc.querySelectorAll('div,section')).forEach(el => {
@@ -150,13 +254,14 @@ function normalizeForDocx(html, options = {}) {
     const defaultFontSize = isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE;
     const hasLineHeight = /line-height\s*:/i.test(prev);
     const hasMargin = /margin\s*:/i.test(prev);
+    const defaultMargin = isInventory107Doc(options) ? 'margin:0 0 1pt 0' : 'margin:6pt 0';
 
     const additions = [
       existingAlign ? '' : `text-align:${finalAlign}`,
       hasFontFamily ? '' : `font-family:${DEFAULT_FONT_FAMILY}`,
       hasFontSize ? '' : `font-size:${defaultFontSize}`,
       hasLineHeight ? '' : `line-height:${DEFAULT_LINE_HEIGHT}`,
-      hasMargin ? '' : 'margin:6pt 0',
+      hasMargin ? '' : defaultMargin,
     ].filter(Boolean).join(';');
 
     p.setAttribute(
@@ -189,9 +294,10 @@ function normalizeForDocx(html, options = {}) {
   });
   cells.forEach(c => {
     const prev = c.getAttribute('style') || '';
+    const padding = isInventory107Doc(options) ? 'padding:1pt 1.5pt' : 'padding:3pt 4pt';
     c.setAttribute(
       'style',
-      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;padding:3pt 4pt;`.replace(/;;+/g,';')
+      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;${padding};`.replace(/;;+/g,';')
     );
   });
   
@@ -571,6 +677,229 @@ function ensureDocxLandscapeA4(xml) {
   return xml;
 }
 
+function upsertTblPrChild(tableXml, tagName, childXml) {
+  const tblPrRegex = /<w:tblPr\b[^>]*>[\s\S]*?<\/w:tblPr>/i;
+  const selfClosingTblPrRegex = /<w:tblPr\b[^>]*\/>/i;
+
+  if (tblPrRegex.test(tableXml)) {
+    return tableXml.replace(tblPrRegex, tblPr => {
+      const childRegex = new RegExp(`<w:${tagName}\\b[\\s\\S]*?(?:<\\/w:${tagName}>|\\/>)`, 'i');
+      if (childRegex.test(tblPr)) {
+        return tblPr.replace(childRegex, childXml);
+      }
+      return tblPr.replace(/<\/w:tblPr>/i, `${childXml}</w:tblPr>`);
+    });
+  }
+
+  if (selfClosingTblPrRegex.test(tableXml)) {
+    return tableXml.replace(selfClosingTblPrRegex, `<w:tblPr>${childXml}</w:tblPr>`);
+  }
+
+  return tableXml.replace(/<w:tbl\b[^>]*>/i, match => `${match}<w:tblPr>${childXml}</w:tblPr>`);
+}
+
+function setTableGrid(tableXml, columnWidths) {
+  const gridXml = `<w:tblGrid>${columnWidths.map(width => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>`;
+  if (/<w:tblGrid\b[\s\S]*?<\/w:tblGrid>/i.test(tableXml)) {
+    return tableXml.replace(/<w:tblGrid\b[\s\S]*?<\/w:tblGrid>/i, gridXml);
+  }
+  return tableXml.replace(/<\/w:tblPr>/i, `</w:tblPr>${gridXml}`);
+}
+
+function setTableWidth(tableXml, width, type = 'dxa') {
+  let updated = upsertTblPrChild(tableXml, 'tblW', `<w:tblW w:w="${width}" w:type="${type}"/>`);
+  updated = upsertTblPrChild(updated, 'tblLayout', '<w:tblLayout w:type="fixed"/>');
+  return updated;
+}
+
+function upsertTcPrChild(cellXml, tagName, childXml) {
+  const tcPrRegex = /<w:tcPr\b[^>]*>[\s\S]*?<\/w:tcPr>/i;
+  const selfClosingTcPrRegex = /<w:tcPr\b[^>]*\/>/i;
+
+  if (tcPrRegex.test(cellXml)) {
+    return cellXml.replace(tcPrRegex, tcPr => {
+      const childRegex = new RegExp(`<w:${tagName}\\b[\\s\\S]*?(?:<\\/w:${tagName}>|\\/>)`, 'i');
+      if (childRegex.test(tcPr)) {
+        return tcPr.replace(childRegex, childXml);
+      }
+      return tcPr.replace(/<\/w:tcPr>/i, `${childXml}</w:tcPr>`);
+    });
+  }
+
+  if (selfClosingTcPrRegex.test(cellXml)) {
+    return cellXml.replace(selfClosingTcPrRegex, `<w:tcPr>${childXml}</w:tcPr>`);
+  }
+
+  return cellXml.replace(/<w:tc\b[^>]*>/i, match => `${match}<w:tcPr>${childXml}</w:tcPr>`);
+}
+
+function setCellWidth(cellXml, width) {
+  return upsertTcPrChild(cellXml, 'tcW', `<w:tcW w:w="${width}" w:type="dxa"/>`);
+}
+
+function setCellBorders(cellXml, visible) {
+  const borderValue = visible ? 'single' : 'nil';
+  const borderSize = visible ? '4' : '0';
+  const color = visible ? '000000' : 'auto';
+  const bordersXml = [
+    '<w:tcBorders>',
+    `<w:top w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:left w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:bottom w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:right w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    '</w:tcBorders>',
+  ].join('');
+  return upsertTcPrChild(cellXml, 'tcBorders', bordersXml);
+}
+
+function setTableBorders(tableXml, visible) {
+  const borderValue = visible ? 'single' : 'nil';
+  const borderSize = visible ? '4' : '0';
+  const color = visible ? '000000' : 'auto';
+  const bordersXml = [
+    '<w:tblBorders>',
+    `<w:top w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:left w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:bottom w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:right w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:insideH w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    `<w:insideV w:val="${borderValue}" w:sz="${borderSize}" w:space="0" w:color="${color}"/>`,
+    '</w:tblBorders>',
+  ].join('');
+  return upsertTblPrChild(tableXml, 'tblBorders', bordersXml);
+}
+
+function getTopLevelCellRanges(tableXml) {
+  const ranges = [];
+  const tagRegex = /<\/?w:(tbl|tc)\b[^>]*>/gi;
+  const stack = [];
+  let match;
+
+  while ((match = tagRegex.exec(tableXml)) !== null) {
+    const [, tagName] = match;
+    const isClosing = match[0].startsWith('</');
+    const entry = { tagName, index: match.index, end: tagRegex.lastIndex };
+
+    if (!isClosing) {
+      stack.push(entry);
+      continue;
+    }
+
+    const opener = stack.pop();
+    if (!opener || opener.tagName !== tagName) continue;
+
+    const openTableDepth = stack.filter(item => item.tagName === 'tbl').length;
+    if (tagName === 'tc' && openTableDepth === 1) {
+      ranges.push({ start: opener.index, end: tagRegex.lastIndex });
+    }
+  }
+
+  return ranges;
+}
+
+function applyCellWidths(tableXml, columnWidths, visibleBorders) {
+  const ranges = getTopLevelCellRanges(tableXml);
+  if (!ranges.length) return tableXml;
+
+  let result = '';
+  let lastIndex = 0;
+  ranges.forEach((range, index) => {
+    const width = columnWidths[index % columnWidths.length];
+    let cellXml = tableXml.slice(range.start, range.end);
+    cellXml = setCellWidth(cellXml, width);
+    cellXml = setCellBorders(cellXml, visibleBorders);
+    result += tableXml.slice(lastIndex, range.start) + cellXml;
+    lastIndex = range.end;
+  });
+
+  return result + tableXml.slice(lastIndex);
+}
+
+function splitTableXml(tableXml) {
+  const openMatch = tableXml.match(/^<w:tbl\b[^>]*>/i);
+  if (!openMatch) return null;
+  const closeTag = '</w:tbl>';
+  if (!tableXml.toLowerCase().endsWith(closeTag)) return null;
+  return {
+    open: openMatch[0],
+    inner: tableXml.slice(openMatch[0].length, -closeTag.length),
+    close: tableXml.slice(-closeTag.length),
+  };
+}
+
+function rewriteTopLevelTables(fragment, transformTable) {
+  const tagRegex = /<\/?w:tbl\b[^>]*>/gi;
+  let result = '';
+  let lastIndex = 0;
+  let depth = 0;
+  let tableStart = -1;
+  let match;
+
+  while ((match = tagRegex.exec(fragment)) !== null) {
+    const isClosing = match[0].startsWith('</');
+    if (!isClosing) {
+      if (depth === 0) tableStart = match.index;
+      depth += 1;
+      continue;
+    }
+
+    depth -= 1;
+    if (depth === 0 && tableStart !== -1) {
+      const tableEnd = tagRegex.lastIndex;
+      result += fragment.slice(lastIndex, tableStart);
+      result += transformTable(fragment.slice(tableStart, tableEnd));
+      lastIndex = tableEnd;
+      tableStart = -1;
+    }
+  }
+
+  return result + fragment.slice(lastIndex);
+}
+
+function fixInventory107DocxTables(xml) {
+  if (!xml || typeof xml !== 'string') return xml;
+
+  const outerWidth = 16158;
+  const outerCellWidths = [8079, 8079];
+  const innerWidth = 7600;
+  const innerCellWidths = [532, 4712, 912, 1444];
+
+  const transformTable = tableXml => {
+    const parts = splitTableXml(tableXml);
+    if (!parts) return tableXml;
+
+    const processedInner = rewriteTopLevelTables(parts.inner, transformTable);
+    const hasNestedTables = /<w:tbl\b/i.test(processedInner);
+    let updatedTable = `${parts.open}${processedInner}${parts.close}`;
+
+    if (isF107TableByXml(updatedTable) && !hasNestedTables) {
+      const directCellCount = getTopLevelCellRanges(updatedTable).length;
+      const isFlatSheetTable = directCellCount > 8;
+      const width = isFlatSheetTable ? outerWidth : innerWidth;
+      const columnWidths = isFlatSheetTable
+        ? [566, 5009, 970, 1534, 566, 5009, 970, 1534]
+        : innerCellWidths;
+      updatedTable = setTableWidth(updatedTable, width);
+      updatedTable = setTableGrid(updatedTable, columnWidths);
+      updatedTable = setTableBorders(updatedTable, true);
+      updatedTable = applyCellWidths(updatedTable, columnWidths, true);
+      return updatedTable;
+    }
+
+    if (hasNestedTables && isF107TableByXml(updatedTable)) {
+      updatedTable = setTableWidth(updatedTable, outerWidth);
+      updatedTable = setTableGrid(updatedTable, outerCellWidths);
+      updatedTable = setTableBorders(updatedTable, false);
+      updatedTable = applyCellWidths(updatedTable, outerCellWidths, false);
+      return updatedTable;
+    }
+
+    return updatedTable;
+  };
+
+  return rewriteTopLevelTables(xml, transformTable);
+}
+
 async function enforceDocxPostProcessing(buffer, options = {}) {
   if (!buffer || !buffer.length) return buffer;
 
@@ -603,6 +932,9 @@ async function enforceDocxPostProcessing(buffer, options = {}) {
 
     // 2) Границы таблиц (убираем глобально, кроме ваших исключений — если в enforceTableBorders это уже учтено)
     updatedXml = enforceTableBorders(updatedXml);
+    if (isInventory107Doc(options)) {
+      updatedXml = fixInventory107DocxTables(updatedXml);
+    }
 
     // 3) Разрывы страниц — ТОЛЬКО после таблиц с подписями сторон
     //    (таблица считается «подписной», если содержит роль Наймод/Арендод/Нанимат/Арендатор
@@ -638,9 +970,7 @@ function ensureContentTypesHasNumbering(ctXml) {
 
 async function exportHtmlToDocxBuffer(html, options = {}) {
   const wrapped = wrapHtmlForDocx(html, options);
-  
-  const docxOutput = await htmlToDocx(wrapped, null, {
-    table: { row: { cantSplit: true } },
+  const htmlToDocxOptions = {
     page: {
       size: 'A4',
       orientation: isInventory107Doc(options) ? 'landscape' : 'portrait',
@@ -653,7 +983,13 @@ async function exportHtmlToDocxBuffer(html, options = {}) {
     },
     font: 'Times New Roman',
     fontSize: isInventory107Doc(options) ? 7 : 12,
-  });
+  };
+
+  if (!isInventory107Doc(options)) {
+    htmlToDocxOptions.table = { row: { cantSplit: true } };
+  }
+
+  const docxOutput = await htmlToDocx(wrapped, null, htmlToDocxOptions);
 
   const buffer = ensureNodeBuffer(docxOutput);
   return enforceDocxPostProcessing(buffer, options);
