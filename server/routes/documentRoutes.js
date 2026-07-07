@@ -2048,7 +2048,7 @@ router.post('/docs/:id/export/pdf', async (req, res) => {
     const alignedHtml = enforceInlineAlignment(finalHtml);  // 👈 вставили
 
     console.log('[PDF] finalHtml length:', alignedHtml.length);
-    const pdfBuffer = await exportPdf(alignedHtml);         // 👈 передаём alignedHtml
+    const pdfBuffer = await exportPdf(alignedHtml, { docType });         // 👈 передаём alignedHtml
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -2092,7 +2092,7 @@ router.post('/docs/:id/export/docx', async (req, res) => {
       .replace(/<p([^>]*)>\s*<\/p>/gi, '<p$1>&nbsp;</p>')
       .replace(/<h([1-6])([^>]*)>\s*<\/h\1>/gi, '<h$1$2>&nbsp;</h$1>');
       
-    const docxBuffer = await exportHtmlToDocxBuffer(cleanedHtml);
+    const docxBuffer = await exportHtmlToDocxBuffer(cleanedHtml, { docType });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);

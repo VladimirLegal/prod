@@ -641,13 +641,13 @@ function renderFinalHtml(html, data = {}) {
 
 
 /* ====================== PDF Export via Puppeteer or PDF Library ====================== */
-async function exportPdf(finalHtml) {
+async function exportPdf(finalHtml, options = {}) {
   if (!finalHtml || typeof finalHtml !== 'string') {
     throw new Error('exportPdf: empty finalHtml');
   }
   // Delegate actual PDF generation to pdfGenerator service
   const { exportHtmlToPdfBuffer } = require('./pdfGenerator');
-  const pdfBuffer = await exportHtmlToPdfBuffer(finalHtml);
+  const pdfBuffer = await exportHtmlToPdfBuffer(finalHtml, options);
   if (!pdfBuffer || !pdfBuffer.length) {
     throw new Error('exportPdf: got empty PDF buffer from generator');
   }

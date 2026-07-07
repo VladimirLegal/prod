@@ -67,17 +67,26 @@ module.exports = { generateSimplePDF };
 // --- BEGIN: HTML -> PDF via Puppeteer (устойчивый запуск на Windows) ---
 const { runWithPage } = require('./pdf/browserPool');
 
-async function exportHtmlToPdfBuffer(html) {
+async function exportHtmlToPdfBuffer(html, options = {}) {
   const pdfBytes = await runWithPage(async (page) => {
     await page.setContent(String(html || ''), {
       waitUntil: ['domcontentloaded', 'load', 'networkidle0'],
     });
 
-    return page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '2cm', right: '1.5cm', bottom: '2cm', left: '3cm' },
-    });
+    const pdfOptions = options.docType === 'share_sale_notice_inventory107'
+      ? {
+          format: 'A4',
+          landscape: true,
+          printBackground: true,
+          margin: { top: '0.6cm', right: '0.6cm', bottom: '0.6cm', left: '0.6cm' },
+        }
+      : {
+          format: 'A4',
+          printBackground: true,
+          margin: { top: '2cm', right: '1.5cm', bottom: '2cm', left: '3cm' },
+        };
+
+    return page.pdf(pdfOptions);
   });
 
   return Buffer.isBuffer(pdfBytes) ? pdfBytes : Buffer.from(pdfBytes);

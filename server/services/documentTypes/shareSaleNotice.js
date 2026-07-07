@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const { fractionToRussianWords } = require('../../utils/fractionWordsRu');
 
@@ -178,15 +179,49 @@ const buildStatementHtml = (formData, shipment) => {
 
 const buildStatementPlainText = (formData, shipment) => statementTextLines(formData, shipment).join('\n');
 
-const buildInventory107Html = (formData, statementPlainText) => `
-<section class="inventory-copy">
-  <p>ф. 107</p><p>Изменения не допускаются</p><p style="text-align:center;font-weight:bold;">ОПИСЬ</p><p>Идентификатор почтового отправления</p>
+const getRussianPostLogoDataUri = () => {
+  const logoPath = path.join(__dirname, '../../assets/russian-post-f107-logo.jpeg');
+  if (!fs.existsSync(logoPath)) return '';
+  const logo = fs.readFileSync(logoPath);
+  return `data:image/jpeg;base64,${logo.toString('base64')}`;
+};
+
+const buildRussianPostLogoHtml = () => {
+  const logoDataUri = getRussianPostLogoDataUri();
+  if (!logoDataUri) return '<div class="f107-logo f107-logo-fallback">ПОЧТА РОССИИ</div>';
+  return `<div class="f107-logo"><img src="${logoDataUri}" alt="Почта России"></div>`;
+};
+
+const buildInventory107CopyHtml = (formData, statementPlainText) => `
+<section class="f107-copy inventory-copy">
+  <div class="f107-header">
+    ${buildRussianPostLogoHtml()}
+    <div class="f107-header-text"><p>ф. 107</p><p>Изменения не допускаются</p></div>
+  </div>
+  <p class="f107-title">ОПИСЬ</p>
+  <p class="f107-mail-id">Идентификатор почтового отправления</p>
   <table class="inventory-107"><thead><tr><th>№ п/п</th><th>Наименование предметов</th><th>Кол-во предметов</th><th>Объявленная ценность, руб</th></tr></thead><tbody>
-    <tr><td>1</td><td><p>Заявление следующего содержания:</p>${linesToHtml(statementPlainText.split('\n'))}</td><td>1</td><td>1(один)</td></tr>
-    <tr><td colspan="2">Общий итог предметов и объявленной ценности</td><td>1</td><td>1(один)</td></tr>
+    <tr><td class="f107-num">1</td><td><p>Заявление следующего содержания:</p>${linesToHtml(statementPlainText.split('\n'))}</td><td class="f107-count">1</td><td class="f107-value">1(один)</td></tr>
+    <tr><td colspan="2">Общий итог предметов и объявленной ценности</td><td class="f107-count">1</td><td class="f107-value">1(один)</td></tr>
   </tbody></table>
-  <p>Отправитель</p><p>ФИО, наименование юр. лица</p><p>${escapeHtml(fullName(formData.seller))}</p><p>(подпись)</p><p>Проверил</p><p>ФИО почтового работника</p><p>Оттиск КПШ</p><p>ОПС места приёма</p><p>Должность почтового работника</p><p>(подпись почтового работника)</p>
+  <div class="f107-signatures">
+    <p>Отправитель</p><p>ФИО, наименование юр. лица</p><p>${escapeHtml(fullName(formData.seller))}</p><p class="f107-sign-line">(подпись)</p>
+    <p>Проверил</p><p>ФИО почтового работника</p><p>Оттиск КПШ</p><p>ОПС места приёма</p><p>Должность почтового работника</p><p class="f107-sign-line">(подпись почтового работника)</p>
+  </div>
 </section>`;
+
+const buildInventory107SheetHtml = (formData, statementPlainText) => {
+  const copyHtml = buildInventory107CopyHtml(formData, statementPlainText);
+  return `
+<section class="f107-sheet">
+  <table class="f107-sheet-table"><tbody><tr>
+    <td class="f107-sheet-cell">${copyHtml}</td>
+    <td class="f107-sheet-cell">${copyHtml}</td>
+  </tr></tbody></table>
+</section>`;
+};
+
+const buildInventory107Html = buildInventory107CopyHtml;
 
 const collectShipments = (coOwners = []) => {
   const shipments = [];
@@ -203,15 +238,15 @@ const buildShareSaleNoticePackageHtml = (formData, statements, inventories) => `
 ${statements.map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`).join('')}
 ${PAGE_BREAK_HTML}
 <h2>Раздел 2. Описи вложения ф. 107</h2>
-${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}`;
+${inventories.map((item) => item.html).join('')}`;
 
 const buildStatementsOnlyHtml = (statements) =>
   statements
     .map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`)
     .join('');
 
-const buildInventoriesOnlyHtml = (inventories) => `
-${inventories.map((item, index) => `${index ? '<div class="page-break"></div>' : ''}${item.html}`).join('')}
+const buildInventoriesOnlyHtml = (inventorySheets) => `
+${inventorySheets.map((item) => item.html).join('')}
 `;
 
 const buildShareSaleNoticeRenderData = (formData = {}) => {
@@ -220,12 +255,10 @@ const buildShareSaleNoticeRenderData = (formData = {}) => {
     const plainText = buildStatementPlainText(formData, shipment);
     return { shipmentIndex: shipment.index, shipment, plainText, html: buildStatementHtml(formData, shipment) };
   });
-  const inventories = [];
-  statements.forEach((statement) => {
-    for (let copy = 1; copy <= 2; copy += 1) {
-      inventories.push({ shipmentIndex: statement.shipmentIndex, copy, html: buildInventory107Html(formData, statement.plainText) });
-    }
-  });
+  const inventories = statements.map((statement) => ({
+    shipmentIndex: statement.shipmentIndex,
+    html: buildInventory107SheetHtml(formData, statement.plainText),
+  }));
   return {
     documentType: formData.documentType || 'share_sale_notice',
     packageHtml: buildShareSaleNoticePackageHtml(formData, statements, inventories),
@@ -241,4 +274,4 @@ const buildShareSaleNoticeRenderData = (formData = {}) => {
   };
 };
 
-module.exports = { escapeHtml, text, fullName, inflectName, formatSellerTitleGenitive, formatRecipientDative, formatPassport, formatDateLongWithYearWord, formatDateWordsForSignatureLine, formatPriceForNotice, formatSaleShare, buildStatementHtml, buildInventory107Html, buildShareSaleNoticePackageHtml, buildShareSaleNoticeRenderData };
+module.exports = { escapeHtml, text, fullName, inflectName, formatSellerTitleGenitive, formatRecipientDative, formatPassport, formatDateLongWithYearWord, formatDateWordsForSignatureLine, formatPriceForNotice, formatSaleShare, buildStatementHtml, buildInventory107Html, buildInventory107CopyHtml, buildInventory107SheetHtml, buildInventoriesOnlyHtml, buildShareSaleNoticePackageHtml, buildShareSaleNoticeRenderData };

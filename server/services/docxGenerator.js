@@ -30,6 +30,7 @@ function replaceExplicitPageBreakMarkers(xml) {
 
 const DEFAULT_FONT_FAMILY = "'Times New Roman', Times, serif";
 const DEFAULT_FONT_SIZE = '12pt';
+const F107_FONT_SIZE = '7pt';
 const DEFAULT_LINE_HEIGHT = '1';
 const CM_TO_TWIPS = valueCm => Math.round((valueCm / 2.54) * 72 * 20);
 const DOCX_PAGE_MARGINS = {
@@ -38,6 +39,13 @@ const DOCX_PAGE_MARGINS = {
   left: CM_TO_TWIPS(3),
   right: CM_TO_TWIPS(1.5),
 };
+const DOCX_F107_PAGE_MARGINS = {
+  top: CM_TO_TWIPS(0.6),
+  bottom: CM_TO_TWIPS(0.6),
+  left: CM_TO_TWIPS(0.6),
+  right: CM_TO_TWIPS(0.6),
+};
+const isInventory107Doc = options => options?.docType === 'share_sale_notice_inventory107';
 
 function decodeXmlEntities(text = '') {
   return text
@@ -76,7 +84,7 @@ function splitBrIntoParagraphs(container, document) {
   pushCurrent();
 }
 
-function normalizeForDocx(html) {
+function normalizeForDocx(html, options = {}) {
   const dom = new JSDOM(`<!DOCTYPE html><html><body>${html || ''}</body></html>`);
   const doc = dom.window.document;
 
@@ -139,13 +147,14 @@ function normalizeForDocx(html) {
 
     const hasFontFamily = /font-family\s*:/i.test(prev);
     const hasFontSize = /font-size\s*:/i.test(prev);
+    const defaultFontSize = isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE;
     const hasLineHeight = /line-height\s*:/i.test(prev);
     const hasMargin = /margin\s*:/i.test(prev);
 
     const additions = [
       existingAlign ? '' : `text-align:${finalAlign}`,
       hasFontFamily ? '' : `font-family:${DEFAULT_FONT_FAMILY}`,
-      hasFontSize ? '' : `font-size:${DEFAULT_FONT_SIZE}`,
+      hasFontSize ? '' : `font-size:${defaultFontSize}`,
       hasLineHeight ? '' : `line-height:${DEFAULT_LINE_HEIGHT}`,
       hasMargin ? '' : 'margin:6pt 0',
     ].filter(Boolean).join(';');
@@ -163,7 +172,7 @@ function normalizeForDocx(html) {
     const prev = el.getAttribute('style') || '';
     el.setAttribute(
       'style',
-      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};`.replace(/;;+/g,';')
+      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};`.replace(/;;+/g,';')
     );
   });
 
@@ -174,7 +183,7 @@ function normalizeForDocx(html) {
     const prev = t.getAttribute('style') || '';
     t.setAttribute(
       'style',
-      `${prev};border-collapse:collapse;font-family:${DEFAULT_FONT_FAMILY};font-size:${DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;`.replace(/;;+/g,';')
+      `${prev};border-collapse:collapse;font-family:${DEFAULT_FONT_FAMILY};font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;`.replace(/;;+/g,';')
     );
     t.removeAttribute('border');
   });
@@ -182,7 +191,7 @@ function normalizeForDocx(html) {
     const prev = c.getAttribute('style') || '';
     c.setAttribute(
       'style',
-      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;padding:3pt 4pt;`.replace(/;;+/g,';')
+      `${prev};font-family:${DEFAULT_FONT_FAMILY};font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};line-height:${DEFAULT_LINE_HEIGHT};border:none;padding:3pt 4pt;`.replace(/;;+/g,';')
     );
   });
   
@@ -213,6 +222,8 @@ function normalizeForDocx(html) {
     if (!table) return false;
     if (table.closest('[data-slot="inventoryHtml"]')) return true;
     if (table.closest('[data-slot="apartmentHtml"]')) return true;
+    const tableText = table.textContent || '';
+    if (tableText.includes('№ п/п') && tableText.includes('Наименование предметов') && tableText.includes('Объявленная ценность')) return true;
 
     const heading = findNearestHeading(table);
     if (!heading) return false;
@@ -261,10 +272,10 @@ function findNearestHeading(element) {
   return null;
 }
 
-function wrapHtmlForDocx(html) {
+function wrapHtmlForDocx(html, options = {}) {
   const bodyMatch = String(html || '').match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   const bodyInner = bodyMatch ? bodyMatch[1] : String(html || '');
-  const normalized = normalizeForDocx(bodyInner);
+  const normalized = normalizeForDocx(bodyInner, options);
 
   const page = `
     <div style="
@@ -272,7 +283,7 @@ function wrapHtmlForDocx(html) {
       margin:0;
       padding:0;
       font-family:${DEFAULT_FONT_FAMILY};
-      font-size:${DEFAULT_FONT_SIZE};
+      font-size:${isInventory107Doc(options) ? F107_FONT_SIZE : DEFAULT_FONT_SIZE};
       line-height:${DEFAULT_LINE_HEIGHT};
       color:#000;
       text-align:justify;
@@ -298,10 +309,10 @@ function ensureNodeBuffer(output) {
   return Buffer.from(String(output ?? ''), 'binary');
 }
 
-function ensureDocxMargins(xml) {
+function ensureDocxMargins(xml, margins = DOCX_PAGE_MARGINS) {
   if (!xml || typeof xml !== 'string') return xml;
 
-  const marginEntries = Object.entries(DOCX_PAGE_MARGINS);
+  const marginEntries = Object.entries(margins);
   const pgMarRegex = /<w:pgMar\b[^>]*\/?>(?:<\/w:pgMar>)?/gi;
 
   const applyAttributes = match => {
@@ -482,8 +493,17 @@ function extractParagraphsBefore(xml, index, count = 3) {
   return paragraphs;
 }
 
+function isF107TableByXml(tableXml) {
+  const text = extractTableText(tableXml);
+  return text.includes('№ п/п') && text.includes('Наименование предметов') && text.includes('Объявленная ценность');
+}
+
 function shouldKeepBordersForTable(xml, tableXml, tableIndex) {
   if (!tableXml) return false;
+
+  if (isF107TableByXml(tableXml)) {
+    return true;
+  }
 
   if (isSignatureTableByXml(tableXml)) {
     return false;
@@ -529,7 +549,29 @@ function enforceTableBorders(xml) {
   return result + xml.slice(lastIndex);
 }
 
-async function enforceDocxPostProcessing(buffer) {
+function ensureDocxLandscapeA4(xml) {
+  if (!xml || typeof xml !== 'string') return xml;
+  const pgSzTag = '<w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>';
+  const pgSzRegex = /<w:pgSz\b[^>]*\/?>(?:<\/w:pgSz>)?/gi;
+  if (/<w:pgSz\b/i.test(xml)) {
+    return xml.replace(pgSzRegex, match => {
+      let result = match;
+      const attrs = { w: '16838', h: '11906', orient: 'landscape' };
+      Object.entries(attrs).forEach(([key, value]) => {
+        const attrRegex = new RegExp(`w:${key}="[^"]*"`, 'i');
+        if (attrRegex.test(result)) result = result.replace(attrRegex, `w:${key}="${value}"`);
+        else result = result.replace(/<w:pgSz\b/i, found => `${found} w:${key}="${value}"`);
+      });
+      return result;
+    });
+  }
+  if (/<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>/i.test(xml)) {
+    return xml.replace(/<w:sectPr\b[^>]*>/i, opener => `${opener}${pgSzTag}`);
+  }
+  return xml;
+}
+
+async function enforceDocxPostProcessing(buffer, options = {}) {
   if (!buffer || !buffer.length) return buffer;
 
   try {
@@ -551,7 +593,10 @@ async function enforceDocxPostProcessing(buffer) {
     let updatedXml = originalXml;
 
     // 1) Поля/межстрочный/выравнивание
-    updatedXml = ensureDocxMargins(updatedXml);
+    updatedXml = ensureDocxMargins(updatedXml, isInventory107Doc(options) ? DOCX_F107_PAGE_MARGINS : DOCX_PAGE_MARGINS);
+    if (isInventory107Doc(options)) {
+      updatedXml = ensureDocxLandscapeA4(updatedXml);
+    }
 
     // 1.1) Явные разрывы страниц из HTML-маркеров
     updatedXml = replaceExplicitPageBreakMarkers(updatedXml);
@@ -591,27 +636,27 @@ function ensureContentTypesHasNumbering(ctXml) {
   return ctXml.replace(/<\/Types>\s*$/i, `${overrideTag}</Types>`);
 }
 
-async function exportHtmlToDocxBuffer(html) {
-  const wrapped = wrapHtmlForDocx(html);
-  const CM_TO_TWIPS = valueCm => Math.round((valueCm / 2.54) * 72 * 20);
+async function exportHtmlToDocxBuffer(html, options = {}) {
+  const wrapped = wrapHtmlForDocx(html, options);
   
   const docxOutput = await htmlToDocx(wrapped, null, {
     table: { row: { cantSplit: true } },
     page: {
       size: 'A4',
+      orientation: isInventory107Doc(options) ? 'landscape' : 'portrait',
       margin: {
-        top: DOCX_PAGE_MARGINS.top,
-        bottom: DOCX_PAGE_MARGINS.bottom,
-        left: DOCX_PAGE_MARGINS.left,
-        right: DOCX_PAGE_MARGINS.right,
+        top: (isInventory107Doc(options) ? DOCX_F107_PAGE_MARGINS : DOCX_PAGE_MARGINS).top,
+        bottom: (isInventory107Doc(options) ? DOCX_F107_PAGE_MARGINS : DOCX_PAGE_MARGINS).bottom,
+        left: (isInventory107Doc(options) ? DOCX_F107_PAGE_MARGINS : DOCX_PAGE_MARGINS).left,
+        right: (isInventory107Doc(options) ? DOCX_F107_PAGE_MARGINS : DOCX_PAGE_MARGINS).right,
       },
     },
     font: 'Times New Roman',
-    fontSize: 12,
+    fontSize: isInventory107Doc(options) ? 7 : 12,
   });
 
   const buffer = ensureNodeBuffer(docxOutput);
-  return enforceDocxPostProcessing(buffer);
+  return enforceDocxPostProcessing(buffer, options);
 }
 
 module.exports = { exportHtmlToDocxBuffer };
