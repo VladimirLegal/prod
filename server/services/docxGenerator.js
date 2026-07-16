@@ -88,9 +88,15 @@ function appendTextCell(document, row, text, colSpan = 1, className = '') {
   const cell = document.createElement('td');
   if (colSpan > 1) cell.setAttribute('colspan', String(colSpan));
   if (className) cell.setAttribute('class', className);
-  const paragraph = document.createElement('p');
-  paragraph.textContent = String(text || '').replace(/\s+/g, ' ').trim();
-  cell.appendChild(paragraph);
+  const lines = String(text || '')
+    .split(/\n+/)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  (lines.length ? lines : ['']).forEach(line => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    cell.appendChild(paragraph);
+  });
   row.appendChild(cell);
   return cell;
 }
@@ -99,6 +105,12 @@ function extractF107CopyData(copy) {
   const inventoryRows = Array.from(copy.querySelectorAll('table.inventory-107 tr'));
   const itemCells = Array.from(inventoryRows[1]?.querySelectorAll('td,th') || []);
   const totalCells = Array.from(inventoryRows[2]?.querySelectorAll('td,th') || []);
+  const itemName = itemCells[1]
+    ? Array.from(itemCells[1].querySelectorAll('p'))
+      .map(node => (node.textContent || '').trim())
+      .filter(Boolean)
+      .join('\n') || itemCells[1].textContent || ''
+    : '';
   const signatureText = Array.from(copy.querySelectorAll('.f107-signatures p'))
     .map(node => (node.textContent || '').trim())
     .filter(Boolean)
@@ -111,7 +123,7 @@ function extractF107CopyData(copy) {
       .join('\n') || 'ПОЧТА РОССИИ\nф. 107\nИзменения не допускаются',
     title: copy.querySelector('.f107-title')?.textContent || 'ОПИСЬ',
     mailId: copy.querySelector('.f107-mail-id')?.textContent || 'Идентификатор почтового отправления',
-    itemName: itemCells[1]?.textContent || '',
+    itemName,
     itemCount: itemCells[2]?.textContent || '1',
     itemValue: itemCells[3]?.textContent || '1(один)',
     totalLabel: totalCells[0]?.textContent || 'Общий итог предметов и объявленной ценности',
@@ -939,7 +951,9 @@ async function enforceDocxPostProcessing(buffer, options = {}) {
     // 3) Разрывы страниц — ТОЛЬКО после таблиц с подписями сторон
     //    (таблица считается «подписной», если содержит роль Наймод/Арендод/Нанимат/Арендатор
     //     и длинную линию подчёркивания из 6+ символов)
-    updatedXml = addBreakAfterEachSignatureTable(updatedXml);
+    if (!isInventory107Doc(options)) {
+      updatedXml = addBreakAfterEachSignatureTable(updatedXml);
+    }
 
     if (updatedXml !== originalXml) {
       zip.file('word/document.xml', updatedXml);

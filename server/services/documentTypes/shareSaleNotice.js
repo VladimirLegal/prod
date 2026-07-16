@@ -188,9 +188,24 @@ const getRussianPostLogoDataUri = () => {
 
 const buildRussianPostLogoHtml = () => {
   const logoDataUri = getRussianPostLogoDataUri();
-  if (!logoDataUri) return '<div class="f107-logo f107-logo-fallback">ПОЧТА РОССИИ</div>';
-  return `<div class="f107-logo"><img src="${logoDataUri}" alt="Почта России"></div>`;
+  const logoStyle = 'display:table-cell;width:34%;height:18pt;vertical-align:middle;font-weight:bold;font-size:7pt;';
+  if (!logoDataUri) return `<div class="f107-logo f107-logo-fallback" style="${logoStyle}">ПОЧТА РОССИИ</div>`;
+  return `<div class="f107-logo" style="${logoStyle}"><img src="${logoDataUri}" alt="Почта России" style="max-width:100%;max-height:18pt;display:block;"></div>`;
 };
+
+const F107_COPY_STYLE = 'width:100%;font-family:"Times New Roman",serif;font-size:6.6pt;line-height:1.05;color:#111;';
+const F107_PARAGRAPH_STYLE = 'margin:0 0 1.5pt 0;font-family:"Times New Roman",serif;font-size:6.6pt;line-height:1.05;';
+const F107_TABLE_STYLE = 'width:100%;border-collapse:collapse;table-layout:fixed;font-family:"Times New Roman",serif;font-size:6.4pt;line-height:1.05;';
+const F107_CELL_BASE_STYLE = 'border:1px solid #111;padding:1.5pt;vertical-align:top;font-family:"Times New Roman",serif;font-size:6.4pt;line-height:1.05;';
+const F107_HEADER_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:center;font-weight:normal;`;
+const F107_NUM_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:7%;text-align:center;`;
+const F107_NAME_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:62%;`;
+const F107_COUNT_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:12%;text-align:center;`;
+const F107_VALUE_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:19%;text-align:center;`;
+const F107_TOTAL_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:left;`;
+const F107_SHEET_STYLE = 'width:100%;page-break-after:always;break-after:page;margin:0;padding:0;';
+const F107_SHEET_TABLE_STYLE = 'width:100%;table-layout:fixed;border-collapse:separate;border-spacing:4mm 0;border:none;page-break-after:always;break-after:page;';
+const F107_SHEET_CELL_STYLE = 'width:50%;vertical-align:top;border:none;padding:0;';
 
 const buildInventory107CopyHtml = (formData, statementPlainText) => `
 <section class="f107-copy inventory-copy">
@@ -198,25 +213,25 @@ const buildInventory107CopyHtml = (formData, statementPlainText) => `
     ${buildRussianPostLogoHtml()}
     <div class="f107-header-text"><p>ф. 107</p><p>Изменения не допускаются</p></div>
   </div>
-  <p class="f107-title">ОПИСЬ</p>
-  <p class="f107-mail-id">Идентификатор почтового отправления</p>
-  <table class="inventory-107"><thead><tr><th>№ п/п</th><th>Наименование предметов</th><th>Кол-во предметов</th><th>Объявленная ценность, руб</th></tr></thead><tbody>
-    <tr><td class="f107-num">1</td><td><p>Заявление следующего содержания:</p>${linesToHtml(statementPlainText.split('\n'))}</td><td class="f107-count">1</td><td class="f107-value">1(один)</td></tr>
-    <tr><td colspan="2">Общий итог предметов и объявленной ценности</td><td class="f107-count">1</td><td class="f107-value">1(один)</td></tr>
+  <p class="f107-title" style="${F107_PARAGRAPH_STYLE}text-align:center;font-weight:bold;font-size:8pt;letter-spacing:.5pt;">ОПИСЬ</p>
+  <p class="f107-mail-id" style="${F107_PARAGRAPH_STYLE}margin-bottom:2pt;">Идентификатор почтового отправления</p>
+  <table class="inventory-107" data-f107-inventory-table="true" style="${F107_TABLE_STYLE}"><thead><tr><th style="${F107_HEADER_CELL_STYLE}width:7%;">№ п/п</th><th style="${F107_HEADER_CELL_STYLE}width:62%;">Наименование предметов</th><th style="${F107_HEADER_CELL_STYLE}width:12%;">Кол-во предметов</th><th style="${F107_HEADER_CELL_STYLE}width:19%;">Объявленная ценность, руб</th></tr></thead><tbody>
+    <tr><td class="f107-num" style="${F107_NUM_CELL_STYLE}">1</td><td style="${F107_NAME_CELL_STYLE}"><p style="${F107_PARAGRAPH_STYLE}">Заявление следующего содержания:</p>${linesToHtml(statementPlainText.split('\n')).replace(/<p>/g, `<p style="${F107_PARAGRAPH_STYLE}">`)}</td><td class="f107-count" style="${F107_COUNT_CELL_STYLE}">1</td><td class="f107-value" style="${F107_VALUE_CELL_STYLE}">1(один)</td></tr>
+    <tr><td colspan="2" style="${F107_TOTAL_CELL_STYLE}">Общий итог предметов и объявленной ценности</td><td class="f107-count" style="${F107_COUNT_CELL_STYLE}">1</td><td class="f107-value" style="${F107_VALUE_CELL_STYLE}">1(один)</td></tr>
   </tbody></table>
-  <div class="f107-signatures">
-    <p>Отправитель</p><p>ФИО, наименование юр. лица</p><p>${escapeHtml(fullName(formData.seller))}</p><p class="f107-sign-line">(подпись)</p>
-    <p>Проверил</p><p>ФИО почтового работника</p><p>Оттиск КПШ</p><p>ОПС места приёма</p><p>Должность почтового работника</p><p class="f107-sign-line">(подпись почтового работника)</p>
+  <div class="f107-signatures" style="margin-top:3pt;">
+    <p style="${F107_PARAGRAPH_STYLE}">Отправитель</p><p style="${F107_PARAGRAPH_STYLE}">ФИО, наименование юр. лица</p><p style="${F107_PARAGRAPH_STYLE}">${escapeHtml(fullName(formData.seller))}</p><p class="f107-sign-line" style="${F107_PARAGRAPH_STYLE}text-align:center;margin-top:4pt;">(подпись)</p>
+    <p style="${F107_PARAGRAPH_STYLE}">Проверил</p><p style="${F107_PARAGRAPH_STYLE}">ФИО почтового работника</p><p style="${F107_PARAGRAPH_STYLE}">Оттиск КПШ</p><p style="${F107_PARAGRAPH_STYLE}">ОПС места приёма</p><p style="${F107_PARAGRAPH_STYLE}">Должность почтового работника</p><p class="f107-sign-line" style="${F107_PARAGRAPH_STYLE}text-align:center;margin-top:4pt;">(подпись почтового работника)</p>
   </div>
 </section>`;
 
 const buildInventory107SheetHtml = (formData, statementPlainText) => {
   const copyHtml = buildInventory107CopyHtml(formData, statementPlainText);
   return `
-<section class="f107-sheet">
-  <table class="f107-sheet-table"><tbody><tr>
-    <td class="f107-sheet-cell">${copyHtml}</td>
-    <td class="f107-sheet-cell">${copyHtml}</td>
+<section class="f107-sheet" style="${F107_SHEET_STYLE}">
+  <table class="f107-sheet-table" data-f107-sheet-table="true" style="${F107_SHEET_TABLE_STYLE}"><tbody><tr>
+    <td class="f107-sheet-cell" data-f107-sheet-cell="true" style="${F107_SHEET_CELL_STYLE}">${copyHtml}</td>
+    <td class="f107-sheet-cell" data-f107-sheet-cell="true" style="${F107_SHEET_CELL_STYLE}">${copyHtml}</td>
   </tr></tbody></table>
 </section>`;
 };

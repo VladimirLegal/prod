@@ -2045,8 +2045,9 @@ router.post('/docs/:id/export/pdf', async (req, res) => {
     console.log('[PDF] data keys:', Object.keys(data));
 
     const finalHtml = renderFinalHtml(htmlInput, data);
-    const alignedHtml = enforceInlineAlignment(finalHtml);  // 👈 вставили
-
+    const alignedHtml = docType === 'share_sale_notice_inventory107'
+      ? finalHtml
+      : enforceInlineAlignment(finalHtml);  // 👈 вставили
     console.log('[PDF] finalHtml length:', alignedHtml.length);
     const pdfBuffer = await exportPdf(alignedHtml, { docType });         // 👈 передаём alignedHtml
 
