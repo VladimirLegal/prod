@@ -78,7 +78,7 @@ async function exportHtmlToPdfBuffer(html, options = {}) {
           format: 'A4',
           landscape: true,
           printBackground: true,
-          margin: { top: '0.6cm', right: '0.6cm', bottom: '0.6cm', left: '0.6cm' },
+          margin: { top: '1.27cm', right: '1.27cm', bottom: '1.27cm', left: '1.27cm' },
         }
       : {
           format: 'A4',

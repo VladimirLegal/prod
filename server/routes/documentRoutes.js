@@ -2069,6 +2069,13 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const data = req.body.data || req.body.formData || {};
     const docType = normalizeDocumentType(await resolveDocumentType(req, data));
+    if (docType === 'share_sale_notice_inventory107') {
+      return res.status(422).json({
+        ok: false,
+        error: 'inventory107_docx_disabled',
+        message: 'Опись вложения ф.107 формируется только в PDF, так как предназначена для печати и подачи в почтовое отделение.',
+      });
+    }
     const fileName = DOCUMENT_TYPE_META[docType]?.docxFileName || DOCUMENT_TYPE_META.rent.docxFileName;
     // DOCX — только для зарегистрированных (учитываем и req.userId, и req.user?.id)
     const isAuthed = !!(req.userId || (req.user && req.user.id));
@@ -2082,14 +2089,10 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     console.log('[DOCX] data keys:', Object.keys(data));
 
     const finalHtml = renderFinalHtml(htmlInput, data);
-    let alignedHtml = finalHtml;
+    let alignedHtml = enforceInlineAlignment(finalHtml);
 
-    if (docType !== 'share_sale_notice_inventory107') {
-      alignedHtml = enforceInlineAlignment(finalHtml);
-
-      // ⬇️ ДОБАВИЛИ разрывы страниц перед приложениями (только для DOCX)
-      alignedHtml = insertDocxPageBreaks(alignedHtml);
-    }
+    // ⬇️ ДОБАВИЛИ разрывы страниц перед приложениями (только для DOCX)
+    alignedHtml = insertDocxPageBreaks(alignedHtml);
 
     console.log('[DOCX] finalHtml length:', alignedHtml.length);
 

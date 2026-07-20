@@ -268,6 +268,7 @@ export default function DocumentEditorPage() {
     return value || 'rent';
   };
   const effectiveDocType = normalizeDocType(docTypeFromUrl || loadedDocument?.type || formData?.documentType || 'rent');
+  const isInventory107 = effectiveDocType === 'share_sale_notice_inventory107';
   const documentTypeConfig = DOCUMENT_TYPE_CONFIG[effectiveDocType] || DOCUMENT_TYPE_CONFIG.rent;
   const documentTitleLabel = documentTypeConfig.titleLabel;
   const storageHtmlKey = documentTypeConfig.storageHtmlKey;
@@ -1496,6 +1497,7 @@ export default function DocumentEditorPage() {
   // Export DOCX: only for authenticated users. Guests get 403 from server.
   async function handleDownloadDocx() {
     if (!editor) return;
+    if (isInventory107) return;
     try {
       const payload = { html: editor.getHTML(), data: { ...(formData || {}), documentType: effectiveDocType }, docType: effectiveDocType };
       const res = await fetch(`/api/docs/${encodeURIComponent(docUUID || 1)}/export/docx`, {
@@ -1697,10 +1699,17 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faUndoAlt} className="fa-icon" />
                   Восстановить
                 </button>
-                <button onClick={handleDownloadDocx} className="doc-btn docx">
-                  <FontAwesomeIcon icon={faFileWord} className="fa-icon" />
-                  DOCX
-                </button>
+                {!isInventory107 && (
+                  <button onClick={handleDownloadDocx} className="doc-btn docx">
+                    <FontAwesomeIcon icon={faFileWord} className="fa-icon" />
+                    DOCX
+                  </button>
+                )}
+                {isInventory107 && (
+                  <span className="docx-disabled-hint">
+                    Опись ф.107 формируется только в PDF, так как это печатный почтовый бланк.
+                  </span>
+                )}
                 {canOpenRelatedInventory107 && (
                   <button onClick={openRelatedInventory107} className="doc-btn restore">
                     Открыть описи ф.107
@@ -1971,6 +1980,14 @@ export default function DocumentEditorPage() {
               .doc-btn.review:hover { background: #1e40af; }
               .doc-btn.docx { background: #6f42c1; }          /* фиолетовый */
               .doc-btn.docx:hover { background: #5a32a3; }
+              .docx-disabled-hint {
+                display: inline-flex;
+                align-items: center;
+                max-width: 280px;
+                color: #475569;
+                font-size: 12px;
+                line-height: 1.3;
+              }
 
               /* — тулбар — */
               .tt-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

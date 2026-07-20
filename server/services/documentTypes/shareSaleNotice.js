@@ -188,50 +188,91 @@ const getRussianPostLogoDataUri = () => {
 
 const buildRussianPostLogoHtml = () => {
   const logoDataUri = getRussianPostLogoDataUri();
-  const logoStyle = 'display:table-cell;width:34%;height:18pt;vertical-align:middle;font-weight:bold;font-size:7pt;';
+  const logoStyle = 'display:inline-block;width:42mm;height:7mm;vertical-align:middle;font-family:Arial,sans-serif;font-weight:bold;font-size:7pt;';
   if (!logoDataUri) return `<div class="f107-logo f107-logo-fallback" style="${logoStyle}">ПОЧТА РОССИИ</div>`;
-  return `<div class="f107-logo" style="${logoStyle}"><img src="${logoDataUri}" alt="Почта России" style="max-width:100%;max-height:18pt;display:block;"></div>`;
+  return `<div class="f107-logo" style="${logoStyle}"><img src="${logoDataUri}" alt="Почта России" style="max-width:42mm;max-height:7mm;display:block;"></div>`;
 };
 
-const F107_COPY_STYLE = 'width:100%;font-family:"Times New Roman",serif;font-size:6.6pt;line-height:1.05;color:#111;';
-const F107_PARAGRAPH_STYLE = 'margin:0 0 1.5pt 0;font-family:"Times New Roman",serif;font-size:6.6pt;line-height:1.05;';
-const F107_TABLE_STYLE = 'width:100%;border-collapse:collapse;table-layout:fixed;font-family:"Times New Roman",serif;font-size:6.4pt;line-height:1.05;';
-const F107_CELL_BASE_STYLE = 'border:1px solid #111;padding:1.5pt;vertical-align:top;font-family:"Times New Roman",serif;font-size:6.4pt;line-height:1.05;';
-const F107_HEADER_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:center;font-weight:normal;`;
-const F107_NUM_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:7%;text-align:center;`;
-const F107_NAME_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:62%;`;
-const F107_COUNT_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:12%;text-align:center;`;
-const F107_VALUE_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:19%;text-align:center;`;
-const F107_TOTAL_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:left;`;
-const F107_SHEET_STYLE = 'width:100%;page-break-after:always;break-after:page;margin:0;padding:0;';
-const F107_SHEET_TABLE_STYLE = 'width:100%;table-layout:fixed;border-collapse:separate;border-spacing:4mm 0;border:none;page-break-after:always;break-after:page;';
-const F107_SHEET_CELL_STYLE = 'width:50%;vertical-align:top;border:none;padding:0;';
+const getF107StatementTypography = (statementPlainText = '') => {
+  const length = String(statementPlainText).length;
+  if (length <= 1600) return { fontSizePt: 6, lineHeight: 1.02 };
+  if (length <= 1900) return { fontSizePt: 5.8, lineHeight: 1.02 };
+  if (length <= 2200) return { fontSizePt: 5.6, lineHeight: 1.01 };
+  if (length <= 2500) return { fontSizePt: 5.4, lineHeight: 1 };
+  return { fontSizePt: 5.2, lineHeight: 1 };
+};
 
-const buildInventory107CopyHtml = (formData, statementPlainText) => `
-<section class="f107-copy inventory-copy">
-  <div class="f107-header">
+const F107_COPY_STYLE = 'width:132.45mm;font-family:Arial,sans-serif;font-size:7pt;line-height:1.05;color:#111;';
+const F107_PARAGRAPH_STYLE = 'margin:0 0 1pt 0;font-family:Arial,sans-serif;font-size:7pt;line-height:1.05;';
+const F107_TABLE_STYLE = 'width:126mm;border-collapse:collapse;table-layout:fixed;font-family:Arial,sans-serif;font-size:7pt;line-height:1.05;border:1px solid #111;';
+const F107_CELL_BASE_STYLE = 'border:1px solid #111;padding:1.2pt;vertical-align:top;font-family:Arial,sans-serif;font-size:7pt;line-height:1.05;';
+const F107_HEADER_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:center;font-weight:normal;`;
+const F107_NUM_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:8mm;text-align:center;`;
+const F107_NAME_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:70.5mm;overflow-wrap:normal;word-break:normal;white-space:normal;`;
+const F107_COUNT_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:23.4mm;text-align:center;`;
+const F107_VALUE_CELL_STYLE = `${F107_CELL_BASE_STYLE}width:24.1mm;text-align:center;`;
+const F107_TOTAL_CELL_STYLE = `${F107_CELL_BASE_STYLE}text-align:left;`;
+const F107_SHEET_STYLE = 'width:271.43mm;break-inside:avoid;page-break-inside:avoid;margin:0 auto;padding:0;';
+const F107_SHEET_TABLE_STYLE = 'width:271.43mm;table-layout:fixed;border-collapse:collapse;border:none;margin:0 auto;';
+const F107_SHEET_LEFT_STYLE = 'width:132.45mm;vertical-align:top;border:none;padding:0;';
+const F107_SHEET_GAP_STYLE = 'width:6.33mm;vertical-align:top;border:none;padding:0;';
+const F107_SHEET_RIGHT_STYLE = 'width:132.64mm;vertical-align:top;border:none;padding:0;';
+const F107_BORDERLESS_TABLE_STYLE = 'border-collapse:collapse;table-layout:fixed;border:none;font-family:Arial,sans-serif;';
+
+const buildF107IdentifierTableHtml = () => `
+<table class="f107-identifier-table" data-f107-table="identifier" style="width:70mm;${F107_BORDERLESS_TABLE_STYLE}margin:0 0 1.5mm 0;">
+  <tbody><tr>${Array.from({ length: 14 }, () => '<td style="width:5mm;height:4.1mm;border:1px solid #111;padding:0;"></td>').join('')}</tr></tbody>
+</table>`;
+
+const buildF107SenderTableHtml = (sellerName) => `
+<table class="f107-sender-table" data-f107-table="sender" style="width:126.4mm;${F107_BORDERLESS_TABLE_STYLE}margin-top:1.5mm;font-size:7pt;line-height:1.05;">
+  <tbody><tr>
+    <td style="width:82.8mm;border:none;padding:0;vertical-align:bottom;"><p style="${F107_PARAGRAPH_STYLE}">Отправитель</p><p style="${F107_PARAGRAPH_STYLE}">ФИО, наименование юр. лица</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">${escapeHtml(sellerName)}</p></td>
+    <td style="width:5mm;border:none;padding:0;"></td>
+    <td style="width:38.6mm;border:none;padding:0;vertical-align:bottom;text-align:center;"><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">(подпись)</p></td>
+  </tr></tbody>
+</table>`;
+
+const buildF107VerificationTableHtml = () => `
+<table class="f107-verification-table" data-f107-table="verification" style="width:126.4mm;${F107_BORDERLESS_TABLE_STYLE}margin-top:1.5mm;font-size:7pt;line-height:1.05;">
+  <tbody><tr>
+    <td style="width:44mm;border:none;padding:0;vertical-align:top;"><p style="${F107_PARAGRAPH_STYLE}">Проверил</p><p style="${F107_PARAGRAPH_STYLE}">ФИО почтового работника</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">Должность почтового работника</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p></td>
+    <td style="width:40.9mm;border:none;padding:0;vertical-align:top;"></td>
+    <td style="width:5mm;border:none;padding:0;"></td>
+    <td style="width:36.5mm;border:none;padding:0;vertical-align:top;text-align:center;"><p style="${F107_PARAGRAPH_STYLE}">Оттиск КПШ</p><p style="${F107_PARAGRAPH_STYLE}">ОПС места приёма</p><p style="${F107_PARAGRAPH_STYLE}min-height:7mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">(подпись почтового работника)</p></td>
+  </tr></tbody>
+</table>`;
+
+const buildInventory107CopyHtml = (formData, statementPlainText) => {
+  const statementTypography = getF107StatementTypography(statementPlainText);
+  const statementTextStyle = `margin:0 0 .5pt 0;font-family:Arial,sans-serif;font-size:${statementTypography.fontSizePt}pt;line-height:${statementTypography.lineHeight};white-space:pre-wrap;word-break:normal;overflow-wrap:break-word;`;
+  const statementHtml = linesToHtml(statementPlainText.split('\n')).replace(/<p>/g, `<p style="${statementTextStyle}">`);
+  return `
+<section class="f107-copy inventory-copy" style="${F107_COPY_STYLE}">
+  <div class="f107-header" style="width:126mm;margin:0 0 1mm 0;white-space:nowrap;">
     ${buildRussianPostLogoHtml()}
-    <div class="f107-header-text"><p>ф. 107</p><p>Изменения не допускаются</p></div>
+    <div class="f107-header-text" style="display:inline-block;width:84mm;text-align:right;vertical-align:top;"><p style="${F107_PARAGRAPH_STYLE}">ф. 107</p><p style="${F107_PARAGRAPH_STYLE}">Изменения не допускаются</p></div>
   </div>
-  <p class="f107-title" style="${F107_PARAGRAPH_STYLE}text-align:center;font-weight:bold;font-size:8pt;letter-spacing:.5pt;">ОПИСЬ</p>
-  <p class="f107-mail-id" style="${F107_PARAGRAPH_STYLE}margin-bottom:2pt;">Идентификатор почтового отправления</p>
-  <table class="inventory-107" data-f107-inventory-table="true" style="${F107_TABLE_STYLE}"><thead><tr><th style="${F107_HEADER_CELL_STYLE}width:7%;">№ п/п</th><th style="${F107_HEADER_CELL_STYLE}width:62%;">Наименование предметов</th><th style="${F107_HEADER_CELL_STYLE}width:12%;">Кол-во предметов</th><th style="${F107_HEADER_CELL_STYLE}width:19%;">Объявленная ценность, руб</th></tr></thead><tbody>
-    <tr><td class="f107-num" style="${F107_NUM_CELL_STYLE}">1</td><td style="${F107_NAME_CELL_STYLE}"><p style="${F107_PARAGRAPH_STYLE}">Заявление следующего содержания:</p>${linesToHtml(statementPlainText.split('\n')).replace(/<p>/g, `<p style="${F107_PARAGRAPH_STYLE}">`)}</td><td class="f107-count" style="${F107_COUNT_CELL_STYLE}">1</td><td class="f107-value" style="${F107_VALUE_CELL_STYLE}">1(один)</td></tr>
+  <p class="f107-title" style="${F107_PARAGRAPH_STYLE}width:126mm;text-align:center;font-weight:bold;font-size:14pt;line-height:1;letter-spacing:.5pt;">ОПИСЬ</p>
+  <p class="f107-mail-id" style="${F107_PARAGRAPH_STYLE}margin-bottom:.5mm;">Идентификатор почтового отправления</p>
+  ${buildF107IdentifierTableHtml()}
+  <table class="inventory-107" data-f107-table="inventory" style="${F107_TABLE_STYLE}"><thead><tr><th style="${F107_HEADER_CELL_STYLE}width:8mm;font-size:8pt;">№ п/п</th><th style="${F107_HEADER_CELL_STYLE}width:70.5mm;font-size:8pt;">Наименование предметов</th><th style="${F107_HEADER_CELL_STYLE}width:23.4mm;font-size:8pt;">Кол-во предметов</th><th style="${F107_HEADER_CELL_STYLE}width:24.1mm;font-size:8pt;">Объявленная ценность, руб</th></tr></thead><tbody>
+    <tr><td class="f107-num" style="${F107_NUM_CELL_STYLE}">1</td><td class="f107-name" style="${F107_NAME_CELL_STYLE}"><p style="${statementTextStyle}font-weight:bold;">Заявление следующего содержания:</p>${statementHtml}</td><td class="f107-count" style="${F107_COUNT_CELL_STYLE}">1</td><td class="f107-value" style="${F107_VALUE_CELL_STYLE}">1(один)</td></tr>
     <tr><td colspan="2" style="${F107_TOTAL_CELL_STYLE}">Общий итог предметов и объявленной ценности</td><td class="f107-count" style="${F107_COUNT_CELL_STYLE}">1</td><td class="f107-value" style="${F107_VALUE_CELL_STYLE}">1(один)</td></tr>
   </tbody></table>
-  <div class="f107-signatures" style="margin-top:3pt;">
-    <p style="${F107_PARAGRAPH_STYLE}">Отправитель</p><p style="${F107_PARAGRAPH_STYLE}">ФИО, наименование юр. лица</p><p style="${F107_PARAGRAPH_STYLE}">${escapeHtml(fullName(formData.seller))}</p><p class="f107-sign-line" style="${F107_PARAGRAPH_STYLE}text-align:center;margin-top:4pt;">(подпись)</p>
-    <p style="${F107_PARAGRAPH_STYLE}">Проверил</p><p style="${F107_PARAGRAPH_STYLE}">ФИО почтового работника</p><p style="${F107_PARAGRAPH_STYLE}">Оттиск КПШ</p><p style="${F107_PARAGRAPH_STYLE}">ОПС места приёма</p><p style="${F107_PARAGRAPH_STYLE}">Должность почтового работника</p><p class="f107-sign-line" style="${F107_PARAGRAPH_STYLE}text-align:center;margin-top:4pt;">(подпись почтового работника)</p>
-  </div>
+  ${buildF107SenderTableHtml(fullName(formData.seller))}
+  ${buildF107VerificationTableHtml()}
 </section>`;
+};
 
 const buildInventory107SheetHtml = (formData, statementPlainText) => {
   const copyHtml = buildInventory107CopyHtml(formData, statementPlainText);
   return `
 <section class="f107-sheet" style="${F107_SHEET_STYLE}">
   <table class="f107-sheet-table" data-f107-sheet-table="true" style="${F107_SHEET_TABLE_STYLE}"><tbody><tr>
-    <td class="f107-sheet-cell" data-f107-sheet-cell="true" style="${F107_SHEET_CELL_STYLE}">${copyHtml}</td>
-    <td class="f107-sheet-cell" data-f107-sheet-cell="true" style="${F107_SHEET_CELL_STYLE}">${copyHtml}</td>
+    <td class="f107-sheet-cell f107-sheet-left" data-f107-sheet-cell="true" style="${F107_SHEET_LEFT_STYLE}">${copyHtml}</td>
+    <td class="f107-sheet-gap" style="${F107_SHEET_GAP_STYLE}">&nbsp;</td>
+    <td class="f107-sheet-cell f107-sheet-right" data-f107-sheet-cell="true" style="${F107_SHEET_RIGHT_STYLE}">${copyHtml}</td>
   </tr></tbody></table>
 </section>`;
 };
@@ -260,9 +301,8 @@ const buildStatementsOnlyHtml = (statements) =>
     .map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`)
     .join('');
 
-const buildInventoriesOnlyHtml = (inventorySheets) => `
-${inventorySheets.map((item) => item.html).join('')}
-`;
+const buildInventoriesOnlyHtml = (inventorySheets) =>
+  inventorySheets.map((item, index) => `${index ? PAGE_BREAK_HTML : ''}${item.html}`).join('');
 
 const buildShareSaleNoticeRenderData = (formData = {}) => {
   const shipments = collectShipments(formData.coOwners || []);
@@ -289,4 +329,4 @@ const buildShareSaleNoticeRenderData = (formData = {}) => {
   };
 };
 
-module.exports = { escapeHtml, text, fullName, inflectName, formatSellerTitleGenitive, formatRecipientDative, formatPassport, formatDateLongWithYearWord, formatDateWordsForSignatureLine, formatPriceForNotice, formatSaleShare, buildStatementHtml, buildInventory107Html, buildInventory107CopyHtml, buildInventory107SheetHtml, buildInventoriesOnlyHtml, buildShareSaleNoticePackageHtml, buildShareSaleNoticeRenderData };
+module.exports = { escapeHtml, text, fullName, inflectName, formatSellerTitleGenitive, formatRecipientDative, formatPassport, formatDateLongWithYearWord, formatDateWordsForSignatureLine, formatPriceForNotice, formatSaleShare, getF107StatementTypography, buildStatementHtml, buildInventory107Html, buildInventory107CopyHtml, buildInventory107SheetHtml, buildInventoriesOnlyHtml, buildShareSaleNoticePackageHtml, buildShareSaleNoticeRenderData };
