@@ -111,6 +111,8 @@ function checkAndSetCooldown(req) {
 const { exportHtmlToDocxBuffer } = require('../services/docxGenerator');
 const { buildMaternityCapitalSharesRenderData } = require('../services/documentTypes/maternityCapitalShares');
 const { buildShareSaleNoticeRenderData } = require('../services/documentTypes/shareSaleNotice');
+const { buildF107TemplateDocxFiles } = require('../services/documentTypes/f107InventoryDocxTemplate');
+const JSZip = require('jszip');
 const { query } = require('../db');
 const { splitPassportSeriesNumber, ensureGoda, } = require('../utils/personDisplay');
 const { buildContactsHtml } = require('../services/documentTypes/rent/contacts');
@@ -2069,18 +2071,35 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const data = req.body.data || req.body.formData || {};
     const docType = normalizeDocumentType(await resolveDocumentType(req, data));
-    if (docType === 'share_sale_notice_inventory107') {
-      return res.status(422).json({
-        ok: false,
-        error: 'inventory107_docx_disabled',
-        message: 'Опись вложения ф.107 формируется только в PDF, так как предназначена для печати и подачи в почтовое отделение.',
-      });
-    }
     const fileName = DOCUMENT_TYPE_META[docType]?.docxFileName || DOCUMENT_TYPE_META.rent.docxFileName;
     // DOCX — только для зарегистрированных (учитываем и req.userId, и req.user?.id)
     const isAuthed = !!(req.userId || (req.user && req.user.id));
     if (!isAuthed) {
       return res.status(403).json({ ok: false, error: 'DOCX available for registered users only' });
+    }
+
+    if (docType === 'share_sale_notice_inventory107') {
+      const files = buildF107TemplateDocxFiles(data);
+      if (!files.length) {
+        return res.status(422).json({
+          ok: false,
+          error: 'f107_no_shipments',
+          message: 'Для формирования описи ф.107 выберите хотя бы одного получателя и адрес отправления.',
+        });
+      }
+
+      if (files.length === 1) {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.setHeader('Content-Disposition', 'attachment; filename="opis-f107.docx"');
+        return res.end(files[0].buffer);
+      }
+
+      const zip = new JSZip();
+      files.forEach(({ filename, buffer }) => zip.file(filename, buffer));
+      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="opisi-f107-docx.zip"');
+      return res.end(zipBuffer);
     }
 
     htmlInput = stripEditorHints(htmlInput);
@@ -2107,6 +2126,9 @@ router.post('/docs/:id/export/docx', async (req, res) => {
     res.end(docxBuffer);
   } catch (e) {
     console.error('DOCX export error:', e);
+    if (e.code === 'f107_template_missing' || e.code === 'f107_template_render_failed') {
+      return res.status(500).json({ ok: false, error: e.code, message: e.message });
+    }
     res.status(500).json({ ok: false, error: e.message });
   }
 });

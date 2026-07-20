@@ -1497,7 +1497,6 @@ export default function DocumentEditorPage() {
   // Export DOCX: only for authenticated users. Guests get 403 from server.
   async function handleDownloadDocx() {
     if (!editor) return;
-    if (isInventory107) return;
     try {
       const payload = { html: editor.getHTML(), data: { ...(formData || {}), documentType: effectiveDocType }, docType: effectiveDocType };
       const res = await fetch(`/api/docs/${encodeURIComponent(docUUID || 1)}/export/docx`, {
@@ -1517,7 +1516,11 @@ export default function DocumentEditorPage() {
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = exportDocxFileName;
+      const contentDisposition = res.headers.get('Content-Disposition') || '';
+      const filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+      const responseFilename = filenameMatch && decodeURIComponent(filenameMatch[1] || filenameMatch[2]);
+      const isZip = (res.headers.get('Content-Type') || '').includes('application/zip');
+      link.download = responseFilename || (isZip ? 'opisi-f107-docx.zip' : exportDocxFileName);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1699,15 +1702,13 @@ export default function DocumentEditorPage() {
                   <FontAwesomeIcon icon={faUndoAlt} className="fa-icon" />
                   Восстановить
                 </button>
-                {!isInventory107 && (
-                  <button onClick={handleDownloadDocx} className="doc-btn docx">
-                    <FontAwesomeIcon icon={faFileWord} className="fa-icon" />
-                    DOCX
-                  </button>
-                )}
+                <button onClick={handleDownloadDocx} className="doc-btn docx">
+                  <FontAwesomeIcon icon={faFileWord} className="fa-icon" />
+                  {isInventory107 ? 'Скачать DOCX-шаблон' : 'DOCX'}
+                </button>
                 {isInventory107 && (
                   <span className="docx-disabled-hint">
-                    Опись ф.107 формируется только в PDF, так как это печатный почтовый бланк.
+                    DOCX формируется по шаблону ф.107. Если получателей несколько, будет скачан ZIP-архив.
                   </span>
                 )}
                 {canOpenRelatedInventory107 && (
