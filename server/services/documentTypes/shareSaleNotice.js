@@ -227,19 +227,45 @@ const buildF107IdentifierTableHtml = () => `
 const buildF107SenderTableHtml = (sellerName) => `
 <table class="f107-sender-table" data-f107-table="sender" style="width:126.4mm;${F107_BORDERLESS_TABLE_STYLE}margin-top:1.5mm;font-size:7pt;line-height:1.05;">
   <tbody><tr>
-    <td style="width:82.8mm;border:none;padding:0;vertical-align:bottom;"><p style="${F107_PARAGRAPH_STYLE}">Отправитель</p><p style="${F107_PARAGRAPH_STYLE}">ФИО, наименование юр. лица</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">${escapeHtml(sellerName)}</p></td>
+    <td style="width:82.8mm;border:none;padding:0;vertical-align:bottom;">
+      <p style="${F107_PARAGRAPH_STYLE}">Отправитель</p>
+      <p style="${F107_PARAGRAPH_STYLE}">ФИО, наименование юр. лица</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.2mm;">${escapeHtml(sellerName)}</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.2mm;">&nbsp;</p>
+    </td>
     <td style="width:5mm;border:none;padding:0;"></td>
-    <td style="width:38.6mm;border:none;padding:0;vertical-align:bottom;text-align:center;"><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">(подпись)</p></td>
+    <td style="width:38.6mm;border:none;padding:0;vertical-align:bottom;text-align:center;">
+      <div style="height:8mm;border:1px solid #111;box-sizing:border-box;"></div>
+      <p style="${F107_PARAGRAPH_STYLE}margin-top:.5mm;">(подпись)</p>
+    </td>
   </tr></tbody>
 </table>`;
 
 const buildF107VerificationTableHtml = () => `
-<table class="f107-verification-table" data-f107-table="verification" style="width:126.4mm;${F107_BORDERLESS_TABLE_STYLE}margin-top:1.5mm;font-size:7pt;line-height:1.05;">
+<table class="f107-verification-table" data-f107-table="verification" style="width:126.4mm;${F107_BORDERLESS_TABLE_STYLE}margin-top:.8mm;font-size:7pt;line-height:1.05;">
   <tbody><tr>
-    <td style="width:44mm;border:none;padding:0;vertical-align:top;"><p style="${F107_PARAGRAPH_STYLE}">Проверил</p><p style="${F107_PARAGRAPH_STYLE}">ФИО почтового работника</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">Должность почтового работника</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p></td>
-    <td style="width:40.9mm;border:none;padding:0;vertical-align:top;"></td>
+    <td style="width:82.8mm;border:none;padding:0;vertical-align:top;">
+      <p style="${F107_PARAGRAPH_STYLE}">Проверил</p>
+      <p style="${F107_PARAGRAPH_STYLE}">ФИО почтового работника</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <p style="${F107_PARAGRAPH_STYLE}">Должность почтового работника</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:2.8mm;">&nbsp;</p>
+      <div style="width:38.6mm;margin-left:auto;margin-top:1.9mm;text-align:center;">
+        <div style="border-bottom:1px solid #111;min-height:3mm;"></div>
+        <p style="${F107_PARAGRAPH_STYLE}">(подпись почтового работника)</p>
+      </div>
+    </td>
     <td style="width:5mm;border:none;padding:0;"></td>
-    <td style="width:36.5mm;border:none;padding:0;vertical-align:top;text-align:center;"><p style="${F107_PARAGRAPH_STYLE}">Оттиск КПШ</p><p style="${F107_PARAGRAPH_STYLE}">ОПС места приёма</p><p style="${F107_PARAGRAPH_STYLE}min-height:7mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}border-bottom:1px solid #111;min-height:3.5mm;">&nbsp;</p><p style="${F107_PARAGRAPH_STYLE}">(подпись почтового работника)</p></td>
+    <td style="width:38.6mm;border:none;padding:0;vertical-align:top;text-align:center;padding-top:7.4mm;">
+      <div style="height:24.5mm;border:1px solid #111;box-sizing:border-box;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:1mm;">
+        <p style="${F107_PARAGRAPH_STYLE}">Оттиск КПШ</p>
+        <p style="${F107_PARAGRAPH_STYLE}">ОПС места приёма</p>
+      </div>
+    </td>
   </tr></tbody>
 </table>`;
 

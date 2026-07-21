@@ -1471,7 +1471,20 @@ export default function DocumentEditorPage() {
 
       const blob = await pdfRes.blob();
       const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, "_blank"); // просмотр в новой вкладке
+      if (isInventory107) {
+        const contentDisposition = pdfRes.headers.get('Content-Disposition') || '';
+        const filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+        const responseFilename = filenameMatch && decodeURIComponent(filenameMatch[1] || filenameMatch[2]);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = responseFilename || 'opisi-vlozheniya-f107.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } else {
+        window.open(blobUrl, "_blank"); // просмотр в новой вкладке
+      }
 
       // 3) Очистка локальных данных формы (consent_id сохраняем) + отметка времени
       try {

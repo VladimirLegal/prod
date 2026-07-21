@@ -2046,10 +2046,17 @@ router.post('/docs/:id/export/pdf', async (req, res) => {
     console.log('[PDF] incoming html length:', htmlInput.length);
     console.log('[PDF] data keys:', Object.keys(data));
 
-    const finalHtml = renderFinalHtml(htmlInput, data);
+    // Ф.107 всегда собираем на сервере из данных формы. HTML редактора не
+    // используем: TipTap может не сохранить <img> с логотипом Почты России.
+    const finalHtml = docType === 'share_sale_notice_inventory107'
+      ? buildShareSaleNoticeRenderData({
+          ...data,
+          documentType: 'share_sale_notice_inventory107',
+        }).inventoriesHtml
+      : renderFinalHtml(htmlInput, data);
     const alignedHtml = docType === 'share_sale_notice_inventory107'
       ? finalHtml
-      : enforceInlineAlignment(finalHtml);  // 👈 вставили
+      : enforceInlineAlignment(finalHtml);
     console.log('[PDF] finalHtml length:', alignedHtml.length);
     const pdfBuffer = await exportPdf(alignedHtml, { docType });         // 👈 передаём alignedHtml
 
