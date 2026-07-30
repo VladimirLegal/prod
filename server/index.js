@@ -223,6 +223,9 @@ app.use('/api/admin', adminRoutes);
 const counterpartyRoutes = require('./routes/counterpartyRoutes');
 app.use('/api/counterparty', counterpartyRoutes);
 
+const contentRoutes = require('./routes/contentRoutes');
+app.use('/api/content', contentRoutes);
+
 // ---------- статические файлы (только для авторизованных) ----------
 const tempDir = path.join(__dirname, 'temp');
 const tempRouter = express.Router();
@@ -254,6 +257,10 @@ function serveSpaRoute(req, res) {
 
   res.status(503).send('Client application is not available. Build the client or set CLIENT_ORIGIN.');
 }
+
+// Публичные страницы статей должны открываться напрямую, а не только после
+// клиентского перехода внутри React-приложения.
+app.get(['/articles', '/articles/:slug'], serveSpaRoute);
 
 // Белый список slug -> файл
 const PAGE_WHITELIST = new Map([
