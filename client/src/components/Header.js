@@ -71,14 +71,6 @@ const Header = () => {
             </li>
             <li>
               <Link 
-                to="/agreement" 
-                className={`hover:text-blue-600 transition ${location.pathname === '/agreement' ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
-              >
-                Соглашение
-              </Link>
-            </li>
-            <li>
-              <Link 
                 to="/about" 
                 className={`hover:text-blue-600 transition ${location.pathname === '/about' ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
               >
@@ -163,13 +155,6 @@ const Header = () => {
             onClick={() => setMenuOpen(false)}
           >
             Статьи
-          </Link>
-          <Link
-            to="/agreement"
-            className="block py-2 text-gray-800 hover:bg-blue-50"
-            onClick={() => setMenuOpen(false)}
-          >
-            Соглашение об обработке ПД
           </Link>
           <Link
             to="/about"
