@@ -62,6 +62,14 @@ const Header = () => {
               </Link>
             </li>
             <li>
+              <Link
+                to="/articles"
+                className={`hover:text-blue-600 transition ${location.pathname === '/articles' || location.pathname.startsWith('/articles/') ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
+              >
+                Статьи
+              </Link>
+            </li>
+            <li>
               <Link 
                 to="/agreement" 
                 className={`hover:text-blue-600 transition ${location.pathname === '/agreement' ? 'text-blue-600 font-medium' : 'text-gray-600'}`}
@@ -148,6 +156,13 @@ const Header = () => {
             onClick={() => setMenuOpen(false)}
           >
             Главная
+          </Link>
+          <Link
+            to="/articles"
+            className={`block py-2 hover:bg-blue-50 ${location.pathname === '/articles' || location.pathname.startsWith('/articles/') ? 'text-blue-600 font-medium' : 'text-gray-800'}`}
+            onClick={() => setMenuOpen(false)}
+          >
+            Статьи
           </Link>
           <Link
             to="/agreement"

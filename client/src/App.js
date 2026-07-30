@@ -25,6 +25,8 @@ import CounterpartyCheckPage from './pages/CounterpartyCheckPage';
 import OtherDocumentsPage from './pages/OtherDocumentsPage';
 import MaternityCapitalSharesWizard from './pages/MaternityCapitalSharesWizard';
 import ShareSaleNoticeWizard from './pages/ShareSaleNoticeWizard';
+import ArticlesPage from './pages/ArticlesPage';
+import ArticlePage from './pages/ArticlePage';
 
 
 function buildReconsentUrl(location, fallbackNext = null) {
@@ -114,6 +116,8 @@ function AppRoutes() {
       <Route path="/auth/magic" element={<MagicHandlerPage />} />
       <Route path="/agreement" element={<AgreementPage />} />
       <Route path="/about" element={<AboutPage />} />
+      <Route path="/articles" element={<ArticlesPage />} />
+      <Route path="/articles/:slug" element={<ArticlePage />} />
       <Route path="/property-type/:transactionType" element={<PropertyTypePage />} />
       <Route path="/other-documents" element={<OtherDocumentsPage />} />
       <Route
