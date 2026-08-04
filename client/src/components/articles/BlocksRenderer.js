@@ -48,7 +48,14 @@ function renderListItem(item, key) {
 function renderBlock(block, key) {
   switch (block?.type) {
     case 'paragraph':
-      return <p key={key} className="my-4 min-h-[0.25rem] leading-7 text-gray-700">{childrenOf(block)}</p>;
+      return (
+        <p
+          key={key}
+          className="my-4 min-h-[0.25rem] text-left leading-7 text-gray-700 md:text-justify"
+        >
+          {childrenOf(block)}
+        </p>
+      );
     case 'heading': {
       const level = Math.min(4, Math.max(2, Number(block.level) || 2));
       const Heading = `h${level}`;

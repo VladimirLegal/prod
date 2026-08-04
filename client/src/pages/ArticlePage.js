@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import BlocksRenderer from '../components/articles/BlocksRenderer';
+import ArticleSectionsRenderer from '../components/articles/ArticleSectionsRenderer';
 import { coverUrl, formatArticleDate, relationValue } from '../components/articles/ArticleCard';
 import { getArticleBySlug } from '../services/contentApi';
 import { setPageMeta } from '../utils/pageMeta';
@@ -50,6 +51,9 @@ export default function ArticlePage() {
   const sourcesValue = article.legalSources?.data || article.legalSources;
   const sources = Array.isArray(sourcesValue) ? sourcesValue : [];
 
+  const sectionsValue = article.sections?.data || article.sections;
+  const sections = Array.isArray(sectionsValue) ? sectionsValue : [];
+
   return (
     <main>
       <article className="mx-auto max-w-[800px]">
@@ -59,11 +63,33 @@ export default function ArticlePage() {
         {article.excerpt && <p className="mt-5 text-xl leading-8 text-gray-600">{article.excerpt}</p>}
         <div className="mt-5 text-sm text-gray-500">{[author.name || author.fullName || author.displayName, formatArticleDate(article.publishedAt)].filter(Boolean).join(' · ')}</div>
         {image && <img src={image} alt={relationValue(article.cover).alternativeText || article.title || ''} className="mt-8 max-h-[520px] w-full rounded-2xl object-cover" />}
-        <div className="mt-8"><BlocksRenderer content={article.content} /></div>
+        <div className="mt-8">
+          {sections.length > 0 ? (
+            <ArticleSectionsRenderer sections={sections} />
+          ) : (
+            <BlocksRenderer content={article.content} />
+          )}
+        </div>
 
         {sources.length > 0 && <section className="mt-10 border-t pt-7"><h2 className="text-xl font-bold">Правовые источники</h2><ul className="mt-3 list-disc space-y-2 pl-5">{sources.map((source, index) => <li key={relationValue(source).id || index}><NamedLink value={source} /></li>)}</ul></section>}
         {(relationValue(article.relatedService).name || relationValue(article.relatedService).title) && <section className="mt-8 rounded-xl bg-blue-50 p-6"><h2 className="text-lg font-bold">Связанная услуга</h2><div className="mt-2"><NamedLink value={article.relatedService} /></div></section>}
-        {(author.name || author.fullName || author.displayName) && <section className="mt-8 rounded-xl border p-6"><h2 className="text-lg font-bold">Об авторе</h2><p className="mt-2 font-medium">{author.name || author.fullName || author.displayName}</p>{author.bio && <p className="mt-2 text-gray-600">{author.bio}</p>}</section>}
+        {(author.name || author.fullName || author.displayName) && (
+          <section className="mt-8 rounded-xl border p-6">
+            <h2 className="text-lg font-bold">Об авторе</h2>
+
+            <p className="mt-2 font-medium">
+              {author.name || author.fullName || author.displayName}
+            </p>
+
+            {Array.isArray(author.bio) ? (
+              <div className="mt-2 text-gray-600">
+                <BlocksRenderer content={author.bio} />
+              </div>
+            ) : (
+              author.bio && <p className="mt-2 text-gray-600">{author.bio}</p>
+            )}
+          </section>
+        )}
       </article>
     </main>
   );
