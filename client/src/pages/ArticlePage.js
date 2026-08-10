@@ -6,6 +6,17 @@ import { coverUrl, formatArticleDate, relationValue } from '../components/articl
 import { getArticleBySlug } from '../services/contentApi';
 import { setPageMeta } from '../utils/pageMeta';
 
+function getCleanCanonical(value, fallback) {
+  try {
+    const url = new URL(value || fallback, window.location.origin);
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return fallback;
+  }
+}
+
 function NamedLink({ value }) {
   const item = relationValue(value);
   const label = item.name || item.title || item.label;
@@ -33,7 +44,10 @@ export default function ArticlePage() {
     return setPageMeta({
       title: seo.metaTitle || article.title,
       description: seo.metaDescription || article.excerpt,
-      canonical: seo.canonicalUrl || window.location.href,
+      canonical: getCleanCanonical(
+        seo.canonicalUrl,
+        `${window.location.origin}/articles/${encodeURIComponent(article.slug)}`
+      ),
       noIndex: Boolean(seo.noIndex),
       type: 'article',
       image: coverUrl(article.cover),

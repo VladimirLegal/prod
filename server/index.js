@@ -225,6 +225,12 @@ app.use('/api/counterparty', counterpartyRoutes);
 
 const contentRoutes = require('./routes/contentRoutes');
 app.use('/api/content', contentRoutes);
+const contentService = require('./services/contentService');
+const {
+  renderArticlePage,
+  renderArticlesPage,
+  renderSitemap,
+} = require('./services/articleSeoRenderer');
 
 // ---------- статические файлы (только для авторизованных) ----------
 const tempDir = path.join(__dirname, 'temp');
@@ -243,7 +249,9 @@ const contentDir = path.join(__dirname, 'content');
 const clientBuildDir = path.join(__dirname, '..', 'client', 'build');
 const clientIndexFile = path.join(clientBuildDir, 'index.html');
 const trimmedClientOrigin = CLIENT_ORIGIN.replace(/\/+$/, '');
-
+// Позволяет Express самостоятельно отдавать собранные CSS, JS и публичные
+// файлы React-приложения. На production их по-прежнему обычно обслуживает Nginx.
+app.use(express.static(clientBuildDir, { index: false }));
 function serveSpaRoute(req, res) {
   if (fs.existsSync(clientIndexFile)) {
     return res.sendFile(clientIndexFile);
@@ -258,9 +266,75 @@ function serveSpaRoute(req, res) {
   res.status(503).send('Client application is not available. Build the client or set CLIENT_ORIGIN.');
 }
 
-// Публичные страницы статей должны открываться напрямую, а не только после
-// клиентского перехода внутри React-приложения.
-app.get(['/articles', '/articles/:slug'], serveSpaRoute);
+app.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const articles = await contentService.getSitemapArticles();
+    const sitemap = renderSitemap(articles);
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+
+    return res.status(200).send(sitemap);
+  } catch (error) {
+    console.error('[sitemap] Unable to build sitemap:', error.message);
+    return res.status(503).send('Sitemap temporarily unavailable.');
+  }
+});
+
+// Публичный раздел статей.
+// Express получает опубликованные материалы из Strapi и сразу добавляет
+// их содержимое и SEO-метаданные в первоначальный HTML.
+// После загрузки страницы React продолжает работать как обычно.
+app.get('/articles', async (req, res) => {
+  if (!fs.existsSync(clientIndexFile)) {
+    return serveSpaRoute(req, res);
+  }
+
+  try {
+    const [indexHtml, articles] = await Promise.all([
+      fs.promises.readFile(clientIndexFile, 'utf8'),
+      contentService.getArticles(),
+    ]);
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.status(200).send(renderArticlesPage(indexHtml, articles));
+  } catch (error) {
+    console.error('[articles] Unable to render articles page:', error.message);
+    return res.status(503).send('Материалы временно недоступны.');
+  }
+});
+
+app.get('/articles/:slug', async (req, res) => {
+  const slug = String(req.params.slug || '');
+  const validSlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+  if (!validSlug.test(slug)) {
+    return res.status(404).send('Материал не найден.');
+  }
+
+  if (!fs.existsSync(clientIndexFile)) {
+    return serveSpaRoute(req, res);
+  }
+
+  try {
+    const [indexHtml, article] = await Promise.all([
+      fs.promises.readFile(clientIndexFile, 'utf8'),
+      contentService.getArticleBySlug(slug),
+    ]);
+
+    if (!article) {
+      return res.status(404).send('Материал не найден.');
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.status(200).send(renderArticlePage(indexHtml, article));
+  } catch (error) {
+    console.error('[articles] Unable to render article:', error.message);
+    return res.status(503).send('Материал временно недоступен.');
+  }
+});
 
 // Белый список slug -> файл
 const PAGE_WHITELIST = new Map([

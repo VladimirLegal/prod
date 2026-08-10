@@ -104,6 +104,40 @@ async function getArticles() {
   return requestArticles(params);
 }
 
+async function getSitemapArticles() {
+  const pageSize = 100;
+  const articles = [];
+  let page = 1;
+
+  while (true) {
+    const params = new URLSearchParams({ status: 'published' });
+
+    addFields(params, [
+      'title',
+      'slug',
+      'publicationType',
+      'publishedAt',
+      'updatedAt',
+    ]);
+
+    params.append('populate[seo]', 'true');
+    params.append('sort[0]', 'publishedAt:desc');
+    params.append('pagination[page]', String(page));
+    params.append('pagination[pageSize]', String(pageSize));
+
+    const batch = await requestArticles(params);
+    articles.push(...batch);
+
+    if (batch.length < pageSize) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return articles;
+}
+
 async function getArticleBySlug(slug) {
   const params = new URLSearchParams({ status: 'published' });
 
@@ -121,7 +155,7 @@ async function getArticleBySlug(slug) {
   params.append('populate[cover]', 'true');
   params.append('populate[category]', 'true');
   params.append('populate[author]', 'true');
-  params.append('populate[seo]', 'true');
+  params.append('populate[seo][populate][shareImage]', 'true');
   params.append('populate[relatedService]', 'true');
   params.append('populate[legalSources]', 'true');
 
@@ -147,5 +181,6 @@ async function getArticleBySlug(slug) {
 module.exports = {
   ContentServiceError,
   getArticles,
+  getSitemapArticles,
   getArticleBySlug,
 };

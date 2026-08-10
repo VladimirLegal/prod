@@ -9,7 +9,7 @@ export default function ArticlesPage() {
   useEffect(() => setPageMeta({
     title: 'Статьи и материалы — Legal Portal',
     description: 'Практические материалы о недвижимости, юридических документах и развитии Legal Portal.',
-    canonical: window.location.href,
+    canonical: `${window.location.origin}/articles`,
   }), []);
 
   useEffect(() => {
