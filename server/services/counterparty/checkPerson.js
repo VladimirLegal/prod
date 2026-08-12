@@ -11,6 +11,7 @@ const checkKad = require('./sources/kad');
 const checkRasArbitr = require('./sources/rasArbitr');
 const buildArbitrationApiCloudCombined = require('./buildArbitrationApiCloudCombined');
 const checkFns = require('./sources/fns');
+const checkLegalEntityParticipationApiCloud = require('./sources/legalEntityParticipationApiCloud');
 const checkCourtsCommon = require('./sources/courtsCommon');
 const passportKontur = require('./sources/passportKontur');
 const fsspKontur = require('./sources/fsspKontur');
@@ -350,6 +351,7 @@ const APICLOUD_SELECTIVE_SOURCES = [
   'rosfin',
   'arbitrationApiCloudCombined',
   'fns',
+  'legalEntityParticipationApiCloud',
   'inoagent',
 ];
 
@@ -498,6 +500,7 @@ const APICLOUD_RUNNERS = {
   rosfin: checkRosfin,
   inoagent: checkInoagent,
   fns: checkFns,
+  legalEntityParticipationApiCloud: checkLegalEntityParticipationApiCloud,
   kad: checkKad,
   rasArbitr: checkRasArbitr,
 };
@@ -513,6 +516,7 @@ const APICLOUD_DIRECT_RUN_ORDER = [
   'kad',
   'rasArbitr',
   'fns',
+  'legalEntityParticipationApiCloud',
 ];
 
 const REUSABLE_SOURCE_STATUSES = new Set([

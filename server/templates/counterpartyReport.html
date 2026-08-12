@@ -3032,6 +3032,285 @@
       </section>
     {{/if}}
 
+    {{#if sources.legalEntityParticipationApiCloud}}
+      <section class="source-block">
+        <h3>Участие в юридических лицах (API-cloud)</h3>
+
+        <p>
+          Провайдер:
+          {{sources.legalEntityParticipationApiCloud.provider}},
+          статус:
+          {{sources.legalEntityParticipationApiCloud.statusText}}
+        </p>
+
+        {{#if (eq sources.legalEntityParticipationApiCloud.status "skipped")}}
+          <div class="skipped-source-note">
+            {{#if sources.legalEntityParticipationApiCloud.message}}
+              {{sources.legalEntityParticipationApiCloud.message}}
+            {{else}}
+              Источник не запускался в рамках этой проверки.
+            {{/if}}
+          </div>
+        {{/if}}
+
+        {{#if sources.legalEntityParticipationApiCloud.error}}
+          <p class="error">
+            {{#if sources.legalEntityParticipationApiCloud.message}}
+              {{sources.legalEntityParticipationApiCloud.message}}
+            {{else}}
+              {{sources.legalEntityParticipationApiCloud.error}}
+            {{/if}}
+          </p>
+        {{/if}}
+
+        <div
+          style="
+            border: 1px solid #dbeafe;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 10px;
+            background: #f8fbff;
+          "
+        >
+          <div
+            style="
+              font-size: 14px;
+              font-weight: 700;
+              color: #111827;
+            "
+          >
+            Сводка проверки
+          </div>
+
+          <table style="margin-top: 8px;">
+            <tbody>
+              <tr>
+                <th>Найдено уникальных юридических лиц</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.totalCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Только руководитель</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.directorOnlyCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Только учредитель</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.founderOnlyCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Руководитель и учредитель</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.directorAndFounderCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Действующих организаций</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.activeCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Недействующих организаций</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.inactiveCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Организаций с недостоверными сведениями</th>
+                <td>
+                  {{sources.legalEntityParticipationApiCloud.summary.unreliableCount}}
+                </td>
+              </tr>
+
+              <tr>
+                <th>Комментарий</th>
+                <td>
+                  {{#if sources.legalEntityParticipationApiCloud.message}}
+                    {{sources.legalEntityParticipationApiCloud.message}}
+                  {{else}}
+                    —
+                  {{/if}}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {{#if sources.legalEntityParticipationApiCloud.items.length}}
+          <div style="margin-top: 14px;">
+            <div
+              style="
+                font-size: 15px;
+                font-weight: 700;
+                color: #111827;
+                margin-bottom: 8px;
+              "
+            >
+              Участие в юридических лицах — аналитическая таблица
+            </div>
+
+            <table
+              style="
+                table-layout: fixed;
+                width: 100%;
+                font-size: 11px;
+              "
+            >
+              <thead style="display: table-header-group;">
+                <tr>
+                  <th style="width: 36%;">Организация</th>
+                  <th style="width: 13%;">Роль проверяемого</th>
+                  <th style="width: 13%;">Статус</th>
+                  <th style="width: 14%;">Достоверность сведений</th>
+                  <th style="width: 13%;">Регион</th>
+                  <th style="width: 11%;">Источник</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {{#each sources.legalEntityParticipationApiCloud.items}}
+                  <tr style="page-break-inside: avoid;">
+                    <td style="word-break: break-word;">
+                      <div style="font-weight: 700;">
+                        {{#if shortName}}
+                          {{shortName}}
+                        {{else}}
+                          {{#if fullName}}
+                            {{fullName}}
+                          {{else}}
+                            Организация без наименования
+                          {{/if}}
+                        {{/if}}
+                      </div>
+
+                      {{#if fullName}}
+                        <div
+                          style="
+                            margin-top: 3px;
+                            color: #4b5563;
+                          "
+                        >
+                          {{fullName}}
+                        </div>
+                      {{/if}}
+
+                      <div
+                        style="
+                          margin-top: 4px;
+                          color: #4b5563;
+                        "
+                      >
+                        ИНН:
+                        {{#if companyInn}}
+                          {{companyInn}}
+                        {{else}}
+                          —
+                        {{/if}}
+
+                        • ОГРН:
+
+                        {{#if companyOgrn}}
+                          {{companyOgrn}}
+                        {{else}}
+                          —
+                        {{/if}}
+                      </div>
+
+                      <div style="margin-top: 3px; color: #4b5563;">
+                        Дата регистрации:
+                        {{#if registrationDate}}
+                          {{registrationDate}}
+                        {{else}}
+                          —
+                        {{/if}}
+                      </div>
+
+                      <div style="margin-top: 3px; color: #4b5563;">
+                        ОКВЭД:
+                        {{#if okved}}
+                          {{okved}}
+                        {{else}}
+                          —
+                        {{/if}}
+
+                        {{#if okvedName}}
+                          • {{okvedName}}
+                        {{/if}}
+                      </div>
+                    </td>
+
+                    <td>
+                      {{#if rolesText}}
+                        {{rolesText}}
+                      {{else}}
+                        Роль не указана
+                      {{/if}}
+                    </td>
+
+                    <td>
+                      {{#if statusText}}
+                        {{statusText}}
+                      {{else}}
+                        Статус не указан
+                      {{/if}}
+                    </td>
+
+                    <td>
+                      {{#if dataReliabilityText}}
+                        {{dataReliabilityText}}
+                      {{else}}
+                        Достоверность не указана
+                      {{/if}}
+                    </td>
+
+                    <td>
+                      {{#if region}}
+                        {{region}}
+                      {{else}}
+                        —
+                      {{/if}}
+                    </td>
+
+                    <td>
+                      {{#if boUrl}}
+                        <a
+                          class="report-source-link"
+                          href="{{boUrl}}"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Открыть на bo.nalog.ru
+                        </a>
+                      {{else}}
+                        —
+                      {{/if}}
+                    </td>
+                  </tr>
+                {{/each}}
+              </tbody>
+            </table>
+          </div>
+        {{else}}
+          {{#unless (eq sources.legalEntityParticipationApiCloud.status "skipped")}}
+            <p class="empty" style="margin-top: 10px;">
+              Сведения об участии проверяемого в юридических лицах не найдены.
+            </p>
+          {{/unless}}
+        {{/if}}
+      </section>
+    {{/if}}
+
     {{#if sources.rosfin}}
       <section class="source-block">
         <h3>Росфинмониторинг</h3>

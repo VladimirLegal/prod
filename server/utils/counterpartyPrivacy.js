@@ -6,6 +6,7 @@ const SOURCE_KEYS = new Set([
   'mvdWanted',
   'fssp',
   'fns',
+  'legalEntityParticipationApiCloud',
   'stopOperRS',
   'rosfin',
   'inoagent',
@@ -36,6 +37,7 @@ const URL_LIKE_KEYS = new Set([
   'sourceUrl',
   'caseUrl',
   'decisionUrl',
+  'boUrl',
 ]);
 
 const ALWAYS_MASK_KEYS = new Set([
@@ -110,6 +112,10 @@ const SOURCE_POLICIES = {
   wantedKontur: { structural: 'wanted', text: 'tokens' },
   snilsKontur: { structural: 'person', text: 'tokens' },
   fns: { structural: 'alwaysIp', text: 'tokens' },
+  legalEntityParticipationApiCloud: {
+    structural: 'targetOnly',
+    text: 'tokens',
+  },
   commercialActivityKontur: { structural: 'targetOnly', text: 'tokens' },
   arbitrationApiCloudCombined: { structural: 'targetOnly', text: 'tokens' },
   arbitrationKontur: { structural: 'targetOnly', text: 'tokens' },

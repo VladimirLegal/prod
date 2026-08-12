@@ -351,6 +351,7 @@ const APICLOUD_SELECTIVE_SOURCES = [
   'rosfin',
   'arbitrationApiCloudCombined',
   'fns',
+  'legalEntityParticipationApiCloud',
   'inoagent',
 ];
 

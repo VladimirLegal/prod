@@ -29,6 +29,10 @@ const SELECTIVE_SOURCE_GROUPS = [
       { key: 'rosfin', label: 'Росфинмониторинг' },
       { key: 'arbitrationApiCloudCombined', label: 'Арбитражные дела и судебные акты' },
       { key: 'fns', label: 'ФНС' },
+      {
+        key: 'legalEntityParticipationApiCloud',
+        label: 'Участие в юридических лицах',
+      },
       { key: 'inoagent', label: 'Иноагенты' },
     ],
   },
@@ -62,6 +66,7 @@ const SHORT_SOURCE_LABELS = {
   rosfin: 'РФМ',
   arbitrationApiCloudCombined: 'Арб',
   fns: 'ФНС',
+  legalEntityParticipationApiCloud: 'Участ.ЮЛ',
   inoagent: 'Иноаг',
 
   // Контур
@@ -1116,6 +1121,7 @@ function CounterpartyCheckPage() {
     rasArbitr: 'Арбитраж РФ',
     arbitrationApiCloudCombined: 'Арбитражные дела и судебные акты',
     fns: 'ФНС',
+    legalEntityParticipationApiCloud: 'Участие в юридических лицах (API-cloud)',
     courtsCommon: 'Суды общей юрисдикции',
     passportKontur: 'Проверка паспорта (Контур)',
     snilsKontur: 'Проверка СНИЛС (Контур)',
@@ -1130,29 +1136,21 @@ function CounterpartyCheckPage() {
   const SOURCE_ORDER = [
     'mvdPassport',
     'passportKontur',
-
     'mvdWanted',
     'wantedKontur',
-
     'stopOperRS',
-
     'fns',
-
+    'legalEntityParticipationApiCloud',
     'rosfin',
     'inoagent',
     'rosfinKontur',
-
     'efrsb',
     'bankruptcyKontur',
-
     'fssp',
     'fsspKontur',
-
     'arbitrationApiCloudCombined',
     'arbitrationKontur',
-
     'courtsCommon',
-
     'commercialActivityKontur',
   ];
 
@@ -1937,6 +1935,12 @@ function CounterpartyCheckPage() {
         case 'fns':
           content = renderFns(items, source);
           break;
+        case 'legalEntityParticipationApiCloud':
+          content = renderLegalEntityParticipationApiCloud(
+            items,
+            source
+          );
+          break;
         case 'stopOperRS':
           content = renderStopOperRS(items, source);
           break;
@@ -1957,6 +1961,12 @@ function CounterpartyCheckPage() {
           break;
         case 'fns':
           content = renderFns(items, source);
+          break;
+        case 'legalEntityParticipationApiCloud':
+          content = renderLegalEntityParticipationApiCloud(
+            items,
+            source
+          );
           break;
         case 'rosfin':
           content = renderRosfin(items, source);
@@ -2397,7 +2407,127 @@ function CounterpartyCheckPage() {
       </div>
     );
   };
- 
+
+  const renderLegalEntityParticipationApiCloud = (
+    items = [],
+    source = {}
+  ) => {
+    const summary = source?.summary || {};
+
+    const totalCount = Number(
+      summary.totalCount ?? items.length ?? 0
+    );
+
+    const hasOrganizations = totalCount > 0;
+
+    const badgeText = hasOrganizations
+      ? 'Найдены сведения об участии в юридических лицах'
+      : 'Сведения об участии в юридических лицах не найдены';
+
+    const badgeClass = hasOrganizations
+      ? 'bg-blue-100 text-blue-800'
+      : 'bg-slate-100 text-slate-700';
+
+    const comment =
+      source?.message ||
+      (hasOrganizations
+        ? 'Найдены сведения об участии проверяемого в юридических лицах. Подробный перечень организаций приведён в отчёте.'
+        : 'Сведения об участии проверяемого в юридических лицах не найдены.');
+
+    return (
+      <div className="space-y-3">
+        <div
+          className={`inline-flex px-2 py-1 rounded text-xs font-semibold ${badgeClass}`}
+        >
+          {badgeText}
+        </div>
+
+        <div className="border rounded-xl p-3 bg-slate-50">
+          <div className="text-sm font-semibold text-gray-900 mb-2">
+            Сводка проверки
+          </div>
+
+          <table className="min-w-full text-xs border">
+            <tbody>
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium w-64">
+                  Найдено уникальных юридических лиц
+                </td>
+                <td className="px-2 py-1">
+                  {totalCount}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Только руководитель
+                </td>
+                <td className="px-2 py-1">
+                  {Number(summary.directorOnlyCount || 0)}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Только учредитель
+                </td>
+                <td className="px-2 py-1">
+                  {Number(summary.founderOnlyCount || 0)}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Руководитель и учредитель
+                </td>
+                <td className="px-2 py-1">
+                  {Number(
+                    summary.directorAndFounderCount || 0
+                  )}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Действующих организаций
+                </td>
+                <td className="px-2 py-1">
+                  {Number(summary.activeCount || 0)}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Недействующих организаций
+                </td>
+                <td className="px-2 py-1">
+                  {Number(summary.inactiveCount || 0)}
+                </td>
+              </tr>
+
+              <tr className="border-b">
+                <td className="px-2 py-1 font-medium">
+                  Организаций с недостоверными сведениями
+                </td>
+                <td className="px-2 py-1">
+                  {Number(summary.unreliableCount || 0)}
+                </td>
+              </tr>
+
+              <tr>
+                <td className="px-2 py-1 font-medium">
+                  Комментарий
+                </td>
+                <td className="px-2 py-1">
+                  {comment}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
  
   const renderCommercialActivitySummary = (items = [], source = {}) => {
     const realItems = items.filter((item) => item.kind === 'commercial_activity_org');
