@@ -41,6 +41,9 @@ export default function ArticlePage() {
     if (!state.article) return undefined;
     const article = relationValue(state.article);
     const seo = relationValue(article.seo);
+    const seoImage =
+      coverUrl(seo.shareImage) ||
+      coverUrl(article.cover);
     return setPageMeta({
       title: seo.metaTitle || article.title,
       description: seo.metaDescription || article.excerpt,
@@ -50,7 +53,7 @@ export default function ArticlePage() {
       ),
       noIndex: Boolean(seo.noIndex),
       type: 'article',
-      image: coverUrl(article.cover),
+      image: seoImage,
     });
   }, [state.article]);
 
