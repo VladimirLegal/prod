@@ -86,6 +86,38 @@ function buildRasSummary(items = []) {
   };
 }
 
+function getRecords(response = {}) {
+  return Array.isArray(response.result) ? response.result :
+    Array.isArray(response.Result) ? response.Result : [];
+}
+
+function getPagesCount(response = {}) {
+  const value = Number(response.PagesCount ?? response.pagesCount ?? 1);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function getDocumentDedupKey(record = {}, index = 0) {
+  const fileUrl = record.FileUrl || record.fileUrl;
+  const parts = [
+    record.CaseId || record.caseId,
+    record.CaseNumber || record.caseNumber,
+    fileUrl,
+    record.RegistrationDate || record.registrationDate,
+    record.InstanceNumber || record.instanceNumber,
+    record.Type || record.type,
+  ].map((value) => String(value || '').trim());
+  return parts.some(Boolean) ? `document:${parts.join('|')}` : `record:${index}`;
+}
+
+function compactPageError(page, response = {}) {
+  return {
+    page,
+    error: response.error || 'request_failed',
+    message: response.message || null,
+    httpStatus: response.httpStatus || null,
+  };
+}
+
 async function checkRasArbitr(person, options = {}) {
   const participant = (person?.inn || person?.fullName || '').trim();
 
@@ -95,7 +127,7 @@ async function checkRasArbitr(person, options = {}) {
     response = await request('ras_arbitr.php', {
       type: 'search',
       participant,
-    });
+    }, options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs });
   }
 
   let result = {
@@ -139,10 +171,35 @@ async function checkRasArbitr(person, options = {}) {
     return wrapFallback(result, response, options);
   }
 
-  const records =
-    Array.isArray(response.result) ? response.result :
-    Array.isArray(response.Result) ? response.Result :
-    [];
+  let records = getRecords(response);
+
+  if (options.loadAllPages === true) {
+    const pagesCount = getPagesCount(response);
+    const loadedPages = [1];
+    const failedPages = [];
+    const allRecords = [...records];
+
+    for (let page = 2; page <= pagesCount; page += 1) {
+      const pageResponse = await request('ras_arbitr.php', {
+        type: 'search', participant, page,
+      }, options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs });
+      if (pageResponse?.error || Number(pageResponse?.status) !== 200) {
+        failedPages.push(compactPageError(page, pageResponse));
+        continue;
+      }
+      loadedPages.push(page);
+      allRecords.push(...getRecords(pageResponse));
+    }
+
+    const unique = new Map();
+    allRecords.forEach((record, index) => {
+      const key = getDocumentDedupKey(record, index);
+      if (!unique.has(key)) unique.set(key, record);
+    });
+    records = Array.from(unique.values());
+    result.pagination = { pagesCount, loadedPages, failedPages };
+    result.raw = response;
+  }
 
   if (!records.length) {
     result.status = 'empty';

@@ -12,6 +12,7 @@ const checkRasArbitr = require('./sources/rasArbitr');
 const buildArbitrationApiCloudCombined = require('./buildArbitrationApiCloudCombined');
 const checkFns = require('./sources/fns');
 const checkLegalEntityParticipationApiCloud = require('./sources/legalEntityParticipationApiCloud');
+const commercialActivityApiCloud = require('./sources/commercialActivityApiCloud');
 const checkCourtsCommon = require('./sources/courtsCommon');
 const passportKontur = require('./sources/passportKontur');
 const fsspKontur = require('./sources/fsspKontur');
@@ -352,6 +353,7 @@ const APICLOUD_SELECTIVE_SOURCES = [
   'arbitrationApiCloudCombined',
   'fns',
   'legalEntityParticipationApiCloud',
+  'commercialActivityApiCloud',
   'inoagent',
 ];
 
@@ -651,6 +653,20 @@ async function runApiCloudSources(normalized, sourceOptions = {}) {
     );
   }
 
+  const reusableCommercial = getReusablePreviousSource(
+    previousSources,
+    'commercialActivityApiCloud'
+  );
+
+  if (reusableCommercial) {
+    apiCloudSources.commercialActivityApiCloud = reusableCommercial;
+  } else {
+    apiCloudSources.commercialActivityApiCloud = await commercialActivityApiCloud(
+      normalized,
+      { ...sourceOptions, participationSource: apiCloudSources.legalEntityParticipationApiCloud }
+    );
+  }
+
   return apiCloudSources;
 }
 
@@ -663,7 +679,9 @@ async function runSelectedApiCloudSources(normalized, selectedSet, sourceOptions
   }
 
   const directSelectedKeys = APICLOUD_SELECTIVE_SOURCES.filter(
-    (key) => selectedSet.has(key) && key !== 'arbitrationApiCloudCombined'
+    (key) => selectedSet.has(key) &&
+      key !== 'arbitrationApiCloudCombined' &&
+      key !== 'commercialActivityApiCloud'
   );
 
   const directKeysToRun = [];
@@ -694,39 +712,58 @@ async function runSelectedApiCloudSources(normalized, selectedSet, sourceOptions
 
     if (reusableCombined) {
       sources.arbitrationApiCloudCombined = reusableCombined;
-      return sources;
+    } else {
+      const arbitrationParts = {};
+
+      const reusableKad = getReusablePreviousSource(previousSources, 'kad');
+      const reusableRas = getReusablePreviousSource(previousSources, 'rasArbitr');
+
+      if (reusableKad) {
+        arbitrationParts.kad = reusableKad;
+      }
+
+      if (reusableRas) {
+        arbitrationParts.rasArbitr = reusableRas;
+      }
+
+      const arbitrationKeysToRun = ['kad', 'rasArbitr'].filter(
+        (key) => !arbitrationParts[key]
+      );
+
+      const freshArbitrationParts = await runApiCloudSourceTasks(
+        arbitrationKeysToRun,
+        normalized,
+        sourceOptions
+      );
+
+      Object.assign(arbitrationParts, freshArbitrationParts);
+
+      sources.arbitrationApiCloudCombined = buildArbitrationApiCloudCombined(
+        normalized,
+        arbitrationParts.kad || {},
+        arbitrationParts.rasArbitr || {}
+      );
     }
+  }
 
-    const arbitrationParts = {};
+  if (selectedSet.has('commercialActivityApiCloud')) {
+    const reusableCommercial = getReusablePreviousSource(previousSources, 'commercialActivityApiCloud');
+    if (reusableCommercial) {
+      sources.commercialActivityApiCloud = reusableCommercial;
+    } else {
+      let participationSource = selectedSet.has('legalEntityParticipationApiCloud')
+        ? sources.legalEntityParticipationApiCloud
+        : getReusablePreviousSource(previousSources, 'legalEntityParticipationApiCloud');
 
-    const reusableKad = getReusablePreviousSource(previousSources, 'kad');
-    const reusableRas = getReusablePreviousSource(previousSources, 'rasArbitr');
+      if (!participationSource) {
+        participationSource = await checkLegalEntityParticipationApiCloud(normalized);
+      }
 
-    if (reusableKad) {
-      arbitrationParts.kad = reusableKad;
+      sources.commercialActivityApiCloud = await commercialActivityApiCloud(
+        normalized,
+        { ...sourceOptions, participationSource }
+      );
     }
-
-    if (reusableRas) {
-      arbitrationParts.rasArbitr = reusableRas;
-    }
-
-    const arbitrationKeysToRun = ['kad', 'rasArbitr'].filter(
-      (key) => !arbitrationParts[key]
-    );
-
-    const freshArbitrationParts = await runApiCloudSourceTasks(
-      arbitrationKeysToRun,
-      normalized,
-      sourceOptions
-    );
-
-    Object.assign(arbitrationParts, freshArbitrationParts);
-
-    sources.arbitrationApiCloudCombined = buildArbitrationApiCloudCombined(
-      normalized,
-      arbitrationParts.kad || {},
-      arbitrationParts.rasArbitr || {}
-    );
   }
 
   return sources;

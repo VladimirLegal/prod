@@ -1,5 +1,6 @@
 const LEGACY_NEUTRAL_SOURCE_KEYS = new Set([
   'commercialActivityKontur',
+  'commercialActivityApiCloud',
   'legalEntityParticipationApiCloud',
 ]);
 

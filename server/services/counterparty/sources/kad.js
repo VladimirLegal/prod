@@ -63,6 +63,39 @@ function buildKadSummary(items = []) {
   };
 }
 
+function getRecords(response = {}) {
+  return Array.isArray(response.result) ? response.result :
+    Array.isArray(response.Result) ? response.Result : [];
+}
+
+function getPagesCount(response = {}) {
+  const value = Number(response.PagesCount ?? response.pagesCount ?? 1);
+  return Number.isInteger(value) && value > 0 ? value : 1;
+}
+
+function getCaseDedupKey(record = {}, index = 0) {
+  const caseId = record.CaseId || record.caseId;
+  if (caseId) return `id:${caseId}`;
+
+  const caseNumber = record.CaseNumber || record.caseNumber;
+  if (caseNumber) return `number:${caseNumber}`;
+
+  try {
+    return `fallback:${JSON.stringify(record)}`;
+  } catch (error) {
+    return `record:${index}`;
+  }
+}
+
+function compactPageError(page, response = {}) {
+  return {
+    page,
+    error: response.error || 'request_failed',
+    message: response.message || null,
+    httpStatus: response.httpStatus || null,
+  };
+}
+
 async function checkKad(person, options = {}) {
   const participant = (person?.inn || person?.fullName || '').trim();
 
@@ -73,7 +106,7 @@ async function checkKad(person, options = {}) {
       type: 'search',
       participant,
       participantType: -1, // любой участник (истец/ответчик/третье лицо)
-    });
+    }, options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs });
   }
 
   let result = {
@@ -108,10 +141,35 @@ async function checkKad(person, options = {}) {
     return wrapFallback(result, response, options);
   }
 
-  const records =
-    Array.isArray(response.result) ? response.result :
-    Array.isArray(response.Result) ? response.Result :
-    [];
+  let records = getRecords(response);
+
+  if (options.loadAllPages === true) {
+    const pagesCount = getPagesCount(response);
+    const loadedPages = [1];
+    const failedPages = [];
+    const allRecords = [...records];
+
+    for (let page = 2; page <= pagesCount; page += 1) {
+      const pageResponse = await request('kad_arbitr.php', {
+        type: 'search', participant, participantType: -1, page,
+      }, options.timeoutMs == null ? {} : { timeoutMs: options.timeoutMs });
+      if (pageResponse?.error || Number(pageResponse?.status) !== 200) {
+        failedPages.push(compactPageError(page, pageResponse));
+        continue;
+      }
+      loadedPages.push(page);
+      allRecords.push(...getRecords(pageResponse));
+    }
+
+    const unique = new Map();
+    allRecords.forEach((record, index) => {
+      const key = getCaseDedupKey(record, index);
+      if (!unique.has(key)) unique.set(key, record);
+    });
+    records = Array.from(unique.values());
+    result.pagination = { pagesCount, loadedPages, failedPages };
+    result.raw = response;
+  }
 
   if (!records.length) {
     result.status = 'empty';
