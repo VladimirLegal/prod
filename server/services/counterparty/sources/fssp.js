@@ -122,6 +122,7 @@ function buildSummary(items = []) {
  *   - region: номер региона (строка/число, либо "-1" для всех)
  */
 async function checkFssp(person, options = {}) {
+  const organizationMode = options.organizationMode === true;
   // Базовый "пустой" результат
   let result = {
     status: 'empty',
@@ -139,19 +140,27 @@ async function checkFssp(person, options = {}) {
     raw: null,
   };
 
+  if (organizationMode && !/^\d{10}$/.test(String(person?.inn || ''))) {
+    return {
+      ...result,
+      status: 'skipped',
+      message: 'Проверка ФССП пропущена: отсутствует корректный 10-значный ИНН организации.',
+    };
+  }
+
   // Если нет токена или ФИО — даже не пытаемся ходить в API
-  if (!process.env.APICLOUD_API_TOKEN || !person?.fullName) {
+  if (!process.env.APICLOUD_API_TOKEN || (!organizationMode && !person?.fullName)) {
     return result;
   }
 
   // Разбираем ФИО на части для api-cloud (lastname / firstname / secondname)
-  const parts = (person.fullName || '').trim().split(/\s+/);
+  const parts = (person?.fullName || '').trim().split(/\s+/);
   const lastname = parts[0] || '';
   const firstname = parts[1] || '';
   const secondname = parts.slice(2).join(' ') || '';
 
   // Если нет фамилии или имени — смысла дергать API нет
-  if (!lastname || !firstname) {
+  if (!organizationMode && (!lastname || !firstname)) {
     return result;
   }
 
@@ -163,15 +172,16 @@ async function checkFssp(person, options = {}) {
   const regionParam = '-1';
 
   // Запрос к api-cloud
-  const response = await request('fssp.php', {
-    type: 'physical',
-    lastname,
-    firstname,
-    secondname: secondname || undefined,
-    birthdate: birthdate || undefined,
-    region: regionParam,
-    onlyActual: 0,
-  });
+  const params = organizationMode
+    ? { type: 'inn', inn: person.inn, region: regionParam, onlyActual: 0 }
+    : {
+        type: 'physical', lastname, firstname,
+        secondname: secondname || undefined,
+        birthdate: birthdate || undefined,
+        region: regionParam, onlyActual: 0,
+      };
+  const requestOptions = options.timeoutMs == null ? undefined : { timeoutMs: options.timeoutMs };
+  const response = await request('fssp.php', params, requestOptions);
 
   // Сохраняем "сырую" часть ответа, чтобы потом можно было посмотреть в loadRaw
   result.raw = response;
@@ -240,7 +250,8 @@ async function checkFssp(person, options = {}) {
       kind: 'fssp_proceeding',
 
       debtorName: rec.debtor_name || null,
-      debtorDob: rec.debtor_dob || null,
+      debtorDob: organizationMode ? null : rec.debtor_dob || null,
+      debtorInn: organizationMode ? rec.debtor_dob || null : null,
       debtorAddress: rec.debtor_address || null,
 
       processNumber: rec.process_title || null,

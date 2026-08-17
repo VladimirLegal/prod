@@ -1,9 +1,13 @@
 const checkLegalEntityParticipationApiCloud = require('./legalEntityParticipationApiCloud');
 const checkKad = require('./kad');
 const checkRasArbitr = require('./rasArbitr');
+const checkFssp = require('./fssp');
+const checkEfrsb = require('./efrsb');
 const buildArbitrationApiCloudCombined = require('../buildArbitrationApiCloudCombined');
 
 const ARBITRATION_TIMEOUT_MS = 120000;
+const FSSP_TIMEOUT_MS = 400000;
+const EFRSB_TIMEOUT_MS = 120000;
 
 function buildEmptySummary() {
   return {
@@ -13,6 +17,13 @@ function buildEmptySummary() {
     mixedRoleOrganizationsCount: 0, bankruptcyCaseOrganizationsCount: 0,
     totalBankruptcyCases: 0, organizationsWithDocumentsCount: 0,
     arbitrationErrorOrganizationsCount: 0,
+    withEnforcementProceedingsCount: 0, totalEnforcementProceedings: 0,
+    activeEnforcementProceedings: 0, closedEnforcementProceedings: 0,
+    enforcementProceedingsTotalAmount: 0, fsspErrorOrganizationsCount: 0,
+    fsspPartialOrganizationsCount: 0, withBankruptcyRecordsCount: 0,
+    totalBankruptcyRecords: 0, activeBankruptcyRecords: 0,
+    finishedBankruptcyRecords: 0, unknownBankruptcyRecords: 0,
+    efrsbErrorOrganizationsCount: 0, efrsbPartialOrganizationsCount: 0,
   };
 }
 
@@ -120,7 +131,47 @@ function baseOrganization(organization = {}) {
     isDataReliable: organization.isDataReliable ?? null,
     arbitrationCount: 0, arbitrationSum: null,
     arbitrationGroupByResult: [], arbitrationGroupByCategory: [], arbitrationProceedings: [],
+    enforcementProceedingsCount: 0, activeEnforcementProceedingsCount: 0,
+    closedEnforcementProceedingsCount: 0, enforcementProceedingsAmount: 0,
+    enforcementProceedings: [], fsspDiagnostics: emptyFsspDiagnostics(),
+    bankruptcyRecordsCount: 0, activeBankruptcyCount: 0,
+    finishedBankruptcyCount: 0, unknownBankruptcyCount: 0,
+    bankruptcyRecords: [], efrsbDiagnostics: emptyEfrsbDiagnostics(),
   };
+}
+
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function emptyFsspDiagnostics(status = 'empty', message = null) {
+  return { status, error: null, message, partial: false, countAll: null, pagesAll: null, totalLoadedPage: null };
+}
+
+function emptyEfrsbDiagnostics(status = 'empty', message = null) {
+  return { status, error: null, message, partial: false, totalCount: null, loadCount: null, allCountPages: null };
+}
+
+function compactFsspItem(item = {}) {
+  return {
+    processNumber: item.processNumber || null, processDate: item.processDate || null,
+    processTotal: item.processTotal || null, amount: numberOrNull(item.amount), subject: item.subject || null,
+    subjectItems: (Array.isArray(item.subjectItems) ? item.subjectItems : []).map(({ title, sum }) => ({ title: title || null, sum: numberOrNull(sum) })),
+    stopInfo: item.stopInfo || null, stopDate: item.stopDate || null, stopReason: item.stopReason || null,
+    documentType: item.documentType || null, documentText: item.documentText || null,
+    documentDetails: item.documentDetails || null, departmentName: item.departmentName || null,
+    departmentAddress: item.departmentAddress || null, officerName: item.officerName || null,
+    officerPhones: Array.isArray(item.officerPhones) ? item.officerPhones : [], debtorName: item.debtorName || null,
+    debtorInn: item.debtorInn || null, debtorAddress: item.debtorAddress || null,
+  };
+}
+
+function compactBankruptcyItem(item = {}) {
+  const fields = ['guid', 'fullName', 'inn', 'category', 'region', 'address', 'manager', 'caseNumber',
+    'status', 'statusCode', 'statusText', 'statusEgrul', 'description', 'updateDate', 'isActive', 'procedureState'];
+  return Object.fromEntries(fields.map((field) => [field, item[field] ?? null]));
 }
 
 async function enrichOrganization(organization) {
@@ -130,14 +181,18 @@ async function enrichOrganization(organization) {
       status: 'skipped', exception: false,
       message: 'Проверка KAD/RAS пропущена: отсутствует корректный 10-значный ИНН организации.',
     };
+    item.fsspDiagnostics = emptyFsspDiagnostics('skipped', 'Проверка ФССП пропущена: отсутствует корректный 10-значный ИНН организации.');
+    item.efrsbDiagnostics = emptyEfrsbDiagnostics('skipped', 'Проверка ЕФРСБ пропущена: отсутствует корректный 10-значный ИНН организации.');
     return item;
   }
 
   const target = { inn: organization.companyInn, fullName: organization.fullName || organization.shortName };
   try {
-    const [kadResult, rasResult] = await Promise.allSettled([
+    const [kadResult, rasResult, fsspResult, efrsbResult] = await Promise.allSettled([
       checkKad(target, { loadAllPages: true, timeoutMs: ARBITRATION_TIMEOUT_MS }),
       checkRasArbitr(target, { loadAllPages: true, timeoutMs: ARBITRATION_TIMEOUT_MS }),
+      checkFssp(target, { organizationMode: true, timeoutMs: FSSP_TIMEOUT_MS }),
+      checkEfrsb(target, { organizationMode: true, timeoutMs: EFRSB_TIMEOUT_MS }),
     ]);
     const makeErrorSource = (result, sourceName) => result.status === 'fulfilled'
       ? result.value
@@ -157,6 +212,37 @@ async function enrichOrganization(organization) {
     item.arbitrationDiagnostics = {
       status: kadSource.status === 'error' || rasSource.status === 'error' ? 'error' : 'ok',
       exception: false, kad: compactSource(kadSource), ras: compactSource(rasSource),
+    };
+    const fsspSource = makeErrorSource(fsspResult, 'FSSP');
+    const fsspItems = Array.isArray(fsspSource.items) ? fsspSource.items : [];
+    item.enforcementProceedings = fsspItems.map(compactFsspItem);
+    item.enforcementProceedingsCount = item.enforcementProceedings.length;
+    item.activeEnforcementProceedingsCount = Number(fsspSource.summary?.activeCount) || 0;
+    item.closedEnforcementProceedingsCount = Number(fsspSource.summary?.closedCount) || 0;
+    item.enforcementProceedingsAmount = Number(fsspSource.summary?.totalAmount) || 0;
+    const countAll = numberOrNull(fsspSource.raw?.countAll);
+    const pagesAll = numberOrNull(fsspSource.raw?.pagesAll);
+    const totalLoadedPage = numberOrNull(fsspSource.raw?.totalLoadedPage);
+    item.fsspDiagnostics = {
+      ...emptyFsspDiagnostics(fsspSource.status || 'empty', fsspSource.message || null),
+      error: fsspSource.error || null, countAll, pagesAll, totalLoadedPage,
+      partial: pagesAll !== null && totalLoadedPage !== null && pagesAll > totalLoadedPage,
+    };
+    const efrsbSource = makeErrorSource(efrsbResult, 'EFRSB');
+    const efrsbItems = Array.isArray(efrsbSource.items)
+      ? efrsbSource.items.filter((record) => record?.kind === 'bankruptcy_case') : [];
+    item.bankruptcyRecords = efrsbItems.map(compactBankruptcyItem);
+    item.bankruptcyRecordsCount = item.bankruptcyRecords.length;
+    item.activeBankruptcyCount = Number(efrsbSource.summary?.activeCount) || 0;
+    item.finishedBankruptcyCount = Number(efrsbSource.summary?.finishedCount) || 0;
+    item.unknownBankruptcyCount = Number(efrsbSource.summary?.unknownCount) || 0;
+    const totalCount = numberOrNull(efrsbSource.raw?.totalCount);
+    const loadCount = numberOrNull(efrsbSource.raw?.LoadCount);
+    const allCountPages = numberOrNull(efrsbSource.raw?.AllCountPages);
+    item.efrsbDiagnostics = {
+      ...emptyEfrsbDiagnostics(efrsbSource.status || 'empty', efrsbSource.message || null),
+      error: efrsbSource.error || null, totalCount, loadCount, allCountPages,
+      partial: totalCount !== null && loadCount !== null && totalCount > loadCount,
     };
     return item;
   } catch (error) {
@@ -192,6 +278,20 @@ function buildSummary(items = []) {
   summary.totalBankruptcyCases = items.reduce((sum, item) => sum + item.arbitrationProceedings.filter((p) => p.proceedingCategory === 'bankruptcy').length, 0);
   summary.organizationsWithDocumentsCount = items.filter((item) => item.arbitrationProceedings.some((p) => p.instances.some((i) => i.documents.length))).length;
   summary.arbitrationErrorOrganizationsCount = items.filter((item) => item.arbitrationDiagnostics?.status === 'error' || hasPaginationErrors(item.arbitrationDiagnostics)).length;
+  summary.withEnforcementProceedingsCount = items.filter((item) => item.enforcementProceedingsCount > 0).length;
+  summary.totalEnforcementProceedings = items.reduce((sum, item) => sum + item.enforcementProceedingsCount, 0);
+  summary.activeEnforcementProceedings = items.reduce((sum, item) => sum + item.activeEnforcementProceedingsCount, 0);
+  summary.closedEnforcementProceedings = items.reduce((sum, item) => sum + item.closedEnforcementProceedingsCount, 0);
+  summary.enforcementProceedingsTotalAmount = items.reduce((sum, item) => sum + item.enforcementProceedingsAmount, 0);
+  summary.fsspErrorOrganizationsCount = items.filter((item) => item.fsspDiagnostics?.status === 'error').length;
+  summary.fsspPartialOrganizationsCount = items.filter((item) => item.fsspDiagnostics?.partial === true).length;
+  summary.withBankruptcyRecordsCount = items.filter((item) => item.bankruptcyRecordsCount > 0).length;
+  summary.totalBankruptcyRecords = items.reduce((sum, item) => sum + item.bankruptcyRecordsCount, 0);
+  summary.activeBankruptcyRecords = items.reduce((sum, item) => sum + item.activeBankruptcyCount, 0);
+  summary.finishedBankruptcyRecords = items.reduce((sum, item) => sum + item.finishedBankruptcyCount, 0);
+  summary.unknownBankruptcyRecords = items.reduce((sum, item) => sum + item.unknownBankruptcyCount, 0);
+  summary.efrsbErrorOrganizationsCount = items.filter((item) => item.efrsbDiagnostics?.status === 'error').length;
+  summary.efrsbPartialOrganizationsCount = items.filter((item) => item.efrsbDiagnostics?.partial === true).length;
   return summary;
 }
 

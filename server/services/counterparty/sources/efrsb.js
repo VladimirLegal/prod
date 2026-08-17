@@ -120,6 +120,7 @@ function buildEmptySummary() {
     totalCount: 0,
     activeCount: 0,
     finishedCount: 0,
+    unknownCount: 0,
     hasActiveBankruptcy: false,
     hasFinishedBankruptcy: false,
     activeItems: [],
@@ -127,19 +128,44 @@ function buildEmptySummary() {
   };
 }
 
-function buildSummary(items = []) {
-  const activeItems = items.filter((item) => item.isActive === true);
-  const finishedItems = items.filter((item) => item.isActive === false);
+function buildSummary(items = [], organizationMode = false) {
+  const activeItems = items.filter((item) => organizationMode
+    ? item.procedureState === 'active'
+    : item.isActive === true);
+  const finishedItems = items.filter((item) => organizationMode
+    ? item.procedureState === 'finished'
+    : item.isActive === false);
+  const unknownItems = organizationMode
+    ? items.filter((item) => item.procedureState === 'unknown')
+    : [];
 
   return {
     totalCount: items.length,
     activeCount: activeItems.length,
     finishedCount: finishedItems.length,
+    unknownCount: unknownItems.length,
     hasActiveBankruptcy: activeItems.length > 0,
     hasFinishedBankruptcy: finishedItems.length > 0,
     activeItems,
     finishedItems,
   };
+}
+
+function resolveProcedureState(item = {}) {
+  const statusCode = String(item.statusCode || '').trim();
+  const statusText = [item.status, item.description]
+    .filter(Boolean)
+    .join(' ');
+
+  const hasFinishedStatus =
+    /^(ProceedingsFinished|ProceedingsStopped)$/iu.test(statusCode) ||
+    /(завершен[оа]?|прекращен[оа]?)/iu.test(statusText);
+
+  if (hasFinishedStatus) return 'finished';
+  if (item.isActive === true) return 'active';
+  if (item.isActive === false) return 'finished';
+
+  return 'unknown';
 }
 /**
  * Проверка банкротства по Федресурсу (bankrot.fedresurs.ru) через api-cloud
@@ -150,17 +176,28 @@ function buildSummary(items = []) {
  *  - legalStatus: fiz (физлицо)
  */
 async function checkEfrsb(person, options = {}) {
-  const queryString = (person?.inn || person?.fullName || '').trim();
+  const organizationMode = options.organizationMode === true;
+  const organizationInn = String(person?.inn || '').trim();
+  const queryString = organizationMode ? organizationInn : (person?.inn || person?.fullName || '').trim();
+
+  if (organizationMode && !/^\d{10}$/.test(organizationInn)) {
+    return {
+      status: 'skipped', provider: 'apicloud', items: [], summary: buildEmptySummary(), raw: null,
+      message: 'Проверка ЕФРСБ пропущена: отсутствует корректный 10-значный ИНН организации.',
+    };
+  }
 
   let response = null;
 
   if (process.env.APICLOUD_API_TOKEN && queryString) {
-    response = await request('bankrot.php', {
+    const params = {
       type: 'searchString',
       string: queryString,
-      legalStatus: 'fiz',
-      dopInfo: 1, // чтобы в ответе были дата/место рождения и др. доп. сведения
-    });
+      legalStatus: organizationMode ? 'legal' : 'fiz',
+      ...(organizationMode ? {} : { dopInfo: 1 }),
+    };
+    const requestOptions = options.timeoutMs == null ? undefined : { timeoutMs: options.timeoutMs };
+    response = await request('bankrot.php', params, requestOptions);
   }
 
   let result = {
@@ -177,23 +214,39 @@ async function checkEfrsb(person, options = {}) {
 
   // Ошибка api-cloud (формат {"error":"...", "message":"..."})
   if (response.error) {
+    const errorMessage =
+      response.message ||
+      `Ошибка API Федресурс (error=${response.error})`;
+
     result.status = 'error';
+    result.error = response.error;
+    result.message = errorMessage;
     result.items.push({
       kind: 'bankruptcy_lookup',
-      message: response.message || `Ошибка API Федресурс (error=${response.error})`,
+      message: errorMessage,
       rawRecord: response,
     });
+
     return wrapFallback(result, response, options);
   }
 
   // Ненормальный status
   if (typeof response.status !== 'number' || response.status !== 200) {
+    const errorMessage =
+      response.message ||
+      'Неизвестный ответ от API Федресурс';
+
     result.status = 'error';
+    result.error =
+      response.error ||
+      `status_${response.status ?? 'unknown'}`;
+    result.message = errorMessage;
     result.items.push({
       kind: 'bankruptcy_lookup',
-      message: response.message || 'Неизвестный ответ от API Федресурс',
+      message: errorMessage,
       rawRecord: response,
     });
+
     return wrapFallback(result, response, options);
   }
 
@@ -235,6 +288,7 @@ async function checkEfrsb(person, options = {}) {
 
       status: rec.status?.value || null,
       statusCode: rec.statusCode?.value || null,
+      statusEgrul: rec.statusEGRUL?.value ?? rec.statusEGRUL ?? null,
       description: rec.description?.value || null,
       updateDate: rec.updateDate?.value || null,
 
@@ -250,6 +304,7 @@ async function checkEfrsb(person, options = {}) {
       rawRecord: rec,
     };
 
+    item.procedureState = resolveProcedureState(item);
     const match = buildMatchData(person, item);
 
     return {
@@ -269,9 +324,11 @@ async function checkEfrsb(person, options = {}) {
       isStrongMatch: match.isStrongMatch,
       isRelevantMatch: match.isRelevantMatch,
     };
-  });
+  }).filter((item) => !organizationMode || toDigits(item.inn) === toDigits(organizationInn));
 
-  result.summary = buildSummary(result.items);
+  if (organizationMode && result.items.length === 0) result.status = 'empty';
+
+  result.summary = buildSummary(result.items, organizationMode);
   return wrapFallback(result, response, options);
 }
 
