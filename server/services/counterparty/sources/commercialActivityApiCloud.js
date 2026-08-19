@@ -149,6 +149,7 @@ function baseOrganization(organization = {}) {
     arbitrationGroupByResult: [], arbitrationGroupByCategory: [], arbitrationProceedings: [],
     enforcementProceedingsCount: 0, activeEnforcementProceedingsCount: 0,
     closedEnforcementProceedingsCount: 0, enforcementProceedingsAmount: 0,
+    activeEnforcementProceedingsAmount: 0, closedEnforcementProceedingsAmount: 0,
     enforcementProceedings: [], fsspDiagnostics: emptyFsspDiagnostics(),
     bankruptcyRecordsCount: 0, activeBankruptcyCount: 0,
     finishedBankruptcyCount: 0, unknownBankruptcyCount: 0,
@@ -260,7 +261,9 @@ async function enrichOrganization(organization) {
     item.enforcementProceedingsCount = item.enforcementProceedings.length;
     item.activeEnforcementProceedingsCount = Number(fsspSource.summary?.activeCount) || 0;
     item.closedEnforcementProceedingsCount = Number(fsspSource.summary?.closedCount) || 0;
-    item.enforcementProceedingsAmount = Number(fsspSource.summary?.totalAmount) || 0;
+    item.activeEnforcementProceedingsAmount = Number(fsspSource.summary?.activeAmount) || 0;
+    item.closedEnforcementProceedingsAmount = Number(fsspSource.summary?.closedAmount) || 0;
+    item.enforcementProceedingsAmount = item.activeEnforcementProceedingsAmount;
     const countAll = numberOrNull(fsspSource.raw?.countAll);
     const pagesAll = numberOrNull(fsspSource.raw?.pagesAll);
     const totalLoadedPage = numberOrNull(fsspSource.raw?.totalLoadedPage);

@@ -41,6 +41,37 @@ function normalizeSubjectItems(values) {
   }));
 }
 
+function normalizeSubjectTitle(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('ru-RU')
+    .replace(/ё/g, 'е');
+}
+
+function roundMoney(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function calculateProceedingAmount(record = {}, subjectItems = []) {
+  const remainingDebtTitle = 'остаток долга по исполнительному документу';
+  const enforcementFeeTitle = 'исполнительский сбор';
+  const remainingDebtItem = subjectItems.find((item) =>
+    normalizeSubjectTitle(item?.title) === remainingDebtTitle && Number.isFinite(item?.sum)
+  );
+
+  if (!remainingDebtItem) {
+    return normalizeMoney(record.sum) ?? normalizeMoney(record.debt_sum);
+  }
+
+  const enforcementFees = subjectItems.reduce((sum, item) =>
+    normalizeSubjectTitle(item?.title) === enforcementFeeTitle && Number.isFinite(item?.sum)
+      ? sum + item.sum
+      : sum, 0);
+
+  return roundMoney(remainingDebtItem.sum + enforcementFees);
+}
+
 function normalizePhones(values) {
   if (!Array.isArray(values)) return [];
 
@@ -67,14 +98,25 @@ function buildRegionKey(label = '') {
 
 function buildSummary(items = []) {
   const totalCount = items.length;
+  let activeCount = 0;
+  let closedCount = 0;
+  let activeAmount = 0;
+  let closedAmount = 0;
 
-  const totalAmount = items.reduce((acc, item) => {
-    const sum = Number(item?.amount || 0);
-    return acc + (Number.isFinite(sum) ? sum : 0);
-  }, 0);
+  for (const item of items) {
+    const amount = Number.isFinite(item?.amount) ? item.amount : 0;
+    if (item?.stopInfo) {
+      closedCount += 1;
+      closedAmount += amount;
+    } else {
+      activeCount += 1;
+      activeAmount += amount;
+    }
+  }
 
-  const activeCount = items.filter((item) => !item?.stopInfo).length;
-  const closedCount = items.filter((item) => !!item?.stopInfo).length;
+  activeAmount = roundMoney(activeAmount);
+  closedAmount = roundMoney(closedAmount);
+  const totalAmount = roundMoney(activeAmount + closedAmount);
 
   const groupsMap = new Map();
 
@@ -88,13 +130,23 @@ function buildSummary(items = []) {
         regionLabel,
         totalCount: 0,
         totalAmount: 0,
+        activeAmount: 0,
+        closedAmount: 0,
         items: [],
       });
     }
 
     const group = groupsMap.get(regionKey);
     group.totalCount += 1;
-    group.totalAmount += Number(item?.amount || 0) || 0;
+    const amount = Number.isFinite(item?.amount) ? item.amount : 0;
+    if (item?.stopInfo) {
+      group.closedAmount += amount;
+    } else {
+      group.activeAmount += amount;
+    }
+    group.activeAmount = roundMoney(group.activeAmount);
+    group.closedAmount = roundMoney(group.closedAmount);
+    group.totalAmount = roundMoney(group.activeAmount + group.closedAmount);
     group.items.push(item);
   }
 
@@ -106,10 +158,12 @@ function buildSummary(items = []) {
   return {
     totalCount,
     totalAmount,
+    activeAmount,
+    closedAmount,
     activeCount,
     closedCount,
     regionsCount: regionGroups.length,
-    bankruptcyRisk: totalAmount >= 500000,
+    bankruptcyRisk: activeAmount >= 500000,
     regionGroups,
   };
 }
@@ -131,6 +185,8 @@ async function checkFssp(person, options = {}) {
     summary: {
       totalCount: 0,
       totalAmount: 0,
+      activeAmount: 0,
+      closedAmount: 0,
       activeCount: 0,
       closedCount: 0,
       regionsCount: 0,
@@ -218,6 +274,8 @@ async function checkFssp(person, options = {}) {
       summary: {
         totalCount: 0,
         totalAmount: 0,
+        activeAmount: 0,
+        closedAmount: 0,
         activeCount: 0,
         closedCount: 0,
         regionsCount: 0,
@@ -258,7 +316,7 @@ async function checkFssp(person, options = {}) {
       processDate: rec.process_date || null,
       processTotal: rec.process_total || null,
 
-      amount: normalizeMoney(rec.sum || rec.debt_sum),
+      amount: calculateProceedingAmount(rec, subjectItems),
 
       subject: rec.subject || null,
       subjectItems,
