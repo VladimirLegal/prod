@@ -1,6 +1,5 @@
 const checkLegalEntityParticipationApiCloud = require('./legalEntityParticipationApiCloud');
 const checkKad = require('./kad');
-const checkRasArbitr = require('./rasArbitr');
 const checkFssp = require('./fssp');
 const checkEfrsb = require('./efrsb');
 const buildArbitrationApiCloudCombined = require('../buildArbitrationApiCloudCombined');
@@ -16,6 +15,7 @@ function buildEmptySummary() {
     plaintiffOrganizationsCount: 0, respondentOrganizationsCount: 0,
     mixedRoleOrganizationsCount: 0, bankruptcyCaseOrganizationsCount: 0,
     totalBankruptcyCases: 0, organizationsWithDocumentsCount: 0,
+    rasCheckedOrganizationsCount: 0, rasSkippedOrganizationsCount: 0,
     arbitrationErrorOrganizationsCount: 0,
     withEnforcementProceedingsCount: 0, totalEnforcementProceedings: 0,
     activeEnforcementProceedings: 0, closedEnforcementProceedings: 0,
@@ -112,6 +112,16 @@ function compactSource(source = {}) {
   };
 }
 
+function buildSkippedRasSource() {
+  return {
+    status: 'skipped',
+    error: null,
+    message: 'Судебные акты RAS не загружались в рамках проверки связанных организаций.',
+    items: [],
+    pagination: null,
+  };
+}
+
 function baseOrganization(organization = {}) {
   const roles = Array.isArray(organization.roles) ? organization.roles : [];
   return {
@@ -177,9 +187,20 @@ function compactBankruptcyItem(item = {}) {
 async function enrichOrganization(organization) {
   const item = baseOrganization(organization);
   if (!/^\d{10}$/.test(String(organization?.companyInn || ''))) {
+    const invalidInnMessage =
+      'Проверка KAD пропущена: отсутствует корректный 10-значный ИНН организации.';
+
     item.arbitrationDiagnostics = {
-      status: 'skipped', exception: false,
-      message: 'Проверка KAD/RAS пропущена: отсутствует корректный 10-значный ИНН организации.',
+      status: 'skipped',
+      exception: false,
+      message: invalidInnMessage,
+      kad: {
+        status: 'skipped',
+        error: null,
+        message: invalidInnMessage,
+        pagination: null,
+      },
+      ras: compactSource(buildSkippedRasSource()),
     };
     item.fsspDiagnostics = emptyFsspDiagnostics('skipped', 'Проверка ФССП пропущена: отсутствует корректный 10-значный ИНН организации.');
     item.efrsbDiagnostics = emptyEfrsbDiagnostics('skipped', 'Проверка ЕФРСБ пропущена: отсутствует корректный 10-значный ИНН организации.');
@@ -188,9 +209,8 @@ async function enrichOrganization(organization) {
 
   const target = { inn: organization.companyInn, fullName: organization.fullName || organization.shortName };
   try {
-    const [kadResult, rasResult, fsspResult, efrsbResult] = await Promise.allSettled([
+    const [kadResult, fsspResult, efrsbResult] = await Promise.allSettled([
       checkKad(target, { loadAllPages: true, timeoutMs: ARBITRATION_TIMEOUT_MS }),
-      checkRasArbitr(target, { loadAllPages: true, timeoutMs: ARBITRATION_TIMEOUT_MS }),
       checkFssp(target, { organizationMode: true, timeoutMs: FSSP_TIMEOUT_MS }),
       checkEfrsb(target, { organizationMode: true, timeoutMs: EFRSB_TIMEOUT_MS }),
     ]);
@@ -203,14 +223,14 @@ async function enrichOrganization(organization) {
           items: [],
         };
     const kadSource = makeErrorSource(kadResult, 'KAD');
-    const rasSource = makeErrorSource(rasResult, 'RAS');
+    const rasSource = buildSkippedRasSource();
     const combined = buildArbitrationApiCloudCombined(target, kadSource, rasSource);
     const cases = Array.isArray(combined.cases) ? combined.cases : [];
     item.arbitrationCount = cases.length;
     item.arbitrationGroupByCategory = buildCategoryGroups(cases);
     item.arbitrationProceedings = buildProceedings(cases);
     item.arbitrationDiagnostics = {
-      status: kadSource.status === 'error' || rasSource.status === 'error' ? 'error' : 'ok',
+      status: kadSource.status === 'error' ? 'error' : 'ok',
       exception: false, kad: compactSource(kadSource), ras: compactSource(rasSource),
     };
     const fsspSource = makeErrorSource(fsspResult, 'FSSP');
@@ -255,7 +275,7 @@ async function enrichOrganization(organization) {
 }
 
 function hasPaginationErrors(diagnostics = {}) {
-  return ['kad', 'ras'].some((key) => diagnostics?.[key]?.pagination?.failedPages?.length > 0);
+  return diagnostics?.kad?.pagination?.failedPages?.length > 0;
 }
 
 function buildSummary(items = []) {
@@ -277,6 +297,13 @@ function buildSummary(items = []) {
   summary.bankruptcyCaseOrganizationsCount = items.filter((item) => item.arbitrationProceedings.some((p) => p.proceedingCategory === 'bankruptcy')).length;
   summary.totalBankruptcyCases = items.reduce((sum, item) => sum + item.arbitrationProceedings.filter((p) => p.proceedingCategory === 'bankruptcy').length, 0);
   summary.organizationsWithDocumentsCount = items.filter((item) => item.arbitrationProceedings.some((p) => p.instances.some((i) => i.documents.length))).length;
+  summary.rasCheckedOrganizationsCount = items.filter((item) =>
+    ['ok', 'empty'].includes(item.arbitrationDiagnostics?.ras?.status)
+  ).length;
+
+  summary.rasSkippedOrganizationsCount = items.filter(
+    (item) => item.arbitrationDiagnostics?.ras?.status === 'skipped'
+  ).length;
   summary.arbitrationErrorOrganizationsCount = items.filter((item) => item.arbitrationDiagnostics?.status === 'error' || hasPaginationErrors(item.arbitrationDiagnostics)).length;
   summary.withEnforcementProceedingsCount = items.filter((item) => item.enforcementProceedingsCount > 0).length;
   summary.totalEnforcementProceedings = items.reduce((sum, item) => sum + item.enforcementProceedingsCount, 0);
