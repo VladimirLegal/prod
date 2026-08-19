@@ -76,50 +76,128 @@ function buildStopOperSummary(items = []) {
     items.map((item) => String(item?.number || '').trim()).filter(Boolean)
   );
 
-  const firstBalance =
-    items.find((item) => item?.saldoEns !== null && item?.saldoEns !== undefined)?.saldoEns ?? null;
+  const getDateTimestamp = (value) => {
+    if (!value) return null;
+
+    const text = String(value).trim();
+    const localizedMatch = text.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+
+    if (localizedMatch) {
+      const [, day, month, year, hours = '0', minutes = '0', seconds = '0'] = localizedMatch;
+      const timestamp = Date.UTC(
+        Number(year), Number(month) - 1, Number(day),
+        Number(hours), Number(minutes), Number(seconds)
+      );
+      const parsed = new Date(timestamp);
+      const isValid =
+        parsed.getUTCFullYear() === Number(year) &&
+        parsed.getUTCMonth() === Number(month) - 1 &&
+        parsed.getUTCDate() === Number(day) &&
+        parsed.getUTCHours() === Number(hours) &&
+        parsed.getUTCMinutes() === Number(minutes) &&
+        parsed.getUTCSeconds() === Number(seconds);
+
+      return isValid ? timestamp : null;
+    }
+
+    const timestamp = Date.parse(text);
+    return Number.isFinite(timestamp) ? timestamp : null;
+  };
+
+  const latestBalanceItem = items
+    .filter((item) => Number.isFinite(item?.saldoEns))
+    .reduce((latest, item) => {
+      const itemTimestamp = getDateTimestamp(item?.dateAddInfo) ?? getDateTimestamp(item?.date);
+      const latestTimestamp = latest
+        ? getDateTimestamp(latest.dateAddInfo) ?? getDateTimestamp(latest.date)
+        : null;
+
+      return !latest || (itemTimestamp !== null &&
+        (latestTimestamp === null || itemTimestamp > latestTimestamp)) ? item : latest;
+    }, null);
 
   return {
     totalCount: items.length,
     banksCount: uniqueBiks.size,
     decisionsCount: uniqueNumbers.size,
-    negativeBalance: firstBalance,
+    negativeBalance: latestBalanceItem?.saldoEns ?? null,
     hasRestrictions: items.length > 0,
   };
 }
 async function checkStopOperRS(person, options = {}) {
   const innRaw = person?.inn ? String(person.inn).trim() : '';
 
-  if (!process.env.APICLOUD_API_TOKEN || !innRaw) {
+  if (!innRaw) {
     return {
-      status: 'empty',
+      status: 'skipped',
       provider: 'apicloud',
+      message: 'Проверка StopOperRS пропущена: отсутствует ИНН.',
       items: [],
       summary: buildStopOperEmptySummary(),
       raw: {
-        error: 'no_inn_or_token',
-        inn: innRaw || null,
+        error: 'no_inn',
+        inn: null,
       },
     };
   }
 
-  const response = await request('mvd.php', {
-    type: 'stopOperRS',
-    inn: innRaw,
-  });
+  if (!process.env.APICLOUD_API_TOKEN) {
+    return {
+      status: 'skipped',
+      provider: 'apicloud',
+      message: 'Проверка StopOperRS пропущена: API-cloud не настроен.',
+      items: [],
+      summary: buildStopOperEmptySummary(),
+      raw: {
+        error: 'no_api_token',
+        inn: innRaw,
+      },
+    };
+  }
+
+  let response;
+  try {
+    response = await request(
+      'mvd.php',
+      {
+        type: 'stopOperRS',
+        inn: innRaw,
+      },
+      {
+        timeoutMs: options.timeoutMs,
+      }
+    );
+  } catch (error) {
+    const errorCode = error?.code || error?.message || 'STOP_OPER_RS_REQUEST_FAILED';
+    const message = error?.details || error?.errormsg || error?.message ||
+      'Ошибка источника при проверке приостановлений операций по счетам.';
+    return {
+      status: 'error', provider: 'apicloud', error: errorCode, message,
+      items: [{
+        kind: 'stop_oper_rs_lookup', isFound: null, resultState: 'Ошибка проверки',
+        resultStateText: 'Ошибка проверки', foundCount: null, message, records: [], rawRecord: error,
+      }],
+      summary: buildStopOperEmptySummary(), raw: error,
+    };
+  }
 
   const apiStatus = response?.status;
   const rawRecords = Array.isArray(response?.result) ? response.result : [];
-  const found =
-    response?.found === true ||
-    response?.found === 'true' ||
-    Number(response?.count || 0) > 0 ||
-    rawRecords.length > 0;
+  const found = response?.found === true || response?.found === 'true';
+  const explicitlyEmpty =
+    (response?.found === false || response?.found === 'false') &&
+    Number(response?.count) === 0 &&
+    rawRecords.length === 0;
 
   if (!response || typeof response !== 'object') {
+    const message = 'Не удалось получить ответ от источника';
     return {
       status: 'error',
       provider: 'apicloud',
+      error: 'STOP_OPER_RS_INVALID_RESPONSE',
+      message,
       items: [
         {
           kind: 'stop_oper_rs_lookup',
@@ -127,7 +205,7 @@ async function checkStopOperRS(person, options = {}) {
           resultState: 'Ошибка проверки',
           resultStateText: 'Ошибка проверки',
           foundCount: null,
-          message: 'Не удалось получить ответ от источника',
+          message,
           records: [],
           rawRecord: response,
         },
@@ -137,10 +215,15 @@ async function checkStopOperRS(person, options = {}) {
     };
   }
 
-  if (response?.error || (apiStatus && apiStatus !== 200 && apiStatus !== 404)) {
+  if (Number(apiStatus) !== 200 || response?.error || (!explicitlyEmpty && !(found && rawRecords.length))) {
+    const errorCode = response?.message || response?.error || 'STOP_OPER_RS_REQUEST_FAILED';
+    const message = response?.details || response?.errormsg || response?.message ||
+      'Ошибка источника при проверке приостановлений операций по счетам.';
     return {
       status: 'error',
       provider: 'apicloud',
+      error: errorCode,
+      message,
       items: [
         {
           kind: 'stop_oper_rs_lookup',
@@ -148,9 +231,7 @@ async function checkStopOperRS(person, options = {}) {
           resultState: 'Ошибка проверки',
           resultStateText: 'Ошибка проверки',
           foundCount: null,
-          message:
-            response?.message ||
-            `Ошибка источника при проверке приостановлений операций по счетам`,
+          message,
           records: [],
           rawRecord: response,
         },
@@ -185,9 +266,11 @@ async function checkStopOperRS(person, options = {}) {
   });
 
   if (!found || records.length === 0) {
+    const message = 'Действующие приостановления операций по счетам не найдены';
     return {
       status: 'empty',
       provider: 'apicloud',
+      message,
       items: [
         {
           kind: 'stop_oper_rs_lookup',
@@ -195,7 +278,7 @@ async function checkStopOperRS(person, options = {}) {
           resultState: 'Данные получены',
           resultStateText: 'Действующие приостановления операций по счетам не найдены',
           foundCount: 0,
-          message: 'Действующие приостановления операций по счетам не найдены',
+          message,
           records: [],
           rawRecord: response,
         },
@@ -205,9 +288,11 @@ async function checkStopOperRS(person, options = {}) {
     };
   }
 
+  const message = 'Найдены действующие приостановления операций по счетам';
   return {
     status: 'ok',
     provider: 'apicloud',
+    message,
     items: [
       {
         kind: 'stop_oper_rs_lookup',
@@ -215,7 +300,7 @@ async function checkStopOperRS(person, options = {}) {
         resultState: 'Данные получены',
         resultStateText: 'Найдены действующие приостановления операций по счетам',
         foundCount: records.length,
-        message: 'Найдены действующие приостановления операций по счетам',
+        message,
         records,
         rawRecord: response,
       },

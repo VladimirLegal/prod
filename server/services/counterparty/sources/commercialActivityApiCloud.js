@@ -2,11 +2,13 @@ const checkLegalEntityParticipationApiCloud = require('./legalEntityParticipatio
 const checkKad = require('./kad');
 const checkFssp = require('./fssp');
 const checkEfrsb = require('./efrsb');
+const checkStopOperRS = require('./stopOperRS');
 const buildArbitrationApiCloudCombined = require('../buildArbitrationApiCloudCombined');
 
 const ARBITRATION_TIMEOUT_MS = 120000;
 const FSSP_TIMEOUT_MS = 400000;
 const EFRSB_TIMEOUT_MS = 120000;
+const STOP_OPER_RS_TIMEOUT_MS = 120000;
 
 function buildEmptySummary() {
   return {
@@ -24,6 +26,10 @@ function buildEmptySummary() {
     totalBankruptcyRecords: 0, activeBankruptcyRecords: 0,
     finishedBankruptcyRecords: 0, unknownBankruptcyRecords: 0,
     efrsbErrorOrganizationsCount: 0, efrsbPartialOrganizationsCount: 0,
+    stopOperRsCheckedOrganizationsCount: 0, stopOperRsEmptyOrganizationsCount: 0,
+    stopOperRsSkippedOrganizationsCount: 0, stopOperRsErrorOrganizationsCount: 0,
+    withAccountRestrictionsCount: 0, totalAccountRestrictions: 0,
+    withNegativeEnsBalanceCount: 0, negativeEnsBalanceTotal: 0,
   };
 }
 
@@ -147,6 +153,10 @@ function baseOrganization(organization = {}) {
     bankruptcyRecordsCount: 0, activeBankruptcyCount: 0,
     finishedBankruptcyCount: 0, unknownBankruptcyCount: 0,
     bankruptcyRecords: [], efrsbDiagnostics: emptyEfrsbDiagnostics(),
+    accountRestrictionsCount: 0, accountRestrictionBanksCount: 0,
+    accountRestrictionDecisionsCount: 0, hasAccountRestrictions: false,
+    negativeEnsBalance: null, accountRestrictions: [],
+    stopOperRsDiagnostics: { status: 'empty', error: null, message: null },
   };
 }
 
@@ -184,6 +194,12 @@ function compactBankruptcyItem(item = {}) {
   return Object.fromEntries(fields.map((field) => [field, item[field] ?? null]));
 }
 
+function compactAccountRestriction(item = {}) {
+  const fields = ['inn', 'name', 'codeFns', 'date', 'bik', 'bankName', 'bankKs',
+    'bankDisplayName', 'number', 'dateAddInfo', 'reasonCode', 'reasonText', 'saldoEns'];
+  return Object.fromEntries(fields.map((field) => [field, item[field] ?? null]));
+}
+
 async function enrichOrganization(organization) {
   const item = baseOrganization(organization);
   if (!/^\d{10}$/.test(String(organization?.companyInn || ''))) {
@@ -204,15 +220,20 @@ async function enrichOrganization(organization) {
     };
     item.fsspDiagnostics = emptyFsspDiagnostics('skipped', 'Проверка ФССП пропущена: отсутствует корректный 10-значный ИНН организации.');
     item.efrsbDiagnostics = emptyEfrsbDiagnostics('skipped', 'Проверка ЕФРСБ пропущена: отсутствует корректный 10-значный ИНН организации.');
+    item.stopOperRsDiagnostics = {
+      status: 'skipped', error: null,
+      message: 'Проверка StopOperRS пропущена: отсутствует корректный 10-значный ИНН организации.',
+    };
     return item;
   }
 
   const target = { inn: organization.companyInn, fullName: organization.fullName || organization.shortName };
   try {
-    const [kadResult, fsspResult, efrsbResult] = await Promise.allSettled([
+    const [kadResult, fsspResult, efrsbResult, stopOperRsResult] = await Promise.allSettled([
       checkKad(target, { loadAllPages: true, timeoutMs: ARBITRATION_TIMEOUT_MS }),
       checkFssp(target, { organizationMode: true, timeoutMs: FSSP_TIMEOUT_MS }),
       checkEfrsb(target, { organizationMode: true, timeoutMs: EFRSB_TIMEOUT_MS }),
+      checkStopOperRS(target, { timeoutMs: STOP_OPER_RS_TIMEOUT_MS }),
     ]);
     const makeErrorSource = (result, sourceName) => result.status === 'fulfilled'
       ? result.value
@@ -264,6 +285,23 @@ async function enrichOrganization(organization) {
       error: efrsbSource.error || null, totalCount, loadCount, allCountPages,
       partial: totalCount !== null && loadCount !== null && totalCount > loadCount,
     };
+    const stopOperRsSource = makeErrorSource(stopOperRsResult, 'StopOperRS');
+    item.stopOperRsDiagnostics = {
+      status: stopOperRsSource.status || 'error',
+      error: stopOperRsSource.error || null,
+      message: stopOperRsSource.message || null,
+    };
+    if (['ok', 'empty'].includes(stopOperRsSource.status)) {
+      const lookup = (Array.isArray(stopOperRsSource.items) ? stopOperRsSource.items : [])
+        .find((record) => record?.kind === 'stop_oper_rs_lookup');
+      item.accountRestrictions = (Array.isArray(lookup?.records) ? lookup.records : [])
+        .map(compactAccountRestriction);
+      item.accountRestrictionsCount = Number(stopOperRsSource.summary?.totalCount) || 0;
+      item.accountRestrictionBanksCount = Number(stopOperRsSource.summary?.banksCount) || 0;
+      item.accountRestrictionDecisionsCount = Number(stopOperRsSource.summary?.decisionsCount) || 0;
+      item.hasAccountRestrictions = stopOperRsSource.summary?.hasRestrictions === true;
+      item.negativeEnsBalance = numberOrNull(stopOperRsSource.summary?.negativeBalance);
+    }
     return item;
   } catch (error) {
     item.arbitrationDiagnostics = {
@@ -319,6 +357,20 @@ function buildSummary(items = []) {
   summary.unknownBankruptcyRecords = items.reduce((sum, item) => sum + item.unknownBankruptcyCount, 0);
   summary.efrsbErrorOrganizationsCount = items.filter((item) => item.efrsbDiagnostics?.status === 'error').length;
   summary.efrsbPartialOrganizationsCount = items.filter((item) => item.efrsbDiagnostics?.partial === true).length;
+  summary.stopOperRsCheckedOrganizationsCount = items.filter((item) =>
+    ['ok', 'empty'].includes(item.stopOperRsDiagnostics?.status)
+  ).length;
+  summary.stopOperRsEmptyOrganizationsCount = items.filter((item) => item.stopOperRsDiagnostics?.status === 'empty').length;
+  summary.stopOperRsSkippedOrganizationsCount = items.filter((item) => item.stopOperRsDiagnostics?.status === 'skipped').length;
+  summary.stopOperRsErrorOrganizationsCount = items.filter((item) => item.stopOperRsDiagnostics?.status === 'error').length;
+  summary.withAccountRestrictionsCount = items.filter((item) => item.hasAccountRestrictions === true).length;
+  summary.totalAccountRestrictions = items.reduce((sum, item) => sum + item.accountRestrictionsCount, 0);
+  summary.withNegativeEnsBalanceCount = items.filter((item) =>
+    typeof item.negativeEnsBalance === 'number' && item.negativeEnsBalance > 0
+  ).length;
+  summary.negativeEnsBalanceTotal = items.reduce((sum, item) =>
+    sum + (typeof item.negativeEnsBalance === 'number' && item.negativeEnsBalance > 0
+      ? item.negativeEnsBalance : 0), 0);
   return summary;
 }
 
