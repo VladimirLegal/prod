@@ -3,6 +3,7 @@ const checkKad = require('./kad');
 const checkFssp = require('./fssp');
 const checkEfrsb = require('./efrsb');
 const checkStopOperRS = require('./stopOperRS');
+const checkKadCaseInfo = require('./kadCaseInfo');
 const buildArbitrationApiCloudCombined = require('../buildArbitrationApiCloudCombined');
 
 const ARBITRATION_TIMEOUT_MS = 120000;
@@ -19,6 +20,11 @@ function buildEmptySummary() {
     totalBankruptcyCases: 0, organizationsWithDocumentsCount: 0,
     rasCheckedOrganizationsCount: 0, rasSkippedOrganizationsCount: 0,
     arbitrationErrorOrganizationsCount: 0,
+    kadCaseInfoSelectedCases: 0, kadCaseInfoUniqueRequestedCases: 0,
+    kadCaseInfoLoadedCases: 0, kadCaseInfoEmptyCases: 0,
+    kadCaseInfoErrorCases: 0, kadCaseInfoSkippedByLimitCases: 0,
+    kadCaseInfoPartialOrganizationsCount: 0, kadCaseInfoCasesWithClaimSum: 0,
+    kadCaseInfoFinishedCases: 0, kadCaseInfoActiveCases: 0,
     withEnforcementProceedingsCount: 0, totalEnforcementProceedings: 0,
     activeEnforcementProceedings: 0, closedEnforcementProceedings: 0,
     enforcementProceedingsTotalAmount: 0, fsspErrorOrganizationsCount: 0,
@@ -80,6 +86,7 @@ function groupDocuments(documents = []) {
 
 function buildProceedings(cases = []) {
   return cases.map((item) => ({
+    caseId: item.caseId || null,
     number: item.caseNumber || null,
     proceedingType: item.caseType || 'other',
     proceedingCategory: item.caseType || 'other',
@@ -94,7 +101,10 @@ function buildProceedings(cases = []) {
       role: participant.role || null, roleText: participant.roleText || null,
       address: participant.address || null,
     })),
-    instances: groupDocuments(item.documents),
+    caseInfoStatus: 'skipped', caseState: null, isFinished: null,
+    latestClaimSum: null, maxClaimSum: null, claimSumEventsCount: 0,
+    latestClaimSumEvent: null, maxClaimSumEvent: null, nextHearing: null,
+    instances: groupDocuments(item.documents), instancesCount: 0, documentsCount: 0,
   }));
 }
 
@@ -218,6 +228,7 @@ async function enrichOrganization(organization) {
         pagination: null,
       },
       ras: compactSource(buildSkippedRasSource()),
+      caseInfo: emptyCaseInfoDiagnostics('skipped'),
     };
     item.fsspDiagnostics = emptyFsspDiagnostics('skipped', 'Проверка ФССП пропущена: отсутствует корректный 10-значный ИНН организации.');
     item.efrsbDiagnostics = emptyEfrsbDiagnostics('skipped', 'Проверка ЕФРСБ пропущена: отсутствует корректный 10-значный ИНН организации.');
@@ -254,6 +265,7 @@ async function enrichOrganization(organization) {
     item.arbitrationDiagnostics = {
       status: kadSource.status === 'error' ? 'error' : 'ok',
       exception: false, kad: compactSource(kadSource), ras: compactSource(rasSource),
+      caseInfo: emptyCaseInfoDiagnostics(),
     };
     const fsspSource = makeErrorSource(fsspResult, 'FSSP');
     const fsspItems = Array.isArray(fsspSource.items) ? fsspSource.items : [];
@@ -315,11 +327,170 @@ async function enrichOrganization(organization) {
   }
 }
 
+function emptyCaseInfoDiagnostics(status = 'skipped') {
+  return { status, selectedCasesCount: 0, requestedCasesCount: 0, loadedCasesCount: 0,
+    emptyCasesCount: 0, errorCasesCount: 0, skippedByLimitCount: 0, errors: [] };
+}
+
+function caseKey(proceeding) {
+  if (proceeding.caseId) return `id:${String(proceeding.caseId).trim()}`;
+  const number = String(proceeding.number || '').replace(/\s+/g, '').toLowerCase();
+  return number ? `number:${number}` : null;
+}
+
+function shouldLoadCaseInfo(proceeding) {
+  return proceeding.role === 'respondent' || proceeding.role === 'mixed' ||
+    proceeding.proceedingCategory === 'bankruptcy';
+}
+
+async function runWorkerPool(tasks, concurrency, worker) {
+  let cursor = 0;
+  async function run() {
+    while (cursor < tasks.length) {
+      const index = cursor++;
+      await worker(tasks[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, run));
+}
+
+function compactClaimSumEvent(event) {
+  if (!event) return null;
+  return {
+    claimSum: event.claimSum,
+    date: event.date || null,
+    publishDate: event.publishDate || null,
+    eventTypeName: event.eventTypeName || null,
+    file: event.file || null,
+    instanceId: event.instanceId || null,
+  };
+}
+
+function documentKey(document = {}) {
+  const url = String(document.url || '').trim();
+  if (url) return `url:${url}`;
+  return ['fallback', document.documentType, document.publishDate, document.eventDate]
+    .map((part) => String(part || '').trim().toLowerCase()).join('|');
+}
+
+function buildPublicCaseInfo(detail = {}) {
+  const seenDocuments = new Set();
+  const instances = (Array.isArray(detail.instances) ? detail.instances : []).map((instance) => {
+    const documents = [];
+    for (const sourceDocument of Array.isArray(instance.documents) ? instance.documents : []) {
+      const key = documentKey(sourceDocument);
+      if (seenDocuments.has(key)) continue;
+      seenDocuments.add(key);
+      documents.push({
+        url: sourceDocument.url || null,
+        eventDate: sourceDocument.eventDate || null,
+        publishDate: sourceDocument.publishDate || null,
+        documentType: sourceDocument.documentType || null,
+        documentTypeText: sourceDocument.documentTypeText || null,
+        contentTypes: sourceDocument.contentTypes ?? null,
+      });
+    }
+    return {
+      id: instance.id || null,
+      instanceLevel: instance.instanceLevel ?? null,
+      instanceNumber: instance.instanceNumber || null,
+      court: instance.court ?? null,
+      judges: instance.judges ?? null,
+      courtHearings: Array.isArray(instance.courtHearings) ? instance.courtHearings : [],
+      nextInstanceEvent: instance.nextInstanceEvent ?? null,
+      documents,
+      documentsCount: documents.length,
+    };
+  });
+  const claimSumEvents = Array.isArray(detail.claimSumEvents) ? detail.claimSumEvents : [];
+  const latestClaimSumEvent = claimSumEvents.at(-1) || null;
+  const maxClaimSumEvent = claimSumEvents.reduce((maximum, event) =>
+    !maximum || event.claimSum > maximum.claimSum ? event : maximum, null);
+  return {
+    instances,
+    instancesCount: instances.length,
+    documentsCount: instances.reduce((sum, instance) => sum + instance.documentsCount, 0),
+    latestClaimSumEvent: compactClaimSumEvent(latestClaimSumEvent),
+    maxClaimSumEvent: compactClaimSumEvent(maxClaimSumEvent),
+  };
+}
+
+async function enrichCaseInfo(items, options = {}) {
+  const selected = new Map();
+  for (const organization of items) {
+    for (const proceeding of organization.arbitrationProceedings) {
+      if (!shouldLoadCaseInfo(proceeding)) continue;
+      const key = caseKey(proceeding);
+      if (!key) continue;
+      if (!selected.has(key)) selected.set(key, { caseId: proceeding.caseId, caseNumber: proceeding.number, targets: [] });
+      selected.get(key).targets.push({ organization, proceeding });
+    }
+  }
+  const all = Array.from(selected.values());
+  const maxCases = Math.max(0, Number(options.maxCaseInfoCases ?? process.env.APICLOUD_KAD_CASEINFO_MAX_CASES ?? 200));
+  const requested = all.slice(0, maxCases);
+  const skipped = all.slice(maxCases);
+  skipped.forEach((entry) => entry.targets.forEach(({ proceeding }) => { proceeding.caseInfoStatus = 'skipped_limit'; }));
+  const results = new Map();
+  const concurrency = Math.max(1, Number(options.maxCaseInfoConcurrent ?? process.env.APICLOUD_KAD_CASEINFO_MAX_CONCURRENT ?? 6));
+  await runWorkerPool(requested, concurrency, async (entry) => {
+    let result;
+    try {
+      result = await (options.caseInfoSource || checkKadCaseInfo)(entry, options.caseInfoOptions || {});
+    } catch (error) {
+      result = { status: 'error', error: error?.message || 'caseinfo_unexpected_error', message: error?.message || null, items: [] };
+    }
+    results.set(caseKey({ caseId: entry.caseId, number: entry.caseNumber }), result);
+    entry.targets.forEach(({ proceeding }) => {
+      proceeding.caseInfoStatus = result.status;
+      if (result.status !== 'ok') return;
+      const detail = result.items?.[0];
+      proceeding.caseState = detail?.caseInfo?.state ?? null;
+      proceeding.isFinished = detail?.caseInfo?.finish ?? null;
+      proceeding.latestClaimSum = detail?.latestClaimSum ?? null;
+      proceeding.maxClaimSum = detail?.maxClaimSum ?? null;
+      proceeding.claimSumEventsCount = detail?.claimSumEventsCount || 0;
+      const publicCaseInfo = buildPublicCaseInfo(detail);
+      proceeding.latestClaimSumEvent = publicCaseInfo.latestClaimSumEvent;
+      proceeding.maxClaimSumEvent = publicCaseInfo.maxClaimSumEvent;
+      proceeding.instances = publicCaseInfo.instances;
+      proceeding.instancesCount = publicCaseInfo.instancesCount;
+      proceeding.documentsCount = publicCaseInfo.documentsCount;
+      proceeding.nextHearing = (detail?.instances || []).map((instance) => instance.nextInstanceEvent).filter(Boolean).sort()[0] || null;
+    });
+  });
+  for (const organization of items) {
+    const relevant = organization.arbitrationProceedings.filter(shouldLoadCaseInfo);
+    const states = relevant.map((proceeding) => proceeding.caseInfoStatus);
+    const errors = relevant.filter((proceeding) => proceeding.caseInfoStatus === 'error').map((proceeding) => {
+      const result = results.get(caseKey(proceeding));
+      return { caseId: proceeding.caseId, caseNumber: proceeding.number, error: result?.error || null, message: result?.message || null };
+    });
+    const diagnostic = {
+      status: !relevant.length ? 'skipped' : states.every((state) => state === 'error') ? 'error' :
+        states.includes('error') || states.includes('skipped_limit') ? 'partial' :
+        states.every((state) => state === 'empty') ? 'empty' : states.includes('ok') ? 'ok' : 'skipped',
+      selectedCasesCount: relevant.length,
+      requestedCasesCount: states.filter((state) => state !== 'skipped_limit').length,
+      loadedCasesCount: states.filter((state) => state === 'ok').length,
+      emptyCasesCount: states.filter((state) => state === 'empty').length,
+      errorCasesCount: states.filter((state) => state === 'error').length,
+      skippedByLimitCount: states.filter((state) => state === 'skipped_limit').length,
+      errors,
+    };
+    organization.arbitrationDiagnostics.caseInfo = diagnostic;
+    if (['partial', 'error'].includes(diagnostic.status) && organization.arbitrationDiagnostics.status !== 'error') {
+      organization.arbitrationDiagnostics.status = 'partial';
+    }
+  }
+  return { selectedOccurrences: all.reduce((sum, entry) => sum + entry.targets.length, 0), all, requested, skipped, results };
+}
+
 function hasPaginationErrors(diagnostics = {}) {
   return diagnostics?.kad?.pagination?.failedPages?.length > 0;
 }
 
-function buildSummary(items = []) {
+function buildSummary(items = [], caseInfoRun = null) {
   const summary = buildEmptySummary();
   summary.totalCount = items.length;
   summary.activeCount = items.filter((item) => item.isActive === true).length;
@@ -374,6 +545,22 @@ function buildSummary(items = []) {
   summary.negativeEnsBalanceTotal = items.reduce((sum, item) =>
     sum + (typeof item.negativeEnsBalance === 'number' && item.negativeEnsBalance > 0
       ? item.negativeEnsBalance : 0), 0);
+  if (caseInfoRun) {
+    const uniqueResults = Array.from(caseInfoRun.results.values());
+    const loadedDetails = uniqueResults.filter((result) => result.status === 'ok').map((result) => result.items?.[0]).filter(Boolean);
+    summary.kadCaseInfoSelectedCases = caseInfoRun.selectedOccurrences;
+    summary.kadCaseInfoUniqueRequestedCases = caseInfoRun.requested.length;
+    summary.kadCaseInfoLoadedCases = uniqueResults.filter((result) => result.status === 'ok').length;
+    summary.kadCaseInfoEmptyCases = uniqueResults.filter((result) => result.status === 'empty').length;
+    summary.kadCaseInfoErrorCases = uniqueResults.filter((result) => result.status === 'error').length;
+    summary.kadCaseInfoSkippedByLimitCases = caseInfoRun.skipped.length;
+    summary.kadCaseInfoPartialOrganizationsCount = items.filter((item) =>
+      ['partial', 'error'].includes(item.arbitrationDiagnostics?.caseInfo?.status)
+    ).length;
+    summary.kadCaseInfoCasesWithClaimSum = loadedDetails.filter((detail) => detail.claimSumEventsCount > 0).length;
+    summary.kadCaseInfoFinishedCases = loadedDetails.filter((detail) => detail.caseInfo?.finish === true).length;
+    summary.kadCaseInfoActiveCases = loadedDetails.filter((detail) => detail.caseInfo?.finish === false).length;
+  }
   return summary;
 }
 
@@ -385,7 +572,8 @@ async function commercialActivityApiCloud(person, options = {}) {
   const organizations = Array.isArray(participation?.items) ? participation.items : [];
   if (!organizations.length) return { ...common, status: 'empty', message: 'Связанные юридические лица не найдены.' };
   const items = await Promise.all(organizations.map(enrichOrganization));
-  return { ...common, status: 'ok', items, summary: buildSummary(items), message: `Проверены связанные юридические лица: ${items.length}.` };
+  const caseInfoRun = await enrichCaseInfo(items, options);
+  return { ...common, status: 'ok', items, summary: buildSummary(items, caseInfoRun), message: `Проверены связанные юридические лица: ${items.length}.` };
 }
 
 module.exports = commercialActivityApiCloud;
