@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import FreeTextImportModal from '../components/common/FreeTextImportModal';
 import { parseFreeTextPerson } from '../utils/freeTextParser';
 import { REGIONS } from '../constants/regions';
+import CommercialActivityApiCloudSummary from '../components/counterparty/CommercialActivityApiCloudSummary';
 
 const initialForm = {
   lastName: '',
@@ -539,6 +540,8 @@ function CounterpartyCheckPage() {
   const waitForResult = async (checkId) => {
     setActiveCheckId(checkId);
 
+    // Polling ends through the terminal-status returns below.
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         const res = await fetch(`/api/counterparty/check/${checkId}`, {
@@ -1122,6 +1125,8 @@ function CounterpartyCheckPage() {
     arbitrationApiCloudCombined: 'Арбитражные дела и судебные акты',
     fns: 'ФНС',
     legalEntityParticipationApiCloud: 'Участие в юридических лицах (API-cloud)',
+    commercialActivityApiCloud:
+      'Коммерческая деятельность связанных организаций (API-cloud)',
     courtsCommon: 'Суды общей юрисдикции',
     passportKontur: 'Проверка паспорта (Контур)',
     snilsKontur: 'Проверка СНИЛС (Контур)',
@@ -1141,6 +1146,7 @@ function CounterpartyCheckPage() {
     'stopOperRS',
     'fns',
     'legalEntityParticipationApiCloud',
+    'commercialActivityApiCloud',
     'rosfin',
     'inoagent',
     'rosfinKontur',
@@ -1897,7 +1903,9 @@ function CounterpartyCheckPage() {
     const hasItems = items.length > 0;
 
     let content = null;
-    if (key === 'arbitrationApiCloudCombined') {
+    if (key === 'commercialActivityApiCloud') {
+      content = <CommercialActivityApiCloudSummary source={source} />;
+    } else if (key === 'arbitrationApiCloudCombined') {
       content = renderArbitrationApiCloudCombined(source);
     } else
     if (source.status === 'error') {
@@ -2019,7 +2027,12 @@ function CounterpartyCheckPage() {
     }
 
     return (
-      <div key={key} className="border rounded-lg p-3 bg-white shadow-sm space-y-2">
+      <div
+        key={key}
+        className={`border rounded-lg p-3 bg-white shadow-sm space-y-2 ${
+          key === 'commercialActivityApiCloud' ? 'md:col-span-2' : ''
+        }`}
+      >
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm text-gray-700 font-semibold">{title}</div>
