@@ -7,6 +7,10 @@ const text = (value) => String(value || '').trim().toLowerCase().replace(/ё/g, 
 const number = (value) => value === null || value === undefined || value === '' || !Number.isFinite(Number(value))
   ? null : Number(value);
 const kopecks = (value) => { const parsed = number(value); return parsed === null ? null : Math.round(parsed * 100); };
+const rubles = (value) => value / 100;
+const money = (value) => { const cents = kopecks(value); return cents === null ? null : rubles(cents); };
+const addMoney = (left, right) => rubles((kopecks(left) || 0) + (kopecks(right) || 0));
+const sumMoney = (values) => rubles(values.reduce((sum, value) => sum + (kopecks(value) || 0), 0));
 const caseNumber = (value) => String(value || '').replace(/\s+/g, '').toUpperCase().replace(/A/g, 'А');
 const caseKey = (item) => item.caseId ? `id:${String(item.caseId).trim()}` : `number:${caseNumber(item.number || item.caseNumber)}`;
 const caseRef = (record) => ({ caseId: record.proceeding.caseId || null,
@@ -29,7 +33,9 @@ function emptyAnalysis() {
   return {
     version: 1,
     coverage: { organizationsCount: 0, caseOccurrencesCount: 0, uniqueCasesCount: 0,
-      caseInfo: { ok: 0, empty: 0, error: 0, skipped: 0, skippedLimit: 0 },
+      caseInfo: { ok: 0, empty: 0, error: 0, skipped: 0, skippedLimit: 0,
+        eligibleCasesCount: 0, requestedCasesCount: 0, loadedCasesCount: 0, failedCasesCount: 0,
+        notSelectedCasesCount: 0, skippedByLimitCasesCount: 0 },
       claimAmounts: { known: 0, unknown: 0, respondentKnown: 0, respondentUnknown: 0,
         plaintiffKnown: 0, plaintiffUnknown: 0 },
       sourceErrors: { kadCaseInfoCases: [], fsspOrganizations: 0, efrsbOrganizations: 0, stopOperRsOrganizations: 0 } },
@@ -43,7 +49,10 @@ function emptyAnalysis() {
         changedClaimsCount: 0, isDebt: false, message: CLAIM_MESSAGE }, activeCases: [], upcomingHearings: [] },
     bankruptcy: { asDebtor: { casesCount: 0, organizationsCount: 0, activeCasesCount: 0, caseRefs: [] },
       asCreditor: { casesCount: 0, organizationsCount: 0, activeCasesCount: 0, caseRefs: [] } },
-    patterns: { repeatedCases: [], recurringCreditors: [], recurringDefendants: [], repeatedClaimSeries: [],
+    patterns: { summary: { repeatedCasesCount: 0, recurringCreditorsCount: 0, recurringRespondentsCount: 0,
+      repeatedAmountsCount: 0, repeatedClaimSeriesCount: 0, internalGroupCasesCount: 0,
+      sharedCourtAddressesCount: 0, duplicateOrganizationNamesCount: 0 },
+      repeatedCases: [], recurringCreditors: [], recurringDefendants: [], repeatedClaimSeries: [],
       repeatedAmounts: [], internalGroupCases: [], duplicateOrganizationNames: [], sharedCourtAddresses: [] },
     enforcement: { summary: { totalCount: 0, activeCount: 0, closedCount: 0, activeMonetaryCount: 0,
       activeNonMonetaryCount: 0, activeZeroOrUnknownAmountCount: 0, activeAmount: 0, closedAmount: 0 }, creditorMatches: [] },
@@ -75,8 +84,9 @@ function participantGroups(records, participantRole, outputNames) {
     const caseRecords = Array.from(group.cases.values());
     return { [outputNames.inn]: group.inn, [outputNames.name]: group.name, caseCount: caseRecords.length,
       organizationCount: group.organizations.size, organizationInns: Array.from(group.organizations).sort(),
-      caseRefs: caseRecords.map(caseRef), latestClaimsTotal: caseRecords.reduce((sum, item) => sum + (number(item.proceeding.latestClaimSum) || 0), 0),
+      caseRefs: caseRecords.map(caseRef), latestClaimsTotal: sumMoney(caseRecords.map((item) => item.proceeding.latestClaimSum)),
       creditorType: group.inn ? 'inn' : 'name', classificationReason: group.inn ? 'exact_inn' : 'normalized_name',
+      creditorIdentityType: group.inn ? 'inn' : 'normalized_name',
       isCrossOrganization: group.organizations.size >= 2 };
   }).sort((a, b) => String(a[outputNames.inn] || a[outputNames.name]).localeCompare(String(b[outputNames.inn] || b[outputNames.name])));
 }
@@ -114,6 +124,22 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
   const groupedCases = groupRecords(records);
   result.coverage.caseOccurrencesCount = records.length;
   result.coverage.uniqueCasesCount = groupedCases.size;
+
+  for (const cases of groupedCases.values()) {
+    const statuses = new Set(cases.map((record) => record.proceeding.caseInfoStatus || 'skipped'));
+    const status = ['error', 'ok', 'empty', 'skipped_limit', 'skipped'].find((value) => statuses.has(value)) || 'skipped';
+    if (status === 'ok') result.coverage.caseInfo.loadedCasesCount += 1;
+    if (status === 'error') result.coverage.caseInfo.failedCasesCount += 1;
+    if (status === 'skipped_limit') result.coverage.caseInfo.skippedByLimitCasesCount += 1;
+    if (['ok', 'empty', 'error'].includes(status)) {
+      result.coverage.caseInfo.requestedCasesCount += 1;
+    }
+    if (['ok', 'empty', 'error', 'skipped_limit'].includes(status)) {
+      result.coverage.caseInfo.eligibleCasesCount += 1;
+    } else {
+      result.coverage.caseInfo.notSelectedCasesCount += 1;
+    }
+  }
 
   for (const record of records) {
     const { proceeding, organization } = record;
@@ -170,15 +196,19 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
     const amount = number(record.proceeding.latestClaimSum);
     const side = record.proceeding.role === 'respondent' ? 'respondent' : record.proceeding.role === 'plaintiff' ? 'plaintiff' : null;
     if (side) { result.litigation.declaredClaims[side][amount > 0 ? 'casesWithAmount' : 'casesWithoutAmount'] += 1;
-      if (amount > 0) result.litigation.declaredClaims[side].latestClaimsTotal += amount; }
+      if (amount > 0) result.litigation.declaredClaims[side].latestClaimsTotal =
+        addMoney(result.litigation.declaredClaims[side].latestClaimsTotal, amount); }
     const code = !(amount > 0) ? 'unknown' : amount <= 100000 ? 'up_to_100k' : amount <= 1000000 ? '100k_to_1m' : amount <= 10000000 ? '1m_to_10m' : 'over_10m';
     ranges.find((range) => range.code === code).count += 1;
-    if (amount > 0 && number(record.proceeding.maxClaimSum) !== amount) result.litigation.declaredClaims.changedClaimsCount += 1;
+    if (amount > 0 && kopecks(record.proceeding.maxClaimSum) !== kopecks(record.proceeding.latestClaimSum)) {
+      result.litigation.declaredClaims.changedClaimsCount += 1;
+    }
     if (record.proceeding.isFinished === false) {
       const active = { caseId: record.proceeding.caseId || null, caseNumber: record.proceeding.number || null,
         organizationInn: record.organization.inn || null, organizationName: record.organization.name || record.organization.fullName || null,
         role: record.proceeding.role || null, category: record.proceeding.proceedingCategory || null,
-        caseState: record.proceeding.caseState || null, latestClaimSum: amount, maxClaimSum: number(record.proceeding.maxClaimSum),
+        caseState: record.proceeding.caseState || null, latestClaimSum: money(record.proceeding.latestClaimSum),
+        maxClaimSum: money(record.proceeding.maxClaimSum),
         nextHearing: record.proceeding.nextHearing || null };
       result.litigation.activeCases.push(active);
       if (active.nextHearing) result.litigation.upcomingHearings.push({ ...caseRef(record), ...parseHearing(active.nextHearing) });
@@ -241,11 +271,13 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
 
   const enforcementByCreditor = new Map();
   for (const organization of source) for (const proceeding of array(organization.enforcementProceedings)) {
-    const closed = Boolean(proceeding.stopInfo); const amount = number(proceeding.amount) || 0;
+    const closed = Boolean(proceeding.stopInfo); const amount = money(proceeding.amount) || 0;
     const nonMonetary = /неимуществен/i.test(`${proceeding.subject || ''} ${proceeding.processTotal || ''}`);
     result.enforcement.summary.totalCount += 1;
-    if (closed) { result.enforcement.summary.closedCount += 1; result.enforcement.summary.closedAmount += amount; }
-    else { result.enforcement.summary.activeCount += 1; result.enforcement.summary.activeAmount += amount;
+    if (closed) { result.enforcement.summary.closedCount += 1;
+      result.enforcement.summary.closedAmount = addMoney(result.enforcement.summary.closedAmount, amount); }
+    else { result.enforcement.summary.activeCount += 1;
+      result.enforcement.summary.activeAmount = addMoney(result.enforcement.summary.activeAmount, amount);
       if (amount > 0) result.enforcement.summary.activeMonetaryCount += 1;
       if (nonMonetary) result.enforcement.summary.activeNonMonetaryCount += 1;
       if (!(amount > 0) && !nonMonetary) result.enforcement.summary.activeZeroOrUnknownAmountCount += 1; }
@@ -262,8 +294,8 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
     result.enforcement.creditorMatches.push({ organizationInn: group.organization.inn, organizationName: group.organization.name || null,
       creditorInn: group.creditorInn, creditorName: creditor?.name || null, kadCasesCount: unique(kad.map((item) => item.key)).length,
       kadCaseRefs: kad.map(caseRef), activeEnforcementCount: group.active.length,
-      activeEnforcementAmount: group.active.reduce((sum, item) => sum + (number(item.amount) || 0), 0),
-      closedEnforcementCount: group.closed.length, closedEnforcementAmount: group.closed.reduce((sum, item) => sum + (number(item.amount) || 0), 0) });
+      activeEnforcementAmount: sumMoney(group.active.map((item) => item.amount)),
+      closedEnforcementCount: group.closed.length, closedEnforcementAmount: sumMoney(group.closed.map((item) => item.amount)) });
   }
 
   result.insolvency.organizations = source.filter((item) => item.bankruptcyRecordsCount > 0).map((item) => ({ organizationInn: item.inn,
@@ -276,13 +308,13 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
   result.accountRestrictions.organizations = source.filter((item) => item.accountRestrictionsCount > 0 || number(item.negativeEnsBalance) > 0)
     .map((item) => ({ organizationInn: item.inn, organizationName: item.name, restrictionsCount: item.accountRestrictionsCount || 0,
       banksCount: item.accountRestrictionBanksCount || 0, decisionsCount: item.accountRestrictionDecisionsCount || 0,
-      negativeEns: number(item.negativeEnsBalance) || 0 }));
+      negativeEns: money(item.negativeEnsBalance) || 0 }));
   result.accountRestrictions.organizationsCount = source.filter((item) => item.accountRestrictionsCount > 0).length;
   result.accountRestrictions.restrictionsCount = source.reduce((sum, item) => sum + (item.accountRestrictionsCount || 0), 0);
   result.accountRestrictions.banksCount = source.reduce((sum, item) => sum + (item.accountRestrictionBanksCount || 0), 0);
   result.accountRestrictions.decisionsCount = source.reduce((sum, item) => sum + (item.accountRestrictionDecisionsCount || 0), 0);
   result.accountRestrictions.organizationsWithNegativeEns = source.filter((item) => number(item.negativeEnsBalance) > 0).length;
-  result.accountRestrictions.negativeEnsTotal = source.reduce((sum, item) => sum + Math.max(0, number(item.negativeEnsBalance) || 0), 0);
+  result.accountRestrictions.negativeEnsTotal = sumMoney(source.map((item) => Math.max(0, number(item.negativeEnsBalance) || 0)));
   result.accountRestrictions.errorsCount = result.coverage.sourceErrors.stopOperRsOrganizations;
   result.outcomeSignals = outcomeSignals(records);
 
@@ -293,10 +325,10 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
     add('egrul_exclusion', /исключ|предстоящ/i.test(organization.statusText || '') ? 1 : 0);
     add('active_efrsb', organization.activeBankruptcyCount || 0);
     const activeFssp = array(organization.enforcementProceedings).filter((item) => !item.stopInfo);
-    add('active_fssp_monetary', activeFssp.filter((item) => number(item.amount) > 0).length, activeFssp.reduce((sum, item) => sum + (number(item.amount) || 0), 0));
+    add('active_fssp_monetary', activeFssp.filter((item) => number(item.amount) > 0).length, sumMoney(activeFssp.map((item) => item.amount)));
     add('active_fssp_non_monetary', activeFssp.filter((item) => /неимуществен/i.test(`${item.subject || ''} ${item.processTotal || ''}`)).length);
     add('account_restrictions', organization.accountRestrictionsCount || 0);
-    add('negative_ens', number(organization.negativeEnsBalance) > 0 ? 1 : 0, Math.max(0, number(organization.negativeEnsBalance) || 0));
+    add('negative_ens', number(organization.negativeEnsBalance) > 0 ? 1 : 0, money(Math.max(0, number(organization.negativeEnsBalance) || 0)));
     const debtorBankruptcy = own.filter((item) => item.proceeding.proceedingCategory === 'bankruptcy' && item.proceeding.role === 'respondent');
     add('open_bankruptcy_as_debtor', debtorBankruptcy.filter((item) => item.proceeding.isFinished === false).length);
     add('bankruptcy_history_as_debtor', debtorBankruptcy.length);
@@ -306,6 +338,16 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
       organizationName: organization.name || organization.fullName || null, status: organization.status || null, signals });
   }
   result.priorityOrganizations.sort((a, b) => String(a.organizationInn).localeCompare(String(b.organizationInn)));
+  result.patterns.summary = {
+    repeatedCasesCount: result.patterns.repeatedCases.length,
+    recurringCreditorsCount: result.patterns.recurringCreditors.length,
+    recurringRespondentsCount: result.patterns.recurringDefendants.length,
+    repeatedAmountsCount: result.patterns.repeatedAmounts.length,
+    repeatedClaimSeriesCount: result.patterns.repeatedClaimSeries.length,
+    internalGroupCasesCount: result.patterns.internalGroupCases.length,
+    sharedCourtAddressesCount: result.patterns.sharedCourtAddresses.length,
+    duplicateOrganizationNamesCount: result.patterns.duplicateOrganizationNames.length,
+  };
   return result;
 }
 

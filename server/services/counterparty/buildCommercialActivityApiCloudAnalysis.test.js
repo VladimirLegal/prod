@@ -15,10 +15,10 @@ const organizations = [
     inn: '7700000001', name: 'ООО «Одинаковое имя»', fullName: 'ООО «Одинаковое имя»', status: 'Active',
     roles: ['director'], activityCode: '62.01', registrationDate: '2020-01-01',
     arbitrationProceedings: [
-      proceeding(null, 'А 40-1 / 2025', 'respondent', 'civil', 100000,
+      proceeding(null, 'А 40-1 / 2025', 'respondent', 'civil', 730850872.4200003,
         [participant('Кредитор Первый', creditorInn, 'plaintiff'), participant('Компания 1', '7700000001', 'respondent', sharedAddress)],
         { nextHearing: '15.09.2026 10:30 зал №5', instances: [{ documents: [{ documentTypeText: 'Иск удовлетворен', contentTypes: [] }] }] }),
-      proceeding('claim-2', 'A40-2/2025', 'respondent', 'civil', 100000,
+      proceeding('claim-2', 'A40-2/2025', 'respondent', 'civil', 730850872.4200003,
         [participant('КРЕДИТОР  ПЕРВЫЙ', creditorInn, 'plaintiff'), participant('Компания 1', '7700000001', 'respondent')]),
       proceeding('bank-debtor', 'А40-3/2025', 'respondent', 'bankruptcy', null,
         [participant('Кредитор Первый', creditorInn, 'plaintiff'), participant('Компания 1', '7700000001', 'respondent')]),
@@ -28,7 +28,8 @@ const organizations = [
     ],
     arbitrationDiagnostics: { caseInfo: { errors: [] } },
     enforcementProceedings: [
-      { amount: 2500, stopInfo: null, subject: 'Задолженность', documentDetails: { claimerInn: creditorInn } },
+      { amount: 0.1, stopInfo: null, subject: 'Задолженность', documentDetails: { claimerInn: creditorInn } },
+      { amount: 0.2, stopInfo: null, subject: 'Задолженность', documentDetails: { claimerInn: creditorInn } },
       { amount: 0, stopInfo: null, subject: 'Требование неимущественного характера', documentDetails: { claimerInn: creditorInn } },
       { amount: 500, stopInfo: 'окончено', subject: 'Задолженность', documentDetails: { claimerInn: creditorInn } },
     ],
@@ -47,6 +48,12 @@ const organizations = [
       proceeding('other-creditor', 'A40-6/2025', 'respondent', 'civil', 100000,
         [participant('Другой кредитор', '7733333333', 'plaintiff'), participant('Компания 2', '7700000002', 'respondent')],
         { caseInfoStatus: 'error', isFinished: null }),
+      proceeding('name-creditor-1', 'A40-7/2025', 'respondent', 'civil', 12.34,
+        [participant('ООО «Без ИНН»', null, 'plaintiff'), participant('Компания 2', '7700000002', 'respondent')]),
+      proceeding('name-creditor-2', 'A40-8/2025', 'respondent', 'civil', 12.34,
+        [participant('ооо  “Без   ИНН”', null, 'plaintiff'), participant('Компания 2', '7700000002', 'respondent')]),
+      proceeding('zero-claim', 'A40-9/2025', 'respondent', 'civil', 0,
+        [participant('Другой кредитор', '7733333333', 'plaintiff'), participant('Компания 2', '7700000002', 'respondent')]),
     ],
     arbitrationDiagnostics: { caseInfo: { errors: [{ caseId: 'other-creditor', caseNumber: 'A40-6/2025', error: 'mock', message: 'mock error' }] } },
     enforcementProceedings: [], fsspDiagnostics: { status: 'error' }, efrsbDiagnostics: { status: 'error' }, stopOperRsDiagnostics: { status: 'error' },
@@ -60,11 +67,17 @@ const analysis = buildAnalysis(organizations);
 assert.equal(JSON.stringify(organizations), before, 'input must not be mutated');
 assert.equal(analysis.patterns.repeatedCases.length, 1);
 assert.equal(analysis.patterns.recurringCreditors.find((item) => item.creditorInn === creditorInn).caseCount, 3);
-assert.equal(analysis.patterns.repeatedClaimSeries.length, 1);
-assert.equal(analysis.patterns.repeatedClaimSeries[0].creditorInn, creditorInn);
+assert.equal(analysis.patterns.repeatedClaimSeries.length, 2);
+const innSeries = analysis.patterns.repeatedClaimSeries.find((item) => item.creditorInn === creditorInn);
+assert.equal(innSeries.creditorInn, creditorInn);
 assert(!analysis.patterns.repeatedClaimSeries.some((item) => item.creditorInn === '7733333333'));
-assert.equal(analysis.patterns.repeatedClaimSeries[0].caseCount, 2);
-assert(analysis.patterns.repeatedAmounts.some((item) => item.amount === 100000 && item.caseCount >= 3));
+assert.equal(innSeries.caseCount, 2);
+assert(analysis.patterns.repeatedAmounts.some((item) => item.amount === 730850872.42 && item.caseCount === 2));
+assert.equal(analysis.patterns.recurringCreditors.find((item) => item.creditorInn === creditorInn).creditorIdentityType, 'inn');
+assert.equal(analysis.patterns.recurringCreditors.find((item) => item.creditorInn === creditorInn).creditorType, 'inn');
+const nameCreditor = analysis.patterns.recurringCreditors.find((item) => item.creditorName === 'ООО «Без ИНН»');
+assert.equal(nameCreditor.creditorIdentityType, 'normalized_name');
+assert.equal(nameCreditor.creditorType, 'name');
 assert.equal(analysis.bankruptcy.asDebtor.casesCount, 1);
 assert.equal(analysis.bankruptcy.asCreditor.casesCount, 1);
 assert.equal(analysis.patterns.internalGroupCases.length, 2);
@@ -72,19 +85,38 @@ assert.equal(analysis.coverage.organizationsCount, 2, 'same names must remain se
 assert.equal(analysis.organizationOverview.duplicateNames[0].organizationCount, 2);
 assert.equal(analysis.patterns.sharedCourtAddresses[0].mayBeHistorical, true);
 assert.equal(analysis.patterns.sharedCourtAddresses[0].source, 'kad_participants');
-assert.deepEqual(analysis.enforcement.summary, { totalCount: 3, activeCount: 2, closedCount: 1,
-  activeMonetaryCount: 1, activeNonMonetaryCount: 1, activeZeroOrUnknownAmountCount: 0,
-  activeAmount: 2500, closedAmount: 500 });
+assert.deepEqual(analysis.enforcement.summary, { totalCount: 4, activeCount: 3, closedCount: 1,
+  activeMonetaryCount: 2, activeNonMonetaryCount: 1, activeZeroOrUnknownAmountCount: 0,
+  activeAmount: 0.3, closedAmount: 500 });
 assert.equal(analysis.enforcement.creditorMatches.length, 1);
 assert.equal(analysis.enforcement.creditorMatches[0].creditorInn, creditorInn);
-assert.equal(analysis.enforcement.summary.activeAmount, 2500, 'KAD amounts must not enter FSSP amount');
+assert.equal(analysis.enforcement.summary.activeAmount, 0.3, 'KAD amounts must not enter FSSP amount');
+assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'claim-2').latestClaimSum, 730850872.42);
+assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'bank-debtor').latestClaimSum, null);
+assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'zero-claim').latestClaimSum, 0);
+assert.equal(analysis.litigation.declaredClaims.respondent.latestClaimsTotal, 1461801769.52);
 assert.equal(analysis.coverage.caseInfo.error, 1);
 assert.equal(analysis.coverage.caseInfo.skipped, 1);
 assert.equal(analysis.coverage.sourceErrors.kadCaseInfoCases[0].error, 'mock');
+assert.equal(analysis.coverage.caseInfo.loadedCasesCount, analysis.coverage.caseInfo.ok - 1);
+assert.equal(analysis.coverage.caseInfo.failedCasesCount, 1);
+assert.equal(analysis.coverage.caseInfo.notSelectedCasesCount, 1);
+assert.equal(analysis.coverage.caseInfo.eligibleCasesCount,
+  analysis.coverage.caseInfo.requestedCasesCount + analysis.coverage.caseInfo.skippedByLimitCasesCount);
 assert.equal(analysis.litigation.declaredClaims.isDebt, false);
 assert.equal(analysis.litigation.activeCases.every((item) => !Object.hasOwn(item, 'participants')), true);
 assert.equal(analysis.litigation.upcomingHearings[0].parsed, true);
 assert.equal(analysis.outcomeSignals.satisfied, 1);
+assert.deepEqual(analysis.patterns.summary, {
+  repeatedCasesCount: analysis.patterns.repeatedCases.length,
+  recurringCreditorsCount: analysis.patterns.recurringCreditors.length,
+  recurringRespondentsCount: analysis.patterns.recurringDefendants.length,
+  repeatedAmountsCount: analysis.patterns.repeatedAmounts.length,
+  repeatedClaimSeriesCount: analysis.patterns.repeatedClaimSeries.length,
+  internalGroupCasesCount: analysis.patterns.internalGroupCases.length,
+  sharedCourtAddressesCount: analysis.patterns.sharedCourtAddresses.length,
+  duplicateOrganizationNamesCount: analysis.patterns.duplicateOrganizationNames.length,
+});
 const json = JSON.stringify(analysis);
 for (const forbidden of ['"raw"', '"documents"', '"instances"', '"participants"', '"claimSumEvents"', '"instanceEvents"', '"subjectItems"']) {
   assert(!json.includes(forbidden), `analysis leaked ${forbidden}`);
@@ -93,6 +125,8 @@ const empty = buildAnalysis([]);
 assert.equal(empty.version, 1);
 assert.equal(empty.coverage.organizationsCount, 0);
 assert.deepEqual(empty.patterns.repeatedCases, []);
+assert(Object.values(empty.coverage.caseInfo).every((value) => value === 0));
+assert(Object.values(empty.patterns.summary).every((value) => value === 0));
 assert.deepEqual(empty.enforcement.summary, { totalCount: 0, activeCount: 0, closedCount: 0,
   activeMonetaryCount: 0, activeNonMonetaryCount: 0, activeZeroOrUnknownAmountCount: 0, activeAmount: 0, closedAmount: 0 });
 
@@ -101,5 +135,8 @@ const example = { coverage: analysis.coverage, litigation: { summary: analysis.l
 patterns: { repeatedCases: analysis.patterns.repeatedCases, repeatedClaimSeries: analysis.patterns.repeatedClaimSeries },
   enforcement: analysis.enforcement };
 console.info('compact analysis example:', JSON.stringify(example, null, 2));
+console.info('coverage.caseInfo:', JSON.stringify(analysis.coverage.caseInfo));
+console.info('patterns.summary:', JSON.stringify(analysis.patterns.summary));
+console.info('normalized money:', analysis.litigation.activeCases.find((item) => item.caseId === 'claim-2').latestClaimSum);
 console.info(`analysis JSON size: ${Buffer.byteLength(json)} bytes`);
 console.info('buildCommercialActivityApiCloudAnalysis scenarios 1-16: passed');
