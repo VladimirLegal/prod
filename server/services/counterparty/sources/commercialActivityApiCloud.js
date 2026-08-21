@@ -5,6 +5,7 @@ const checkEfrsb = require('./efrsb');
 const checkStopOperRS = require('./stopOperRS');
 const checkKadCaseInfo = require('./kadCaseInfo');
 const buildArbitrationApiCloudCombined = require('../buildArbitrationApiCloudCombined');
+const buildCommercialActivityApiCloudAnalysis = require('../buildCommercialActivityApiCloudAnalysis');
 
 const ARBITRATION_TIMEOUT_MS = 120000;
 const FSSP_TIMEOUT_MS = 400000;
@@ -566,14 +567,16 @@ function buildSummary(items = [], caseInfoRun = null) {
 
 async function commercialActivityApiCloud(person, options = {}) {
   const participation = options.participationSource || await checkLegalEntityParticipationApiCloud(person);
-  const common = { provider: 'apicloud', affectsRisk: false, items: [], summary: buildEmptySummary() };
+  const common = { provider: 'apicloud', affectsRisk: false, items: [], summary: buildEmptySummary(),
+    analysis: buildCommercialActivityApiCloudAnalysis([]) };
   if (participation?.status === 'error') return { ...common, status: 'error', error: participation.error || 'participation_failed', message: participation.message || null };
   if (participation?.status === 'skipped') return { ...common, status: 'skipped', message: participation.message || null };
   const organizations = Array.isArray(participation?.items) ? participation.items : [];
   if (!organizations.length) return { ...common, status: 'empty', message: 'Связанные юридические лица не найдены.' };
   const items = await Promise.all(organizations.map(enrichOrganization));
   const caseInfoRun = await enrichCaseInfo(items, options);
-  return { ...common, status: 'ok', items, summary: buildSummary(items, caseInfoRun), message: `Проверены связанные юридические лица: ${items.length}.` };
+  return { ...common, status: 'ok', items, summary: buildSummary(items, caseInfoRun),
+    analysis: buildCommercialActivityApiCloudAnalysis(items), message: `Проверены связанные юридические лица: ${items.length}.` };
 }
 
 module.exports = commercialActivityApiCloud;
