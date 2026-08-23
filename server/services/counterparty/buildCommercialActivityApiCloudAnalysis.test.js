@@ -95,6 +95,15 @@ assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'cla
 assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'bank-debtor').latestClaimSum, null);
 assert.equal(analysis.litigation.activeCases.find((item) => item.caseId === 'zero-claim').latestClaimSum, 0);
 assert.equal(analysis.litigation.declaredClaims.respondent.latestClaimsTotal, 1461801769.52);
+assert.deepEqual(analysis.litigation.declaredClaims.exposure.active, {
+  casesCount: 6, casesWithAmount: 5, casesWithoutAmount: 1, latestClaimsTotal: 1461701769.52,
+});
+assert.deepEqual(analysis.litigation.declaredClaims.exposure.unknownState, {
+  casesCount: 1, casesWithAmount: 1, casesWithoutAmount: 0, latestClaimsTotal: 100000,
+});
+assert.deepEqual(analysis.litigation.declaredClaims.exposure.bankruptcy.active, {
+  casesCount: 1, casesWithAmount: 0, casesWithoutAmount: 1, latestClaimsTotal: 0,
+});
 assert.equal(analysis.coverage.caseInfo.error, 1);
 assert.equal(analysis.coverage.caseInfo.skipped, 1);
 assert.equal(analysis.coverage.sourceErrors.kadCaseInfoCases[0].error, 'mock');
@@ -129,6 +138,38 @@ assert(Object.values(empty.coverage.caseInfo).every((value) => value === 0));
 assert(Object.values(empty.patterns.summary).every((value) => value === 0));
 assert.deepEqual(empty.enforcement.summary, { totalCount: 0, activeCount: 0, closedCount: 0,
   activeMonetaryCount: 0, activeNonMonetaryCount: 0, activeZeroOrUnknownAmountCount: 0, activeAmount: 0, closedAmount: 0 });
+assert.equal(empty.litigation.declaredClaims.exposure.active.latestClaimsTotal, 0);
+assert.equal(empty.litigation.declaredClaims.exposure.bankruptcy.finished.casesCount, 0);
+
+const statusOrganizations = [{ inn: '1', arbitrationProceedings: [
+  proceeding('active', 'A-1', 'respondent', 'civil', 0.1, [], { isFinished: false }),
+  proceeding('finished', 'A-2', 'respondent', 'civil', 999, [], { isFinished: true }),
+  proceeding('null', 'A-3', 'respondent', 'civil', 0.2, [], { isFinished: null }),
+  proceeding('undefined', 'A-4', 'respondent', 'civil', 0.3, [], { isFinished: undefined }),
+  { caseId: 'missing', number: 'A-5', role: 'respondent', proceedingCategory: 'civil', latestClaimSum: null },
+  proceeding('plaintiff', 'A-6', 'plaintiff', 'civil', 5000, [], { isFinished: false }),
+  proceeding('mixed', 'A-7', 'mixed', 'civil', 0.2, [], { isFinished: false }),
+  proceeding('bank-active', 'B-1', 'respondent', 'bankruptcy', 10, [], { isFinished: false }),
+  proceeding('bank-unknown', 'B-2', 'respondent', 'bankruptcy', 20, [], { isFinished: 'unknown' }),
+  proceeding('bank-finished', 'B-3', 'respondent', 'bankruptcy', 30, [], { isFinished: true }),
+] }, { inn: '2', arbitrationProceedings: [
+  proceeding('active', 'A-1', 'respondent', 'civil', 0.1, [], { isFinished: false }),
+  proceeding('mixed', 'A-7', 'plaintiff', 'civil', 0.2, [], { isFinished: false }),
+] }];
+const statusBefore = JSON.stringify(statusOrganizations);
+const statusAnalysis = buildAnalysis(statusOrganizations);
+assert.equal(JSON.stringify(statusOrganizations), statusBefore);
+assert.deepEqual(statusAnalysis.litigation.declaredClaims.exposure.active,
+  { casesCount: 3, casesWithAmount: 3, casesWithoutAmount: 0, latestClaimsTotal: 10.3 });
+assert.deepEqual(statusAnalysis.litigation.declaredClaims.exposure.unknownState,
+  { casesCount: 4, casesWithAmount: 3, casesWithoutAmount: 1, latestClaimsTotal: 20.5 });
+assert.deepEqual(statusAnalysis.litigation.declaredClaims.exposure.finished,
+  { casesCount: 2, casesWithAmount: 2, casesWithoutAmount: 0, latestClaimsTotal: 1029 });
+assert.deepEqual(statusAnalysis.litigation.declaredClaims.exposure.bankruptcy, {
+  active: { casesCount: 1, casesWithAmount: 1, casesWithoutAmount: 0, latestClaimsTotal: 10 },
+  unknownState: { casesCount: 1, casesWithAmount: 1, casesWithoutAmount: 0, latestClaimsTotal: 20 },
+  finished: { casesCount: 1, casesWithAmount: 1, casesWithoutAmount: 0, latestClaimsTotal: 30 },
+});
 
 const example = { coverage: analysis.coverage, litigation: { summary: analysis.litigation.summary,
   declaredClaims: analysis.litigation.declaredClaims, activeCases: analysis.litigation.activeCases },

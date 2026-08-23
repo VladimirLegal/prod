@@ -30,6 +30,11 @@ function parseHearing(value) {
 }
 
 function emptyAnalysis() {
+  const emptyExposureGroup = () => ({ casesCount: 0, casesWithAmount: 0,
+    casesWithoutAmount: 0, latestClaimsTotal: 0 });
+  const emptyExposure = () => ({ active: emptyExposureGroup(), unknownState: emptyExposureGroup(),
+    finished: emptyExposureGroup(), bankruptcy: { active: emptyExposureGroup(),
+      unknownState: emptyExposureGroup(), finished: emptyExposureGroup() } });
   return {
     version: 1,
     coverage: { organizationsCount: 0, caseOccurrencesCount: 0, uniqueCasesCount: 0,
@@ -45,6 +50,7 @@ function emptyAnalysis() {
       bankruptcy: 0, other: 0, finished: 0, active: 0, unknownState: 0 }, byRole: {}, byCategory: {}, byYear: [],
       declaredClaims: { respondent: { casesWithAmount: 0, casesWithoutAmount: 0, latestClaimsTotal: 0 },
         plaintiff: { casesWithAmount: 0, casesWithoutAmount: 0, latestClaimsTotal: 0 },
+        exposure: emptyExposure(),
         ranges: ['up_to_100k', '100k_to_1m', '1m_to_10m', 'over_10m', 'unknown'].map((code) => ({ code, count: 0 })),
         changedClaimsCount: 0, isDebt: false, message: CLAIM_MESSAGE }, activeCases: [], upcomingHearings: [] },
     bankruptcy: { asDebtor: { casesCount: 0, organizationsCount: 0, activeCasesCount: 0, caseRefs: [] },
@@ -112,6 +118,21 @@ function groupRecords(records) {
   const groups = new Map();
   for (const record of records) { if (!groups.has(record.key)) groups.set(record.key, []); groups.get(record.key).push(record); }
   return groups;
+}
+
+function caseStatus(records) {
+  if (records.some((record) => record.proceeding.isFinished === false)) return 'active';
+  if (records.some((record) => record.proceeding.isFinished === true)) return 'finished';
+  return 'unknownState';
+}
+
+function addExposure(group, amount) {
+  group.casesCount += 1;
+  if (amount === null) group.casesWithoutAmount += 1;
+  else {
+    group.casesWithAmount += 1;
+    group.latestClaimsTotal = addMoney(group.latestClaimsTotal, amount);
+  }
 }
 
 function buildCommercialActivityApiCloudAnalysis(organizations = []) {
@@ -185,9 +206,7 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
   result.litigation.byRole = countBy(roles); result.litigation.byCategory = countBy(categories);
   for (const code of ['respondent', 'plaintiff', 'mixed']) result.litigation.summary[code] = roles.filter((value) => value === code).length;
   for (const code of ['civil', 'administrative', 'bankruptcy', 'other']) result.litigation.summary[code] = categories.filter((value) => value === code).length;
-  result.litigation.summary.finished = records.filter((item) => item.proceeding.isFinished === true).length;
-  result.litigation.summary.active = records.filter((item) => item.proceeding.isFinished === false).length;
-  result.litigation.summary.unknownState = records.filter((item) => typeof item.proceeding.isFinished !== 'boolean').length;
+  for (const cases of groupedCases.values()) result.litigation.summary[caseStatus(cases)] += 1;
   const years = records.map((item) => String(item.proceeding.proceedingStartDate || '').match(/(?:^|\D)(20\d{2})(?:\D|$)/)?.[1]).filter(Boolean);
   result.litigation.byYear = Object.entries(countBy(years)).map(([year, count]) => ({ year: Number(year), count })).sort((a, b) => a.year - b.year);
 
@@ -213,6 +232,19 @@ function buildCommercialActivityApiCloudAnalysis(organizations = []) {
       result.litigation.activeCases.push(active);
       if (active.nextHearing) result.litigation.upcomingHearings.push({ ...caseRef(record), ...parseHearing(active.nextHearing) });
     }
+  }
+
+  const exposure = result.litigation.declaredClaims.exposure;
+  for (const cases of groupedCases.values()) {
+    const exposed = cases.filter((record) => ['respondent', 'mixed'].includes(record.proceeding.role));
+    if (!exposed.length) continue;
+    const status = caseStatus(cases);
+    const knownAmounts = exposed.map((record) => money(record.proceeding.latestClaimSum))
+      .filter((value) => value !== null);
+    const amount = knownAmounts.length ? knownAmounts[0] : null;
+    addExposure(exposure[status], amount);
+    const debtorBankruptcy = exposed.some((record) => record.proceeding.proceedingCategory === 'bankruptcy');
+    if (debtorBankruptcy) addExposure(exposure.bankruptcy[status], amount);
   }
 
   for (const [side, role] of [['asDebtor', 'respondent'], ['asCreditor', 'plaintiff']]) {

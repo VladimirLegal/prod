@@ -2,99 +2,81 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import CommercialActivityApiCloudSummary from './CommercialActivityApiCloudSummary';
 
-const makeSource = () => ({
-  summary: { kadCaseInfoErrorCases: 0 },
-  analysis: {
-    version: 1,
-    coverage: { uniqueCasesCount: 188, caseInfo: { failedCasesCount: 0 } },
-    litigation: {
-      summary: { respondent: 157, plaintiff: 31, active: 8, finished: 151, unknownState: 29, bankruptcy: 14 },
-      declaredClaims: {
-        respondent: { latestClaimsTotal: 730850872.42, casesWithAmount: 100, casesWithoutAmount: 57 },
-        plaintiff: { latestClaimsTotal: 0, casesWithAmount: 20, casesWithoutAmount: 11 },
-        message: 'Суммы KAD — заявленные требования, а не задолженность.',
-      },
-    },
-    enforcement: { summary: { activeCount: 4, activeAmount: 999999 }, creditorMatches: [{}, {}, {}] },
-    accountRestrictions: { organizationsCount: 2, decisionsCount: 4, organizationsWithNegativeEns: 1, negativeEnsTotal: 1200 },
-    insolvency: { organizationsWithRecords: 2, activeRecords: 1 },
-    patterns: {
-      summary: { recurringCreditorsCount: 28, recurringRespondentsCount: 9, repeatedCasesCount: 7, internalGroupCasesCount: 2 },
-      repeatedClaimSeries: [{ raw: 'raw' }], repeatedAmounts: [{ documents: [] }], sharedCourtAddresses: [{}],
-    },
-  },
-  items: [{ raw: 'raw', documents: [], instances: [], participants: [], claimSumEvents: [], instanceEvents: [], subjectItems: [] }],
-});
+const group = (casesCount, latestClaimsTotal) => ({ casesCount, casesWithAmount: casesCount,
+  casesWithoutAmount: 0, latestClaimsTotal });
+const makeSource = () => ({ summary: { kadCaseInfoErrorCases: 0 }, analysis: {
+  coverage: { caseInfo: { failedCasesCount: 0, skippedByLimitCasesCount: 0 } },
+  litigation: { summary: { active: 8, finished: 151, unknownState: 29 }, declaredClaims: {
+    respondent: { latestClaimsTotal: 730850872.42 }, plaintiff: { latestClaimsTotal: 92733051.86 },
+    exposure: { active: group(5, 100.1), unknownState: group(3, 200.2), finished: group(99, 999999),
+      bankruptcy: { active: group(1, 50), unknownState: group(2, 60), finished: group(5, 700) } },
+  } },
+  enforcement: { summary: { activeCount: 4, activeMonetaryCount: 2, activeNonMonetaryCount: 2,
+    activeAmount: 2749354.26, closedCount: 8, closedAmount: 888888 } },
+  accountRestrictions: { organizationsCount: 2, decisionsCount: 4, organizationsWithNegativeEns: 1, negativeEnsTotal: 1200 },
+  insolvency: { organizationsWithRecords: 9, activeRecords: 1, finishedRecords: 8 },
+  patterns: { summary: { recurringCreditorsCount: 28 } },
+} });
 
 describe('CommercialActivityApiCloudSummary', () => {
-  test('shows the concise analysis without organization duplicates or technical details', () => {
-    const source = makeSource();
-    const active = source.analysis.litigation.summary.active;
-    const finished = source.analysis.litigation.summary.finished;
-    const unknown = source.analysis.litigation.summary.unknownState;
-    expect(active + finished + unknown).toBe(source.analysis.coverage.uniqueCasesCount);
+  test('shows only compact current risks with status-specific KAD and FSSP values', () => {
+    render(<CommercialActivityApiCloudSummary source={makeSource()} />);
+    expect(screen.getByText(/8 активных · 151 завершённых · 29 со статусом/)).toBeInTheDocument();
+    expect(screen.getByText('Заявленные требования по активным делам').nextSibling).toHaveTextContent(/100,10 ₽/);
+    expect(screen.getByText('Заявленные требования по делам с неопределённым статусом').nextSibling).toHaveTextContent(/200,20 ₽/);
+    expect(screen.getByText('Активные банкротные дела должников').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Активные исполнительные производства').nextSibling).toHaveTextContent('4');
+    expect(screen.getByText('Денежные исполнительные производства').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Сумма по активным денежным производствам ФССП').nextSibling)
+      .toHaveTextContent(/2\s210\s747,30 ₽/);
+    expect(screen.getByText('Неденежные исполнительные производства').nextSibling).toHaveTextContent('2');
+    expect(screen.getByText('Производства без определённой суммы').nextSibling).toHaveTextContent('1');
+    expect(screen.getByText('Действующие решения о приостановлении операций').nextSibling).toHaveTextContent('4');
+    expect(screen.getByText('Общая сумма отрицательного сальдо ЕНС').nextSibling).toHaveTextContent(/1\s200,00 ₽/);
+    expect(screen.getByText('Действующие записи ЕФРСБ').nextSibling).toHaveTextContent('1');
+    ['730 850 872,42 ₽', '92 733 051,86 ₽', '999 999 ₽', '888 888 ₽',
+      'Выявленные связи и повторяемость', 'Дел с суммой / без суммы', 'Детали KAD загружены',
+      'Организаций со сведениями ЕФРСБ'].forEach((value) => expect(screen.queryByText(value)).not.toBeInTheDocument());
+  });
 
+  test('renders every metric as one vertical table row with its value in the right cell', () => {
+    const { container } = render(<CommercialActivityApiCloudSummary source={makeSource()} />);
+    const label = screen.getByText('Активные исполнительные производства');
+    const row = label.closest('tr');
+    expect(row).toBeInTheDocument();
+    expect(row.querySelectorAll('th, td')).toHaveLength(2);
+    expect(row.querySelector('th')).toHaveTextContent('Активные исполнительные производства');
+    expect(row.querySelector('td')).toHaveTextContent('4');
+    expect(row.querySelector('td')).toHaveClass('text-right', 'whitespace-nowrap');
+    expect(container.querySelectorAll('dl.grid, table.grid')).toHaveLength(0);
+    expect(container.querySelectorAll('table tbody tr')).toHaveLength(18);
+
+    const monetary = Number(screen.getByText('Денежные исполнительные производства').nextSibling.textContent);
+    const nonMonetary = Number(screen.getByText('Неденежные исполнительные производства').nextSibling.textContent);
+    const unknownAmount = Number(screen.getByText('Производства без определённой суммы').nextSibling.textContent);
+    expect(monetary + nonMonetary + unknownAmount).toBe(4);
+  });
+
+  test('does not use a legacy aggregate as active KAD exposure and tolerates missing fields', () => {
+    const source = { analysis: { litigation: { declaredClaims: { respondent: { latestClaimsTotal: 123456 } } } } };
+    expect(() => render(<CommercialActivityApiCloudSummary source={source} />)).not.toThrow();
+    expect(screen.getByText('Заявленные требования по активным делам').nextSibling).toHaveTextContent('—');
+    expect(screen.queryByText(/123\s456/)).not.toBeInTheDocument()
+  });
+
+  test('preserves known zero and works without analysis', () => {
+    const source = makeSource(); source.analysis.litigation.declaredClaims.exposure.active = group(0, 0);
     render(<CommercialActivityApiCloudSummary source={source} />);
-
-    expect(screen.getByText('188')).toBeInTheDocument();
-    expect(screen.getByText('157')).toBeInTheDocument();
-    expect(screen.getByText('31')).toBeInTheDocument();
-    expect(screen.getByText(/8 активных/)).toBeInTheDocument();
-    expect(screen.getByText(/151 завершённое/)).toBeInTheDocument();
-    expect(screen.getByText(/29 с неопределённым статусом/)).toBeInTheDocument();
-    expect(screen.getByText(/730\s850\s872,42 ₽/)).toBeInTheDocument();
-    expect(screen.getByText('0,00 ₽')).toBeInTheDocument();
-    expect(screen.getByText(/заявленные требования, а не задолженность/)).toBeInTheDocument();
-    expect(screen.getByText('Активных производств ФССП')).toBeInTheDocument();
-    expect(screen.getByText('28')).toBeInTheDocument();
-    expect(screen.getByText('Совпадения кредитора KAD и взыскателя ФССП')).toBeInTheDocument();
-
-    ['Количество связанных организаций', 'Количество действующих организаций', 'Текущая задолженность ФССП',
-      'Серии «кредитор + сумма»', 'Группы одинаковых сумм', 'Совпадающие судебные адреса',
-      'eligibleCasesCount', 'requestedCasesCount', 'loadedCasesCount', 'raw', 'documents', 'instances',
-      'participants', 'claimSumEvents', 'instanceEvents', 'subjectItems'].forEach((text) => {
-      expect(screen.queryByText(text)).not.toBeInTheDocument();
-    });
-  });
-
-  test('uses pattern arrays when patterns.summary is absent', () => {
-    const source = makeSource();
-    delete source.analysis.patterns.summary;
-    source.analysis.patterns.recurringCreditors = [{}, {}];
-    source.analysis.patterns.recurringDefendants = [{}];
-    source.analysis.patterns.repeatedCases = [{}, {}, {}];
-    source.analysis.patterns.internalGroupCases = [{}, {}, {}, {}];
-    render(<CommercialActivityApiCloudSummary source={source} />);
-    expect(screen.getByText('Повторяющиеся кредиторы').nextSibling).toHaveTextContent('2');
-    expect(screen.getByText('Повторяющиеся дела').nextSibling).toHaveTextContent('3');
-    expect(screen.getByText('Дела между связанными организациями').nextSibling).toHaveTextContent('4');
-  });
-
-  test('renders the legacy summary when analysis is absent', () => {
-    render(<CommercialActivityApiCloudSummary source={{ summary: {
-      totalArbitrationCases: 12, totalBankruptcyCases: 2, activeEnforcementProceedings: 3,
-      totalAccountRestrictions: 4, withNegativeEnsBalanceCount: 5,
-    } }} />);
-    expect(screen.getByText(/Расширенная аналитика недоступна/)).toBeInTheDocument();
-    expect(screen.getByText('Всего арбитражных дел')).toBeInTheDocument();
-    expect(screen.getByText('Активных производств ФССП')).toBeInTheDocument();
-  });
-
-  test('handles an empty contract', () => {
+    expect(screen.getByText('Заявленные требования по активным делам').nextSibling).toHaveTextContent('0,00 ₽');
     expect(() => render(<CommercialActivityApiCloudSummary />)).not.toThrow();
-    expect(screen.getByText(/Расширенная аналитика недоступна/)).toBeInTheDocument();
   });
 
-  test('shows only a generic caseInfo warning and does not fetch or mutate source', () => {
-    const source = makeSource();
-    source.analysis.coverage.caseInfo.failedCasesCount = 6;
+  test('shows a user-facing warning only for errors or limits and does not fetch or mutate', () => {
+    const source = makeSource(); source.analysis.coverage.caseInfo.failedCasesCount = 1;
     const snapshot = JSON.parse(JSON.stringify(source));
     const fetchSpy = jest.spyOn(global, 'fetch');
     render(<CommercialActivityApiCloudSummary source={source} />);
-    expect(screen.getByText(/По части дел подробные сведения KAD недоступны/)).toBeInTheDocument();
-    expect(screen.queryByText('6')).not.toBeInTheDocument();
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(source).toEqual(snapshot);
-    fetchSpy.mockRestore();
+    expect(screen.getByText('По части дел статус или подробные сведения KAD не подтверждены.')).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled(); expect(source).toEqual(snapshot); fetchSpy.mockRestore();
   });
 });

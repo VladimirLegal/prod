@@ -18,7 +18,7 @@ const initialForm = {
   inn: '',
   };
 
-const SELECTIVE_SOURCE_GROUPS = [
+export const SELECTIVE_SOURCE_GROUPS = [
   {
     title: 'API-cloud',
     sources: [
@@ -33,6 +33,11 @@ const SELECTIVE_SOURCE_GROUPS = [
       {
         key: 'legalEntityParticipationApiCloud',
         label: 'Участие в юридических лицах',
+      },
+      {
+        key: 'commercialActivityApiCloud',
+        label: 'Коммерческая деятельность связанных организаций (API-cloud)',
+        hint: 'Включает дополнительные платные запросы KAD по найденным делам.',
       },
       { key: 'inoagent', label: 'Иноагенты' },
     ],
@@ -57,6 +62,18 @@ const SELECTIVE_SOURCE_KEYS = SELECTIVE_SOURCE_GROUPS
   .flatMap((group) => group.sources)
   .map((source) => source.key);
 
+export const toggleSelectedSources = (sources, sourceKey) => {
+  const selected = new Set(sources);
+  if (selected.has(sourceKey)) {
+    selected.delete(sourceKey);
+    if (sourceKey === 'legalEntityParticipationApiCloud') selected.delete('commercialActivityApiCloud');
+  } else {
+    selected.add(sourceKey);
+    if (sourceKey === 'commercialActivityApiCloud') selected.add('legalEntityParticipationApiCloud');
+  }
+  return SELECTIVE_SOURCE_KEYS.filter((key) => selected.has(key));
+};
+
 const SHORT_SOURCE_LABELS = {
   // API-cloud
   mvdPassport: 'Пас',
@@ -68,6 +85,7 @@ const SHORT_SOURCE_LABELS = {
   arbitrationApiCloudCombined: 'Арб',
   fns: 'ФНС',
   legalEntityParticipationApiCloud: 'Участ.ЮЛ',
+  commercialActivityApiCloud: 'Ком.деят.ЮЛ',
   inoagent: 'Иноаг',
 
   // Контур
@@ -288,11 +306,7 @@ function CounterpartyCheckPage() {
   };
 
   const handleToggleSelectedSource = (sourceKey) => {
-    setSelectedSources((prev) =>
-      prev.includes(sourceKey)
-        ? prev.filter((key) => key !== sourceKey)
-        : [...prev, sourceKey]
-    );
+    setSelectedSources((prev) => toggleSelectedSources(prev, sourceKey));
   };
 
   const handleRealEstateChange = (e) => {
@@ -4034,7 +4048,7 @@ function CounterpartyCheckPage() {
                           onChange={() => handleToggleSelectedSource(source.key)}
                           className="mt-1"
                         />
-                        <span>{source.label}</span>
+                        <span>{source.label}{source.hint && <span className="mt-0.5 block text-xs text-gray-500">{source.hint}</span>}</span>
                       </label>
                     ))}
                   </div>
