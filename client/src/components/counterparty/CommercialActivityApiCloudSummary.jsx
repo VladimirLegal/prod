@@ -51,7 +51,7 @@ export default function CommercialActivityApiCloudSummary({ source = {} }) {
   return <div className="space-y-3">
     {badges.length > 0 && <div className="flex flex-wrap gap-2">{badges.map(([, label]) =>
       <span key={label} className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">{label}</span>)}</div>}
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+    <div className="space-y-3">
       <section className="rounded-xl bg-slate-50 p-3">
         <h4 className="text-sm font-semibold text-gray-900">Судебные дела</h4>
         <p className="my-2 text-xs text-gray-700">{display(states.active)} активных · {display(states.finished)} завершённых · {display(states.unknownState)} со статусом, который не удалось определить</p>

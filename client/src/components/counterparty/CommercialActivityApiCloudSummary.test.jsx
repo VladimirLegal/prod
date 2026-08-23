@@ -41,6 +41,10 @@ describe('CommercialActivityApiCloudSummary', () => {
 
   test('renders every metric as one vertical table row with its value in the right cell', () => {
     const { container } = render(<CommercialActivityApiCloudSummary source={makeSource()} />);
+    const sectionsWrapper = screen.getByText('Судебные дела').closest('section').parentElement;
+    expect(sectionsWrapper).toHaveClass('space-y-3');
+    expect(sectionsWrapper).not.toHaveClass('md:grid-cols-2', 'lg:grid-cols-2');
+
     const label = screen.getByText('Активные исполнительные производства');
     const row = label.closest('tr');
     expect(row).toBeInTheDocument();

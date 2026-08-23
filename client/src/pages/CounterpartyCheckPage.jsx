@@ -2043,9 +2043,7 @@ function CounterpartyCheckPage() {
     return (
       <div
         key={key}
-        className={`border rounded-lg p-3 bg-white shadow-sm space-y-2 ${
-          key === 'commercialActivityApiCloud' ? 'md:col-span-2' : ''
-        }`}
+        className="border rounded-lg p-3 bg-white shadow-sm space-y-2"
       >
         <div className="flex items-center justify-between">
           <div>
