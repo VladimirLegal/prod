@@ -56,7 +56,6 @@ export default function CommercialActivityApiCloudSummary({ source = {} }) {
         <h4 className="text-sm font-semibold text-gray-900">Судебные дела</h4>
         <p className="my-2 text-xs text-gray-700">{display(states.active)} активных · {display(states.finished)} завершённых · {display(states.unknownState)} со статусом, который не удалось определить</p>
         <Metrics rows={[
-          ['Всего активных судебных дел', states.active],
           ['Активные дела ответчиков', exposure ? active.casesCount : null],
           ['Заявленные требования по активным делам', exposure ? money(active.latestClaimsTotal) : null],
           ['Дела ответчиков с неопределённым статусом', exposure ? unknown.casesCount : null],
