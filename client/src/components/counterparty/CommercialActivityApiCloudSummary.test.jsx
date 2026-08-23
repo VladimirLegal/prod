@@ -22,6 +22,7 @@ describe('CommercialActivityApiCloudSummary', () => {
   test('shows only compact current risks with status-specific KAD and FSSP values', () => {
     render(<CommercialActivityApiCloudSummary source={makeSource()} />);
     expect(screen.getByText(/8 активных · 151 завершённых · 29 со статусом/)).toBeInTheDocument();
+    expect(screen.getByText('Всего активных судебных дел').nextSibling).toHaveTextContent('8');
     expect(screen.getByText('Заявленные требования по активным делам').nextSibling).toHaveTextContent(/100,10 ₽/);
     expect(screen.getByText('Заявленные требования по делам с неопределённым статусом').nextSibling).toHaveTextContent(/200,20 ₽/);
     expect(screen.getByText('Активные банкротные дела должников').nextSibling).toHaveTextContent('1');
@@ -53,7 +54,7 @@ describe('CommercialActivityApiCloudSummary', () => {
     expect(row.querySelector('td')).toHaveTextContent('4');
     expect(row.querySelector('td')).toHaveClass('text-right', 'whitespace-nowrap');
     expect(container.querySelectorAll('dl.grid, table.grid')).toHaveLength(0);
-    expect(container.querySelectorAll('table tbody tr')).toHaveLength(18);
+    expect(container.querySelectorAll('table tbody tr')).toHaveLength(19);
 
     const monetary = Number(screen.getByText('Денежные исполнительные производства').nextSibling.textContent);
     const nonMonetary = Number(screen.getByText('Неденежные исполнительные производства').nextSibling.textContent);
