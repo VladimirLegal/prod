@@ -11,6 +11,7 @@ const { exportHtmlToPdfBuffer } = require('../services/pdfGenerator');
 const { innLookup } = require('../services/counterparty/innLookup');
 const { rosreestrAddressLookup } = require('../services/counterparty/sources/rosreestrAddressLookup');
 const { rosreestrObjectLookup } = require('../services/counterparty/sources/rosreestrObjectLookup');
+const buildCommercialActivityApiCloudReportViewModel = require('../services/counterparty/buildCommercialActivityApiCloudReportViewModel');
 const { query } = require('../db'); // добавь вверху
 const {
   PRIVACY_FULL,
@@ -3880,6 +3881,10 @@ function prepareCounterpartyReportViewModel({ entry, query = {}, output = 'html'
   };
 
   const filteredReportData = applyCounterpartyReportFilters(baseReportData, filterQuery);
+  if (filteredReportData.sources?.commercialActivityApiCloud) {
+    filteredReportData.sources.commercialActivityApiCloud.report =
+      buildCommercialActivityApiCloudReportViewModel(filteredReportData.sources.commercialActivityApiCloud);
+  }
 
   if (!isMasked) {
     return filteredReportData;
@@ -3973,7 +3978,9 @@ router.get('/report/:id/pdf', async (req, res) => {
   }
 
   try {
-    const pdfBuffer = await exportHtmlToPdfBuffer(html);
+    const pdfBuffer = await exportHtmlToPdfBuffer(html, {
+      preferCSSPageSize: entityType !== 'realEstate',
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', pdfBuffer.length);

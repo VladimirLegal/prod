@@ -78,11 +78,13 @@ async function exportHtmlToPdfBuffer(html, options = {}) {
           format: 'A4',
           landscape: true,
           printBackground: true,
+          preferCSSPageSize: options.preferCSSPageSize === true,
           margin: { top: '1.27cm', right: '1.27cm', bottom: '1.27cm', left: '1.27cm' },
         }
       : {
           format: 'A4',
           printBackground: true,
+          preferCSSPageSize: options.preferCSSPageSize === true,
           margin: { top: '2cm', right: '1.5cm', bottom: '2cm', left: '3cm' },
         };
 
