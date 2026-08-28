@@ -12,6 +12,7 @@ const { innLookup } = require('../services/counterparty/innLookup');
 const { rosreestrAddressLookup } = require('../services/counterparty/sources/rosreestrAddressLookup');
 const { rosreestrObjectLookup } = require('../services/counterparty/sources/rosreestrObjectLookup');
 const buildCommercialActivityApiCloudReportViewModel = require('../services/counterparty/buildCommercialActivityApiCloudReportViewModel');
+const { buildCheckedPersonArbitrationActivity } = require('../services/counterparty/buildCommercialActivityApiCloudReportViewModel');
 const { query } = require('../db'); // добавь вверху
 const {
   PRIVACY_FULL,
@@ -3881,6 +3882,12 @@ function prepareCounterpartyReportViewModel({ entry, query = {}, output = 'html'
   };
 
   const filteredReportData = applyCounterpartyReportFilters(baseReportData, filterQuery);
+  if (filteredReportData.sources?.fns) {
+    filteredReportData.sources.fns.arbitrationActivity = buildCheckedPersonArbitrationActivity(
+      filteredReportData.sources.arbitrationApiCloudCombined,
+      filteredReportData.sources.fns
+    );
+  }
   if (filteredReportData.sources?.commercialActivityApiCloud) {
     filteredReportData.sources.commercialActivityApiCloud.report =
       buildCommercialActivityApiCloudReportViewModel(filteredReportData.sources.commercialActivityApiCloud);
