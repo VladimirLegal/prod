@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const Handlebars = require('handlebars');
 const buildReport = require('./buildCommercialActivityApiCloudReportViewModel');
+const { buildCheckedPersonArbitrationActivity } = buildReport;
 
 const source = { status: 'ok', provider: 'apicloud', summary: { inactiveCount: 0 }, items: [{
   name: 'ООО <Альфа>', inn: '7700000001', roles: ['director', 'founder'], status: 'Active', isDataReliable: false,
@@ -55,5 +56,21 @@ assert(!section.includes('<h5>Общие адреса</h5>')); assert.equal(repo
 assert(section.indexOf('Информация из картотеки арбитражных дел') < section.indexOf('Организации с текущими факторами')); assert(report.coverageRows.some((row) => row.label === 'Не загружено подробных сведений по делам, в которых связанные компании выступают только истцами'));
 assert(section.includes('Судебные закономерности')); assert(section.includes('Организационные совпадения')); assert(section.includes('Активных дел:')); assert(section.includes('Завершённых дел:')); assert(section.includes('Статус не подтверждён:'));
 Handlebars.registerHelper('eq', (a, b) => a === b); Handlebars.registerHelper('formatMoneyRu', (value) => String(value));
+const arbitrationSummary = { totalCases: 19, innMatchedCases: 19, plaintiffCases: 9, respondentCases: 10, mixedRoleCases: 2,
+  bankruptcyCases: 0, civilCases: 12, administrativeCases: 7, casesWithDocuments: 8, totalDocuments: 14, decisionDocuments: 4, rulingDocuments: 10 };
+const activity = buildCheckedPersonArbitrationActivity({ status: 'ok', summary: arbitrationSummary }, { status: 'ok', summary: { hasActiveIp: true } });
+assert.equal(activity.state, 'found'); assert.equal(activity.rows.length, 12); assert(activity.narrative.includes('действующего индивидуального предпринимателя'));
+assert(activity.narrative.includes('в 9 делах проверяемый выступает истцом, в 10 делах — ответчиком'));
+assert(activity.narrative.includes('одновременно истцом и ответчиком')); assert(activity.narrative.includes('Банкротных дел не выявлено.'));
+const emptyActivity = buildCheckedPersonArbitrationActivity({ status: 'empty', summary: { ...arbitrationSummary, totalCases: 0, innMatchedCases: 0, plaintiffCases: 0, respondentCases: 0, mixedRoleCases: 0, civilCases: 0, administrativeCases: 0, casesWithDocuments: 0, totalDocuments: 0, decisionDocuments: 0, rulingDocuments: 0 } }, { status: 'empty', summary: {} });
+assert.equal(emptyActivity.state, 'empty'); assert.equal(emptyActivity.dataReceived, true); assert(emptyActivity.narrative.includes('Арбитражные дела не найдены.'));
+for (const [input, state] of [[undefined, 'absent'], [{ status: 'skipped' }, 'skipped'], [{ status: 'error', summary: arbitrationSummary }, 'error'], [{ status: 'ok' }, 'absent']]) {
+  const result = buildCheckedPersonArbitrationActivity(input, {}); assert.equal(result.state, state); assert.equal(result.dataReceived, undefined); assert.equal(result.rows, undefined);
+}
+for (const forbidden of ['выиграно', 'проиграно', 'задолженность']) assert(!activity.narrative.toLowerCase().includes(forbidden));
+assert(template.includes('Наличие арбитражных дел само по себе не свидетельствует о задолженности или недобросовестности.'));
+assert(template.includes('<h3>Коммерческая деятельность (ИП)</h3>')); assert(template.includes('<h3>Арбитражные дела и судебные акты</h3>'));
+assert(template.indexOf('Арбитражная активность проверяемого') < template.indexOf('<h3>Арбитражные дела и судебные акты</h3>'));
+assert.doesNotThrow(() => Handlebars.compile(template));
 const escaped = Handlebars.compile('{{organizationName}}')({ organizationName: 'ООО <Альфа>' }); assert.equal(escaped, 'ООО &lt;Альфа&gt;');
 console.info('buildCommercialActivityApiCloudReportViewModel tests passed');

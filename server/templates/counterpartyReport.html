@@ -3029,6 +3029,26 @@
             {{/if}}
           {{/each}}
         {{/if}}
+
+        <div class="arb-summary-box" style="margin-top: 14px; break-inside: avoid; page-break-inside: avoid;">
+          <div class="arb-subtitle">Арбитражная активность проверяемого</div>
+          {{#if sources.fns.arbitrationActivity.dataReceived}}
+            <table>
+              <tbody>
+                {{#each sources.fns.arbitrationActivity.rows}}
+                  <tr><th>{{label}}</th><td>{{value}}</td></tr>
+                {{/each}}
+              </tbody>
+            </table>
+            <p style="margin: 10px 0 0;">{{sources.fns.arbitrationActivity.narrative}}</p>
+            <p class="muted" style="margin: 8px 0 0;">
+              Наличие арбитражных дел само по себе не свидетельствует о задолженности или недобросовестности.
+              Источник не предоставляет достаточных сведений для достоверного определения результата каждого дела.
+            </p>
+          {{else}}
+            <div class="skipped-source-note" style="margin-top: 8px;">{{sources.fns.arbitrationActivity.message}}</div>
+          {{/if}}
+        </div>
       </section>
     {{/if}}
 

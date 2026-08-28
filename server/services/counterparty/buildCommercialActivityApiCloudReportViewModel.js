@@ -187,4 +187,54 @@ function buildCommercialActivityApiCloudReportViewModel(source) {
     repeatedAmountRows: repeated.rows, repeatedAmountMeta: repeated, repeatedClaimSeriesRows: series.rows, repeatedClaimSeriesMeta: series,
     organizationalMatchRows, duplicateNameRows, coverageRows };
 }
+
+const arbitrationActivityLabels = [
+  ['totalCases', 'Всего уникальных арбитражных дел'],
+  ['innMatchedCases', 'Надёжных совпадений по ИНН'],
+  ['plaintiffCases', 'Проверяемый выступает истцом'],
+  ['respondentCases', 'Проверяемый выступает ответчиком'],
+  ['mixedRoleCases', 'Истец и ответчик одновременно'],
+  ['bankruptcyCases', 'Банкротных дел'],
+  ['civilCases', 'Гражданских дел'],
+  ['administrativeCases', 'Административных дел'],
+  ['casesWithDocuments', 'Дел с найденными судебными актами'],
+  ['totalDocuments', 'Всего судебных актов'],
+  ['decisionDocuments', 'Решений'],
+  ['rulingDocuments', 'Определений'],
+];
+
+const countForm = (value, one, few, many) => {
+  const count = Number(value) || 0;
+  const remainder100 = count % 100;
+  const remainder10 = count % 10;
+  const word = remainder100 >= 11 && remainder100 <= 14 ? many : remainder10 === 1 ? one : remainder10 >= 2 && remainder10 <= 4 ? few : many;
+  return `${count} ${word}`;
+};
+
+function buildCheckedPersonArbitrationActivity(arbitrationSource, fnsSource) {
+  if (!arbitrationSource) return { state: 'absent', message: 'Сведения об арбитражной активности отсутствуют.' };
+  if (arbitrationSource.status === 'skipped') return { state: 'skipped', message: 'Источник арбитражных данных не запускался в рамках этой проверки.' };
+  if (arbitrationSource.status === 'error') return { state: 'error', message: 'Не удалось получить сведения об арбитражной активности.' };
+  if (!arbitrationSource.summary || !['ok', 'empty'].includes(arbitrationSource.status)) return { state: 'absent', message: 'Сведения об арбитражной активности отсутствуют.' };
+
+  const summary = arbitrationSource.summary;
+  const rows = arbitrationActivityLabels.map(([field, label]) => ({ field, label, value: summary[field] }));
+  if (rows.some((row) => !Number.isFinite(Number(row.value)))) return { state: 'absent', message: 'Сведения об арбитражной активности отсутствуют.' };
+
+  let ipText = 'Сведения о регистрации проверяемого в качестве индивидуального предпринимателя отсутствуют.';
+  if (fnsSource?.status === 'ok' || fnsSource?.status === 'empty') {
+    if (fnsSource.summary?.hasActiveIp) ipText = 'Проверяемый зарегистрирован в качестве действующего индивидуального предпринимателя.';
+    else if (fnsSource.summary?.hasClosedIp) ipText = 'Найдены сведения о прекращённой деятельности проверяемого в качестве индивидуального предпринимателя.';
+    else ipText = 'Сведения о регистрации проверяемого в качестве индивидуального предпринимателя не найдены.';
+  }
+
+  const totalCases = Number(summary.totalCases);
+  const narrative = totalCases
+    ? `${ipText} Найдено ${countForm(summary.innMatchedCases, 'арбитражное дело', 'арбитражных дела', 'арбитражных дел')} с подтверждённым совпадением по ИНН: в ${countForm(summary.plaintiffCases, 'деле', 'делах', 'делах')} проверяемый выступает истцом, в ${countForm(summary.respondentCases, 'деле', 'делах', 'делах')} — ответчиком${Number(summary.mixedRoleCases) ? `, в ${countForm(summary.mixedRoleCases, 'деле', 'делах', 'делах')} — одновременно истцом и ответчиком` : ''}. ${Number(summary.bankruptcyCases) ? `Найдено ${countForm(summary.bankruptcyCases, 'банкротное дело', 'банкротных дела', 'банкротных дел')}.` : 'Банкротных дел не выявлено.'}`
+    : `${ipText} Арбитражные дела не найдены.`;
+
+  return { state: totalCases ? 'found' : 'empty', dataReceived: true, rows, narrative };
+}
+
 module.exports = buildCommercialActivityApiCloudReportViewModel;
+module.exports.buildCheckedPersonArbitrationActivity = buildCheckedPersonArbitrationActivity;
